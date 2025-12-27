@@ -40,3 +40,10 @@
 - [x] Implement progress tracking for batch fetching
 - [x] Add all comments view with combined search/filter
 - [x] Add export all comments functionality
+
+## Comment Sorting Feature
+- [x] Add sort dropdown for single video comments
+- [x] Add sort dropdown for all comments view
+- [x] Implement sorting by likes (most liked first)
+- [x] Implement sorting by date (newest/oldest first)
+- [x] Implement sorting by reply count (most replies first)

@@ -29,6 +29,9 @@ import {
   CheckCircle2,
   XCircle,
   MessageSquareDashed,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -104,6 +107,8 @@ export default function Analyze() {
   const [activeTab, setActiveTab] = useState("videos");
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
   const [videoFilter, setVideoFilter] = useState<string>("all");
+  const [commentSort, setCommentSort] = useState<string>("newest");
+  const [allCommentSort, setAllCommentSort] = useState<string>("newest");
 
   // Fetch playlist info
   const playlistMutation = trpc.youtube.getPlaylist.useMutation();
@@ -246,18 +251,39 @@ export default function Analyze() {
     return filtered;
   }, [videos, searchQuery]);
 
-  // Filter comments by search
+  // Filter and sort comments by search
   const filteredComments = useMemo(() => {
-    if (!commentSearchQuery) return comments;
-    const query = commentSearchQuery.toLowerCase();
-    return comments.filter(
-      (c) =>
-        c.textOriginal.toLowerCase().includes(query) ||
-        c.authorDisplayName.toLowerCase().includes(query)
-    );
-  }, [comments, commentSearchQuery]);
+    let filtered = comments;
+    
+    if (commentSearchQuery) {
+      const query = commentSearchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (c) =>
+          c.textOriginal.toLowerCase().includes(query) ||
+          c.authorDisplayName.toLowerCase().includes(query)
+      );
+    }
+    
+    // Sort comments
+    const sorted = [...filtered].sort((a, b) => {
+      switch (commentSort) {
+        case "newest":
+          return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+        case "oldest":
+          return new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime();
+        case "most-liked":
+          return b.likeCount - a.likeCount;
+        case "most-replies":
+          return b.replyCount - a.replyCount;
+        default:
+          return 0;
+      }
+    });
+    
+    return sorted;
+  }, [comments, commentSearchQuery, commentSort]);
 
-  // Filter all comments by search and video
+  // Filter, sort all comments by search and video
   const filteredAllComments = useMemo(() => {
     let filtered = allComments;
     
@@ -275,8 +301,24 @@ export default function Analyze() {
       filtered = filtered.filter((c) => c.videoId === videoFilter);
     }
     
-    return filtered;
-  }, [allComments, commentSearchQuery, videoFilter]);
+    // Sort comments
+    const sorted = [...filtered].sort((a, b) => {
+      switch (allCommentSort) {
+        case "newest":
+          return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+        case "oldest":
+          return new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime();
+        case "most-liked":
+          return b.likeCount - a.likeCount;
+        case "most-replies":
+          return b.replyCount - a.replyCount;
+        default:
+          return 0;
+      }
+    });
+    
+    return sorted;
+  }, [allComments, commentSearchQuery, videoFilter, allCommentSort]);
 
   // Calculate stats
   const stats = useMemo(() => {
@@ -645,15 +687,45 @@ export default function Analyze() {
                   </CardContent>
                 </Card>
 
-                {/* Comment Search */}
-                <div className="relative max-w-md">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search comments..."
-                    value={commentSearchQuery}
-                    onChange={(e) => setCommentSearchQuery(e.target.value)}
-                    className="pl-10"
-                  />
+                {/* Comment Search and Sort */}
+                <div className="flex flex-wrap gap-4">
+                  <div className="relative flex-1 max-w-md">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search comments..."
+                      value={commentSearchQuery}
+                      onChange={(e) => setCommentSearchQuery(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                  <Select value={commentSort} onValueChange={setCommentSort}>
+                    <SelectTrigger className="w-[180px]">
+                      <ArrowUpDown className="h-4 w-4 mr-2" />
+                      <SelectValue placeholder="Sort by" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="newest">
+                        <span className="flex items-center gap-2">
+                          <ArrowDown className="h-3 w-3" /> Newest First
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="oldest">
+                        <span className="flex items-center gap-2">
+                          <ArrowUp className="h-3 w-3" /> Oldest First
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="most-liked">
+                        <span className="flex items-center gap-2">
+                          <ThumbsUp className="h-3 w-3" /> Most Liked
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="most-replies">
+                        <span className="flex items-center gap-2">
+                          <MessageSquare className="h-3 w-3" /> Most Replies
+                        </span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Comments List */}
@@ -752,7 +824,7 @@ export default function Analyze() {
           <TabsContent value="all-comments" className="space-y-4">
             {allComments.length > 0 ? (
               <>
-                {/* Filters */}
+                {/* Filters and Sort */}
                 <div className="flex flex-wrap gap-4">
                   <div className="relative flex-1 max-w-md">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -764,16 +836,45 @@ export default function Analyze() {
                     />
                   </div>
                   <Select value={videoFilter} onValueChange={setVideoFilter}>
-                    <SelectTrigger className="w-[250px]">
+                    <SelectTrigger className="w-[200px]">
+                      <Filter className="h-4 w-4 mr-2" />
                       <SelectValue placeholder="Filter by video" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Videos</SelectItem>
                       {videos.map((video) => (
                         <SelectItem key={video.id} value={video.id}>
-                          {video.title.substring(0, 40)}...
+                          {video.title.substring(0, 35)}...
                         </SelectItem>
                       ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={allCommentSort} onValueChange={setAllCommentSort}>
+                    <SelectTrigger className="w-[180px]">
+                      <ArrowUpDown className="h-4 w-4 mr-2" />
+                      <SelectValue placeholder="Sort by" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="newest">
+                        <span className="flex items-center gap-2">
+                          <ArrowDown className="h-3 w-3" /> Newest First
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="oldest">
+                        <span className="flex items-center gap-2">
+                          <ArrowUp className="h-3 w-3" /> Oldest First
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="most-liked">
+                        <span className="flex items-center gap-2">
+                          <ThumbsUp className="h-3 w-3" /> Most Liked
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="most-replies">
+                        <span className="flex items-center gap-2">
+                          <MessageSquare className="h-3 w-3" /> Most Replies
+                        </span>
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
