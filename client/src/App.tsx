@@ -4,6 +4,7 @@ import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { AppLayout } from "./components/AppLayout";
 import Home from "./pages/Home";
 import Analyze from "./pages/Analyze";
 import Video from "./pages/Video";
@@ -12,9 +13,11 @@ import History from "./pages/History";
 import Intelligence from "./pages/Intelligence";
 import Canvas from "./pages/Canvas";
 import Projects from "./pages/Projects";
+import Videos from "./pages/Videos";
+import Channels from "./pages/Channels";
+import Comments from "./pages/Comments";
 
 function Router() {
-  // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
       <Route path={"/"} component={Home} />
@@ -25,28 +28,25 @@ function Router() {
       <Route path={"/intelligence"} component={Intelligence} />
       <Route path={"/canvas"} component={Canvas} />
       <Route path={"/projects"} component={Projects} />
+      <Route path={"/videos"} component={Videos} />
+      <Route path={"/channels"} component={Channels} />
+      <Route path={"/comments"} component={Comments} />
+      <Route path={"/trash"} component={NotFound} />
       <Route path={"/404"} component={NotFound} />
-      {/* Final fallback route */}
       <Route component={NotFound} />
     </Switch>
   );
 }
 
-// NOTE: About Theme
-// - First choose a default theme according to your design style (dark or light bg), than change color palette in index.css
-//   to keep consistent foreground/background color across components
-// - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
-
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider
-        defaultTheme="light"
-        // switchable
-      >
+      <ThemeProvider defaultTheme="light">
         <TooltipProvider>
           <Toaster />
-          <Router />
+          <AppLayout>
+            <Router />
+          </AppLayout>
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

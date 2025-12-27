@@ -118,46 +118,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b-2 border-foreground">
-        <div className="container py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img 
-              src="/images/logo-placeholder.png" 
-              alt="YouTube Playlist Analyzer" 
-              className="h-10 w-10"
-            />
-            <span className="font-bold text-xl tracking-tight">Playlist Analyzer</span>
-          </div>
-          <div className="flex items-center gap-4">
-            {isAuthenticated && (
-              <>
-                <Button variant="ghost" size="sm" asChild>
-                  <Link href="/projects">
-                    <Folder className="h-4 w-4 mr-2" />
-                    Projects
-                  </Link>
-                </Button>
-                <Button variant="ghost" size="sm" asChild>
-                  <Link href="/history">
-                    <History className="h-4 w-4 mr-2" />
-                    History
-                  </Link>
-                </Button>
-              </>
-            )}
-            {isAuthenticated ? (
-              <span className="text-sm text-muted-foreground">
-                Welcome, {user?.name || "User"}
-              </span>
-            ) : (
-              <Button variant="outline" asChild>
-                <a href={getLoginUrl()}>Sign In</a>
-              </Button>
-            )}
-          </div>
-        </div>
-      </header>
+
 
       {/* Hero Section */}
       <section className="py-16 md:py-24 lg:py-32">

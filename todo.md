@@ -127,3 +127,61 @@
 - [x] Add tagging system with clickable tags
 - [x] Save canvas states to projects
 - [x] Export project assets
+
+## Bug Fixes
+- [ ] Fix issue where playlist analysis doesn't fetch data when URL and API key are entered
+
+- [ ] Add detailed error logging to YouTube API calls
+- [ ] Display specific error messages in UI (API key invalid, quota exceeded, etc.)
+- [ ] Add "Test API Key" button to verify key before analysis
+
+
+## Sidebar Navigation Redesign (Notion-style)
+
+### Left Sidebar Structure
+- [x] Create persistent left sidebar layout component
+- [x] Add collapsible sidebar toggle
+- [x] Implement workspace/home section at top
+- [x] Add quick actions section (New Analysis, Import, etc.)
+
+### Folder Hierarchy System
+- [x] Create nested folder tree component with accordion expansion
+- [x] Support unlimited subfolder depth
+- [x] Add folder icons with customizable colors
+- [ ] Implement drag-and-drop folder reordering
+- [x] Add folder context menu (rename, delete, move, duplicate)
+- [x] Create "Add Folder" and "Add Subfolder" buttons
+- [ ] Show item counts in folders
+
+### Project Organization
+- [ ] Move projects into folder structure
+- [ ] Allow projects to be moved between folders
+- [ ] Support project duplication
+- [ ] Add project templates
+
+### Data Management (Videos, Channels, Comments)
+- [x] Add/delete videos from projects
+- [x] Add/delete channels from tracking
+- [x] Bulk selection and actions
+- [x] Tag videos, channels, and comments
+- [x] Create custom tag categories
+- [x] Sort by: date, name, views, likes, comments, tags
+- [x] Filter by: tags, date range, channel, status
+- [x] Search across all data types
+- [x] Favorite/star items for quick access
+
+### Navigation Sections
+- [x] Home/Dashboard
+- [x] All Videos
+- [x] All Channels
+- [x] All Comments
+- [x] Intelligence (Comment Analysis)
+- [x] Canvas (Marketing Assets)
+- [x] History
+- [x] Trash/Archive
+
+### UI Improvements
+- [ ] Keyboard shortcuts for navigation
+- [ ] Breadcrumb navigation
+- [ ] Recent items section
+- [ ] Pinned items section

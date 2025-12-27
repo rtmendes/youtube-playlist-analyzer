@@ -137,13 +137,40 @@ export default function BulkAnalyze() {
       setIsSaving(false);
     },
   });
-  // Use mutation wrapper for parseUrl since it's a query
-  const parseUrlMutation = {
-    mutateAsync: async (input: { url: string }) => {
-      const response = await fetch(`/api/trpc/youtube.parseUrl?input=${encodeURIComponent(JSON.stringify(input))}`);
-      const data = await response.json();
-      return data.result.data;
+  // Use the parseYouTubeInput function directly on the client side
+  // since it doesn't require any API call - it's just URL parsing
+  const parseUrl = (url: string) => {
+    const decoded = decodeURIComponent(url.trim());
+    const patterns = {
+      video_id: [
+        /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\/watch\?v=([\w_-]+)(?:[\/&].*)?/i,
+        /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\/(?:v|embed|shorts|video|watch|live)\/([\w_-]+)(?:[\/&].*)?/i,
+        /(?:http[s]?:\/\/)?youtu\.be\/([\w_-]+)(?:\?.*)?/i,
+        /^([\w-]{11})$/i,
+      ],
+      playlist_id: [
+        /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\/playlist\?list=([\w_-]+)(?:&.*)?/i,
+        /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\/watch\?.*list=([\w_-]+)(?:&.*)?/i,
+        /^((UU|UUSH|PL|FL|SP|OLAK)[A-Za-z0-9_-]+)$/i,
+      ],
+      channel_id: [
+        /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\/channel\/([\w_-]+)(?:\?.*)?/i,
+        /^((UC|SC)[\w-]{22})$/i,
+      ],
+      channel_handle: [
+        /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\/@([^\/?]+)(?:\?.*)?/i,
+      ],
+    };
+
+    for (const [type, regexList] of Object.entries(patterns)) {
+      for (const regex of regexList) {
+        const result = regex.exec(decoded);
+        if (result) {
+          return { type, value: result[1], original: decoded };
+        }
+      }
     }
+    return { type: "unknown", value: "", original: decoded };
   };
   const playlistMutation = trpc.youtube.getPlaylist.useMutation();
   const videosMutation = trpc.youtube.getPlaylistVideos.useMutation();
@@ -185,8 +212,8 @@ export default function BulkAnalyze() {
       ));
 
       try {
-        // Parse the URL
-        const parsed = await parseUrlMutation.mutateAsync({ url });
+        // Parse the URL (client-side, no API call needed)
+        const parsed = parseUrl(url);
         
         if (parsed.type === "unknown") {
           setProcessingStatuses(prev => prev.map((s, idx) => 
@@ -809,7 +836,7 @@ export default function BulkAnalyze() {
 
       {/* Main Content */}
       <div className="container py-6">
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs defaultValue="progress" value={activeTab} onValueChange={setActiveTab}>
           <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
             <TabsList>
               <TabsTrigger value="progress" className="gap-2">
@@ -828,9 +855,15 @@ export default function BulkAnalyze() {
           </div>
 
           {/* Progress Tab */}
-          <TabsContent value="progress" className="space-y-4">
+          <TabsContent value="progress" className="space-y-4" forceMount>
             <div className="space-y-3">
-              {processingStatuses.map((status, index) => (
+              {processingStatuses.length === 0 ? (
+                <Card className="border">
+                  <CardContent className="p-4 text-center text-muted-foreground">
+                    No URLs being processed
+                  </CardContent>
+                </Card>
+              ) : processingStatuses.map((status, index) => (
                 <Card key={index} className={`border ${status.status === "processing" ? "border-primary" : ""}`}>
                   <CardContent className="p-4">
                     <div className="flex items-center gap-4">
@@ -875,7 +908,10 @@ export default function BulkAnalyze() {
                             <span>{status.commentsCount} comments</span>
                           )}
                           {status.error && (
-                            <span className="text-destructive">{status.error}</span>
+                            <div className="flex flex-col gap-1">
+                              <span className="text-destructive font-medium">Error:</span>
+                              <span className="text-destructive text-xs break-all">{status.error}</span>
+                            </div>
                           )}
                         </div>
                       </div>

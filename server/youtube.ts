@@ -339,11 +339,69 @@ class YouTubeAPIClient {
       url.searchParams.set(key, value);
     }
 
-    const response = await axios.get<T>(url.toString(), {
-      timeout: 30000,
-    });
-
-    return response.data;
+    try {
+      console.log(`[YouTube API] Requesting: ${endpoint}`, params);
+      const response = await axios.get<T>(url.toString(), {
+        timeout: 30000,
+      });
+      console.log(`[YouTube API] Success: ${endpoint}`);
+      return response.data;
+    } catch (error: any) {
+      console.error(`[YouTube API] Error: ${endpoint}`, error.response?.data || error.message);
+      
+      // Parse YouTube API error response
+      if (error.response?.data?.error) {
+        const apiError = error.response.data.error;
+        const errorCode = apiError.code;
+        const errorMessage = apiError.message;
+        const errorReason = apiError.errors?.[0]?.reason;
+        
+        // Provide user-friendly error messages
+        if (errorCode === 400) {
+          if (errorReason === 'keyInvalid') {
+            throw new Error('Invalid API Key: The provided YouTube API key is not valid. Please check your key in Google Cloud Console.');
+          }
+          if (errorReason === 'badRequest') {
+            throw new Error(`Bad Request: ${errorMessage}`);
+          }
+          throw new Error(`API Error (400): ${errorMessage}`);
+        }
+        
+        if (errorCode === 401) {
+          throw new Error('Unauthorized: Your API key may be invalid or restricted. Please check your API key settings in Google Cloud Console.');
+        }
+        
+        if (errorCode === 403) {
+          if (errorReason === 'quotaExceeded') {
+            throw new Error('Quota Exceeded: Your YouTube API quota has been exceeded. Please wait until tomorrow or request a quota increase in Google Cloud Console.');
+          }
+          if (errorReason === 'accessNotConfigured') {
+            throw new Error('API Not Enabled: YouTube Data API v3 is not enabled for your project. Please enable it in Google Cloud Console.');
+          }
+          if (errorReason === 'forbidden') {
+            throw new Error('Access Forbidden: Your API key does not have permission to access this resource. Check API restrictions in Google Cloud Console.');
+          }
+          throw new Error(`Access Denied (403): ${errorMessage}`);
+        }
+        
+        if (errorCode === 404) {
+          throw new Error(`Not Found: The requested resource was not found. ${errorMessage}`);
+        }
+        
+        throw new Error(`YouTube API Error (${errorCode}): ${errorMessage}`);
+      }
+      
+      // Network or other errors
+      if (error.code === 'ECONNREFUSED') {
+        throw new Error('Connection Error: Unable to connect to YouTube API. Please check your internet connection.');
+      }
+      
+      if (error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED') {
+        throw new Error('Timeout: The request to YouTube API timed out. Please try again.');
+      }
+      
+      throw new Error(`Request Failed: ${error.message}`);
+    }
   }
 
   async getPlaylist(playlistId: string): Promise<YouTubePlaylistResponse> {
