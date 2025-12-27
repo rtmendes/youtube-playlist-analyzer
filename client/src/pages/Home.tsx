@@ -127,7 +127,7 @@ export default function Home() {
               </h1>
               <div className="w-24 h-1 bg-primary mt-6 mb-8" />
               <p className="text-xl md:text-2xl text-muted-foreground max-w-lg leading-relaxed">
-                Enter multiple URLs, fetch top 100 comments per video, and export everything to CSV or Google Sheets.
+                Enter playlists, videos, or channels. Fetch top 100 comments per video and export to CSV or Google Sheets.
               </p>
             </motion.div>
 
@@ -163,7 +163,8 @@ export default function Home() {
                         <Textarea
                           placeholder={`https://youtube.com/playlist?list=PLxxxxx
 https://youtube.com/watch?v=xxxxx
-https://youtube.com/playlist?list=PLyyyyy`}
+https://youtube.com/@channelname
+https://youtube.com/channel/UCxxxxx`}
                           value={bulkUrls}
                           onChange={(e) => setBulkUrls(e.target.value)}
                           className="min-h-[150px] border-2 border-foreground font-mono text-sm"

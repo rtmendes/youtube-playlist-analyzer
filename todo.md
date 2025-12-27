@@ -57,3 +57,11 @@
 - [x] Add CSV download for all comments with video metadata
 - [x] Add Google Sheets export integration
 - [x] Streamline UI for bulk processing workflow
+
+## Channel URL Support Feature
+- [x] Add getChannelByHandle API endpoint to resolve channel handles to channel IDs
+- [x] Add getChannelById API endpoint to get channel info by ID
+- [x] Update BulkAnalyze page to process channel URLs
+- [x] Fetch all videos from channel's uploads playlist
+- [x] Show channel name in progress tracking
+- [x] Add unit tests for channel URL parsing

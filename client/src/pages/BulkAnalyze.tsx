@@ -83,9 +83,10 @@ interface Comment {
 
 interface ProcessingStatus {
   url: string;
-  type: "playlist" | "video" | "unknown";
+  type: "playlist" | "video" | "channel" | "unknown";
   status: "pending" | "processing" | "completed" | "error";
   playlistTitle?: string;
+  channelTitle?: string;
   videoCount?: number;
   videosProcessed?: number;
   commentsCount?: number;
@@ -128,6 +129,8 @@ export default function BulkAnalyze() {
   const videosMutation = trpc.youtube.getPlaylistVideos.useMutation();
   const videoDetailsMutation = trpc.youtube.getVideoDetails.useMutation();
   const batchCommentsMutation = trpc.youtube.getBatchVideoComments.useMutation();
+  const channelByIdMutation = trpc.youtube.getChannelById.useMutation();
+  const channelByHandleMutation = trpc.youtube.getChannelByHandle.useMutation();
 
   // Initialize processing statuses
   useEffect(() => {
@@ -281,6 +284,95 @@ export default function BulkAnalyze() {
             }
           } catch (err) {
             console.error(`Failed to fetch comments for video ${parsed.value}:`, err);
+          }
+
+          setProcessingStatuses(prev => prev.map((s, idx) => 
+            idx === i ? { ...s, status: "completed" } : s
+          ));
+
+        } else if (parsed.type === "channel_id" || parsed.type === "channel_handle") {
+          // Process channel
+          setProcessingStatuses(prev => prev.map((s, idx) => 
+            idx === i ? { ...s, type: "channel" } : s
+          ));
+
+          // Get channel info based on type
+          let channelInfo;
+          if (parsed.type === "channel_id") {
+            channelInfo = await channelByIdMutation.mutateAsync({
+              channelId: parsed.value,
+              apiKey,
+            });
+          } else {
+            channelInfo = await channelByHandleMutation.mutateAsync({
+              handle: parsed.value,
+              apiKey,
+            });
+          }
+
+          if (!channelInfo.uploadsPlaylistId) {
+            setProcessingStatuses(prev => prev.map((s, idx) => 
+              idx === i ? { ...s, status: "error", error: "Could not find channel uploads playlist" } : s
+            ));
+            continue;
+          }
+
+          setProcessingStatuses(prev => prev.map((s, idx) => 
+            idx === i ? { ...s, channelTitle: channelInfo.title, playlistTitle: `${channelInfo.title} (Uploads)`, videoCount: channelInfo.videoCount } : s
+          ));
+
+          // Get all videos from channel's uploads playlist
+          let pageToken: string | undefined;
+          const channelVideos: Video[] = [];
+          
+          do {
+            const result = await videosMutation.mutateAsync({
+              playlistId: channelInfo.uploadsPlaylistId,
+              apiKey,
+              pageToken,
+            });
+            
+            const videosWithChannel = result.videos.map(v => ({
+              ...v,
+              playlistId: channelInfo.uploadsPlaylistId,
+              playlistTitle: `${channelInfo.title} (Uploads)`,
+            }));
+            
+            channelVideos.push(...videosWithChannel);
+            pageToken = result.nextPageToken;
+            
+            setProcessingStatuses(prev => prev.map((s, idx) => 
+              idx === i ? { ...s, videosProcessed: channelVideos.length } : s
+            ));
+          } while (pageToken);
+
+          allFetchedVideos.push(...channelVideos);
+          setVideos([...allFetchedVideos]);
+
+          // Fetch top 100 comments for each video
+          let totalComments = 0;
+          for (const video of channelVideos) {
+            try {
+              const commentsResult = await batchCommentsMutation.mutateAsync({
+                videoId: video.id,
+                videoTitle: video.title,
+                apiKey,
+                maxComments: 100,
+              });
+              
+              if (!commentsResult.commentsDisabled && commentsResult.comments.length > 0) {
+                allFetchedComments.push(...commentsResult.comments);
+                totalComments += commentsResult.comments.length;
+                setAllComments([...allFetchedComments]);
+              }
+            } catch (err) {
+              // Continue with other videos if one fails
+              console.error(`Failed to fetch comments for video ${video.id}:`, err);
+            }
+            
+            setProcessingStatuses(prev => prev.map((s, idx) => 
+              idx === i ? { ...s, commentsCount: totalComments } : s
+            ));
           }
 
           setProcessingStatuses(prev => prev.map((s, idx) => 
@@ -678,7 +770,10 @@ export default function BulkAnalyze() {
                           {status.type !== "unknown" && (
                             <Badge variant="secondary">{status.type}</Badge>
                           )}
-                          {status.playlistTitle && (
+                          {status.channelTitle && (
+                            <span className="truncate font-medium">{status.channelTitle}</span>
+                          )}
+                          {status.playlistTitle && !status.channelTitle && (
                             <span className="truncate">{status.playlistTitle}</span>
                           )}
                           {status.videosProcessed !== undefined && status.videoCount !== undefined && (

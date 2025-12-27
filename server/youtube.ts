@@ -232,6 +232,44 @@ export interface YouTubeCommentThreadResponse {
   items: YouTubeCommentThread[];
 }
 
+export interface YouTubeChannelResponse {
+  kind: string;
+  etag: string;
+  pageInfo: { totalResults: number; resultsPerPage: number };
+  items: YouTubeChannelItem[];
+}
+
+export interface YouTubeChannelItem {
+  kind: string;
+  etag: string;
+  id: string;
+  snippet: {
+    title: string;
+    description: string;
+    customUrl?: string;
+    publishedAt: string;
+    thumbnails: {
+      default?: { url: string; width: number; height: number };
+      medium?: { url: string; width: number; height: number };
+      high?: { url: string; width: number; height: number };
+    };
+    localized?: { title: string; description: string };
+    country?: string;
+  };
+  contentDetails?: {
+    relatedPlaylists: {
+      likes?: string;
+      uploads: string;
+    };
+  };
+  statistics?: {
+    viewCount?: string;
+    subscriberCount?: string;
+    hiddenSubscriberCount?: boolean;
+    videoCount?: string;
+  };
+}
+
 export interface YouTubeCommentThread {
   kind: string;
   etag: string;
@@ -370,6 +408,29 @@ class YouTubeAPIClient {
       params.pageToken = pageToken;
     }
     return this.request("comments", params);
+  }
+
+  async getChannelById(channelId: string): Promise<YouTubeChannelResponse> {
+    return this.request<YouTubeChannelResponse>("channels", {
+      part: "snippet,contentDetails,statistics",
+      id: channelId,
+    });
+  }
+
+  async getChannelByHandle(handle: string): Promise<YouTubeChannelResponse> {
+    // Remove @ if present
+    const cleanHandle = handle.startsWith("@") ? handle.slice(1) : handle;
+    return this.request<YouTubeChannelResponse>("channels", {
+      part: "snippet,contentDetails,statistics",
+      forHandle: cleanHandle,
+    });
+  }
+
+  async getChannelByUsername(username: string): Promise<YouTubeChannelResponse> {
+    return this.request<YouTubeChannelResponse>("channels", {
+      part: "snippet,contentDetails,statistics",
+      forUsername: username,
+    });
   }
 }
 

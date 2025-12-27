@@ -317,6 +317,70 @@ export const appRouter = router({
           throw error;
         }
       }),
+
+    // Get channel info by channel ID
+    getChannelById: publicProcedure
+      .input(z.object({
+        channelId: z.string(),
+        apiKey: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        youtubeClient.setApiKey(input.apiKey);
+        
+        const response = await youtubeClient.getChannelById(input.channelId);
+        
+        if (!response.items || response.items.length === 0) {
+          throw new Error("Channel not found");
+        }
+
+        const channel = response.items[0];
+        
+        return {
+          id: channel.id,
+          title: channel.snippet.title,
+          description: channel.snippet.description,
+          customUrl: channel.snippet.customUrl,
+          thumbnailUrl: channel.snippet.thumbnails.high?.url ||
+            channel.snippet.thumbnails.medium?.url ||
+            channel.snippet.thumbnails.default?.url,
+          uploadsPlaylistId: channel.contentDetails?.relatedPlaylists.uploads,
+          subscriberCount: parseInt(channel.statistics?.subscriberCount || "0"),
+          videoCount: parseInt(channel.statistics?.videoCount || "0"),
+          viewCount: parseInt(channel.statistics?.viewCount || "0"),
+        };
+      }),
+
+    // Get channel info by handle (@username)
+    getChannelByHandle: publicProcedure
+      .input(z.object({
+        handle: z.string(),
+        apiKey: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        youtubeClient.setApiKey(input.apiKey);
+        
+        const response = await youtubeClient.getChannelByHandle(input.handle);
+        
+        if (!response.items || response.items.length === 0) {
+          throw new Error("Channel not found");
+        }
+
+        const channel = response.items[0];
+        
+        return {
+          id: channel.id,
+          title: channel.snippet.title,
+          description: channel.snippet.description,
+          customUrl: channel.snippet.customUrl,
+          thumbnailUrl: channel.snippet.thumbnails.high?.url ||
+            channel.snippet.thumbnails.medium?.url ||
+            channel.snippet.thumbnails.default?.url,
+          uploadsPlaylistId: channel.contentDetails?.relatedPlaylists.uploads,
+          subscriberCount: parseInt(channel.statistics?.subscriberCount || "0"),
+          videoCount: parseInt(channel.statistics?.videoCount || "0"),
+          viewCount: parseInt(channel.statistics?.viewCount || "0"),
+        };
+      }),
   }),
 
   analysis: router({
