@@ -371,3 +371,31 @@
 - [x] Identify unique selling points and gaps
 - [x] Generate competitive positioning recommendations
 - [ ] Add competitor tracking with alerts for new reviews/comments
+
+## Playlist Persistence Feature
+
+### Database Schema
+- [x] Create saved_playlists table (playlistId, userId, title, thumbnailUrl, videoCount, lastRunAt, createdAt)
+- [x] Create playlist_runs table (playlistId, runId, runAt, videosAnalyzed, commentsCollected)
+- [x] Link existing videos/comments to playlist runs for historical tracking
+
+### API Routes
+- [x] Add savePlaylist mutation to save playlist after analysis
+- [x] Add getSavedPlaylists query to list user's saved playlists
+- [x] Add getPlaylistRuns query to get run history for a playlist
+- [x] Add deletePlaylist mutation to remove saved playlists
+- [x] Add refreshPlaylist mutation to re-run analysis and update timestamp
+
+### UI Updates
+- [x] Add "Save to Library" button on analysis results page
+- [x] Display saved playlists in sidebar under Library section
+- [x] Show last run timestamp on playlist cards
+- [x] Add playlist detail page showing run history and results
+- [x] Add "Refresh" button to re-run analysis on saved playlists
+- [x] Preserve analysis results when navigating back
+
+### User Experience
+- [ ] Auto-save playlist option after successful analysis
+- [x] Show notification when playlist is saved
+- [x] Display relative timestamps (e.g., "Last run 2 hours ago")
+- [ ] Allow renaming saved playlists

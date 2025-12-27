@@ -92,6 +92,9 @@ import {
   ShoppingCart,
   MessageCircle,
   BarChart3,
+  ListMusic,
+  RefreshCw,
+  Calendar,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
@@ -158,6 +161,12 @@ export function Sidebar({ isCollapsed, onToggle, onOpenSearch }: SidebarProps) {
 
   // Fetch folders
   const { data: foldersData, refetch: refetchFolders } = trpc.folders.list.useQuery(
+    undefined,
+    { enabled: !!user }
+  );
+
+  // Fetch saved playlists
+  const { data: savedPlaylistsData } = trpc.savedPlaylists.list.useQuery(
     undefined,
     { enabled: !!user }
   );
@@ -599,6 +608,58 @@ export function Sidebar({ isCollapsed, onToggle, onOpenSearch }: SidebarProps) {
                   </Link>
                 ))}
             </div>
+
+            {/* Saved Playlists */}
+            {savedPlaylistsData && savedPlaylistsData.length > 0 && (
+              <div className="mb-4">
+                <Collapsible defaultOpen>
+                  <CollapsibleTrigger className="flex items-center justify-between w-full px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors">
+                    <div className="flex items-center gap-1">
+                      <ListMusic className="h-3 w-3" />
+                      <span>Saved Playlists</span>
+                    </div>
+                    <ChevronDown className="h-3 w-3" />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="mt-1 space-y-0.5">
+                      {savedPlaylistsData.slice(0, 5).map((playlist) => (
+                        <Link key={playlist.id} href={`/playlist/${playlist.id}`}>
+                          <div
+                            className={cn(
+                              "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors",
+                              "text-sm hover:bg-accent group",
+                              location === `/playlist/${playlist.id}`
+                                ? "bg-accent text-accent-foreground"
+                                : "text-muted-foreground hover:text-foreground"
+                            )}
+                          >
+                            <ListMusic className="h-4 w-4 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <div className="truncate text-sm">{playlist.title}</div>
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Calendar className="h-3 w-3" />
+                                <span>
+                                  {playlist.lastRunAt
+                                    ? new Date(playlist.lastRunAt).toLocaleDateString()
+                                    : "Never run"}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </Link>
+                      ))}
+                      {savedPlaylistsData.length > 5 && (
+                        <Link href="/playlists">
+                          <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer">
+                            <span>View all {savedPlaylistsData.length} playlists →</span>
+                          </div>
+                        </Link>
+                      )}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              </div>
+            )}
 
             {/* Tools */}
             <div className="mb-4">

@@ -22,6 +22,7 @@ import Channel from "./pages/Channel";
 import AmazonIntelligence from "./pages/AmazonIntelligence";
 import RedditResearch from "./pages/RedditResearch";
 import CompetitorAnalysis from "./pages/CompetitorAnalysis";
+import SavedPlaylist from "./pages/SavedPlaylist";
 
 function Router() {
   return (
@@ -42,6 +43,8 @@ function Router() {
       <Route path={"/amazon"} component={AmazonIntelligence} />
       <Route path={"/reddit"} component={RedditResearch} />
       <Route path={"/competitors"} component={CompetitorAnalysis} />
+      <Route path={"/playlist/:id"} component={SavedPlaylist} />
+      <Route path={"/playlists"} component={NotFound} />
       <Route path={"/trash"} component={NotFound} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />

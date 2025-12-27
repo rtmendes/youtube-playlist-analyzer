@@ -10,7 +10,7 @@ import {
   formatCount,
 } from "./youtube";
 import { getDb } from "./db";
-import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets, amazonProducts, amazonReviews, redditPosts, redditComments, researchSessions, multiSourceInsights } from "../drizzle/schema";
+import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets, amazonProducts, amazonReviews, redditPosts, redditComments, researchSessions, multiSourceInsights, savedPlaylists, playlistRuns, playlistVideos, videos, comments } from "../drizzle/schema";
 import { eq, desc, and, like, or, sql } from "drizzle-orm";
 import { parseAmazonUrl, generateSampleProduct, generateSampleReviews, calculateReviewStats, analyzeReviewSentiment, fetchAmazonProduct, fetchAmazonReviews, searchAmazonProducts, compareProducts, AmazonApiConfig } from "./amazon";
 import { parseRedditUrl, fetchSubredditPosts, searchReddit, fetchPostComments, analyzeRedditComment, calculateRedditStats, getPopularResearchSubreddits } from "./reddit";
@@ -1269,6 +1269,327 @@ export const appRouter = router({
           reddit: insights.filter(i => i.sourceType === "reddit").length,
           total: insights.length,
         };
+      }),
+  }),
+
+  // Saved Playlists Router
+  savedPlaylists: router({
+    // Save a playlist to library
+    save: protectedProcedure
+      .input(z.object({
+        youtubePlaylistId: z.string(),
+        title: z.string(),
+        description: z.string().optional(),
+        channelTitle: z.string().optional(),
+        thumbnailUrl: z.string().optional(),
+        videoCount: z.number().default(0),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Check if already saved
+        const existing = await db.select().from(savedPlaylists).where(
+          and(
+            eq(savedPlaylists.userId, ctx.user.id),
+            eq(savedPlaylists.youtubePlaylistId, input.youtubePlaylistId)
+          )
+        );
+
+        if (existing.length > 0) {
+          // Update existing
+          await db.update(savedPlaylists).set({
+            title: input.title,
+            description: input.description,
+            channelTitle: input.channelTitle,
+            thumbnailUrl: input.thumbnailUrl,
+            videoCount: input.videoCount,
+            lastRunAt: new Date(),
+          }).where(eq(savedPlaylists.id, existing[0].id));
+          return { id: existing[0].id, isNew: false };
+        }
+
+        // Create new
+        const result = await db.insert(savedPlaylists).values({
+          userId: ctx.user.id,
+          youtubePlaylistId: input.youtubePlaylistId,
+          title: input.title,
+          description: input.description,
+          channelTitle: input.channelTitle,
+          thumbnailUrl: input.thumbnailUrl,
+          videoCount: input.videoCount,
+          lastRunAt: new Date(),
+          status: "active",
+        });
+
+        return { id: Number((result as any)[0]?.insertId || 0), isNew: true };
+      }),
+
+    // Get all saved playlists for user
+    list: protectedProcedure
+      .query(async ({ ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        return await db.select().from(savedPlaylists)
+          .where(eq(savedPlaylists.userId, ctx.user.id))
+          .orderBy(desc(savedPlaylists.lastRunAt));
+      }),
+
+    // Get a single saved playlist with details
+    getById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return null;
+        if (!ctx.user) return null;
+
+        const results = await db.select().from(savedPlaylists)
+          .where(
+            and(
+              eq(savedPlaylists.id, input.id),
+              eq(savedPlaylists.userId, ctx.user.id)
+            )
+          );
+
+        return results[0] || null;
+      }),
+
+    // Get by YouTube playlist ID
+    getByYoutubeId: protectedProcedure
+      .input(z.object({ youtubePlaylistId: z.string() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return null;
+        if (!ctx.user) return null;
+
+        const results = await db.select().from(savedPlaylists)
+          .where(
+            and(
+              eq(savedPlaylists.youtubePlaylistId, input.youtubePlaylistId),
+              eq(savedPlaylists.userId, ctx.user.id)
+            )
+          );
+
+        return results[0] || null;
+      }),
+
+    // Update last run timestamp
+    updateLastRun: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        videoCount: z.number().optional(),
+        commentCount: z.number().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+
+        await db.update(savedPlaylists).set({
+          lastRunAt: new Date(),
+          lastVideoCount: input.videoCount,
+          lastCommentCount: input.commentCount,
+        }).where(eq(savedPlaylists.id, input.id));
+
+        return { success: true };
+      }),
+
+    // Delete a saved playlist
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+
+        // Delete associated runs first
+        await db.delete(playlistRuns).where(eq(playlistRuns.savedPlaylistId, input.id));
+        // Delete associated videos
+        await db.delete(playlistVideos).where(eq(playlistVideos.savedPlaylistId, input.id));
+        // Delete the playlist
+        await db.delete(savedPlaylists).where(eq(savedPlaylists.id, input.id));
+
+        return { success: true };
+      }),
+
+    // Update playlist status
+    updateStatus: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        status: z.enum(["active", "paused", "archived"]),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+
+        await db.update(savedPlaylists).set({
+          status: input.status,
+        }).where(eq(savedPlaylists.id, input.id));
+
+        return { success: true };
+      }),
+  }),
+
+  // Playlist Runs Router
+  playlistRuns: router({
+    // Create a new run
+    create: protectedProcedure
+      .input(z.object({
+        savedPlaylistId: z.number(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+
+        const result = await db.insert(playlistRuns).values({
+          savedPlaylistId: input.savedPlaylistId,
+          status: "running",
+          startedAt: new Date(),
+        });
+
+        return { id: Number((result as any)[0]?.insertId || 0) };
+      }),
+
+    // Update run with results
+    complete: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        videosAnalyzed: z.number(),
+        commentsCollected: z.number(),
+        newVideos: z.number().default(0),
+        newComments: z.number().default(0),
+        status: z.enum(["completed", "failed"]).default("completed"),
+        errorMessage: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+
+        await db.update(playlistRuns).set({
+          videosAnalyzed: input.videosAnalyzed,
+          commentsCollected: input.commentsCollected,
+          newVideos: input.newVideos,
+          newComments: input.newComments,
+          status: input.status,
+          errorMessage: input.errorMessage,
+          completedAt: new Date(),
+        }).where(eq(playlistRuns.id, input.id));
+
+        return { success: true };
+      }),
+
+    // Get runs for a playlist
+    listByPlaylist: protectedProcedure
+      .input(z.object({ savedPlaylistId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+
+        return await db.select().from(playlistRuns)
+          .where(eq(playlistRuns.savedPlaylistId, input.savedPlaylistId))
+          .orderBy(desc(playlistRuns.startedAt));
+      }),
+
+    // Get latest run for a playlist
+    getLatest: protectedProcedure
+      .input(z.object({ savedPlaylistId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return null;
+
+        const results = await db.select().from(playlistRuns)
+          .where(eq(playlistRuns.savedPlaylistId, input.savedPlaylistId))
+          .orderBy(desc(playlistRuns.startedAt))
+          .limit(1);
+
+        return results[0] || null;
+      }),
+  }),
+
+  // Playlist Videos Router
+  playlistVideos: router({
+    // Save videos for a playlist
+    saveMany: protectedProcedure
+      .input(z.object({
+        savedPlaylistId: z.number(),
+        videos: z.array(z.object({
+          videoYoutubeId: z.string(),
+          videoTitle: z.string().optional(),
+          thumbnailUrl: z.string().optional(),
+          viewCount: z.number().default(0),
+          likeCount: z.number().default(0),
+          commentCount: z.number().default(0),
+          publishedAt: z.date().optional(),
+        })),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+
+        let newCount = 0;
+        for (const video of input.videos) {
+          // Check if video already exists for this playlist
+          const existing = await db.select().from(playlistVideos).where(
+            and(
+              eq(playlistVideos.savedPlaylistId, input.savedPlaylistId),
+              eq(playlistVideos.videoYoutubeId, video.videoYoutubeId)
+            )
+          );
+
+          if (existing.length === 0) {
+            await db.insert(playlistVideos).values({
+              savedPlaylistId: input.savedPlaylistId,
+              videoYoutubeId: video.videoYoutubeId,
+              videoTitle: video.videoTitle,
+              thumbnailUrl: video.thumbnailUrl,
+              viewCount: video.viewCount,
+              likeCount: video.likeCount,
+              commentCount: video.commentCount,
+              publishedAt: video.publishedAt,
+            });
+            newCount++;
+          } else {
+            // Update existing video stats
+            await db.update(playlistVideos).set({
+              videoTitle: video.videoTitle,
+              thumbnailUrl: video.thumbnailUrl,
+              viewCount: video.viewCount,
+              likeCount: video.likeCount,
+              commentCount: video.commentCount,
+            }).where(eq(playlistVideos.id, existing[0].id));
+          }
+        }
+
+        return { savedCount: input.videos.length, newCount };
+      }),
+
+    // Get videos for a playlist
+    listByPlaylist: protectedProcedure
+      .input(z.object({ savedPlaylistId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+
+        return await db.select().from(playlistVideos)
+          .where(eq(playlistVideos.savedPlaylistId, input.savedPlaylistId))
+          .orderBy(desc(playlistVideos.firstSeenAt));
+      }),
+
+    // Update last comment fetch time
+    updateCommentFetch: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+
+        await db.update(playlistVideos).set({
+          lastCommentFetchAt: new Date(),
+        }).where(eq(playlistVideos.id, input.id));
+
+        return { success: true };
       }),
   }),
 });

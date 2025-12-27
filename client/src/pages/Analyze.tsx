@@ -32,7 +32,12 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  BookmarkPlus,
+  BookmarkCheck,
+  RefreshCw,
 } from "lucide-react";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface Video {
@@ -93,6 +98,7 @@ export default function Analyze() {
   const playlistId = params.get("playlist") || "";
   const apiKey = params.get("key") || "";
   const [, setLocation] = useLocation();
+  const { isAuthenticated } = useAuth();
 
   const [videos, setVideos] = useState<Video[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -109,12 +115,30 @@ export default function Analyze() {
   const [videoFilter, setVideoFilter] = useState<string>("all");
   const [commentSort, setCommentSort] = useState<string>("newest");
   const [allCommentSort, setAllCommentSort] = useState<string>("newest");
+  const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Fetch playlist info
   const playlistMutation = trpc.youtube.getPlaylist.useMutation();
   const videosMutation = trpc.youtube.getPlaylistVideos.useMutation();
   const commentsMutation = trpc.youtube.getVideoComments.useMutation();
   const batchCommentsMutation = trpc.youtube.getBatchVideoComments.useMutation();
+  
+  // Saved playlist mutations
+  const savePlaylistMutation = trpc.savedPlaylists.save.useMutation();
+  const savedPlaylistQuery = trpc.savedPlaylists.getByYoutubeId.useQuery(
+    { youtubePlaylistId: playlistId },
+    { enabled: !!playlistId && isAuthenticated }
+  );
+  const updateLastRunMutation = trpc.savedPlaylists.updateLastRun.useMutation();
+  const saveVideosMutation = trpc.playlistVideos.saveMany.useMutation();
+
+  // Check if playlist is already saved
+  useEffect(() => {
+    if (savedPlaylistQuery.data) {
+      setIsSaved(true);
+    }
+  }, [savedPlaylistQuery.data]);
 
   // Load playlist on mount
   useEffect(() => {
@@ -122,6 +146,62 @@ export default function Analyze() {
       loadPlaylist();
     }
   }, [playlistId, apiKey]);
+
+  // Save playlist to library
+  const handleSavePlaylist = async () => {
+    if (!isAuthenticated) {
+      toast.error("Please sign in to save playlists");
+      return;
+    }
+    if (!playlistMutation.data) {
+      toast.error("Playlist data not loaded yet");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const result = await savePlaylistMutation.mutateAsync({
+        youtubePlaylistId: playlistId,
+        title: playlistMutation.data.title || "Untitled Playlist",
+        description: playlistMutation.data.description || "",
+        channelTitle: playlistMutation.data.channelTitle || "",
+        thumbnailUrl: playlistMutation.data.thumbnailUrl || "",
+        videoCount: videos.length,
+      });
+
+      // Save videos to the playlist
+      if (videos.length > 0) {
+        await saveVideosMutation.mutateAsync({
+          savedPlaylistId: result.id,
+          videos: videos.map(v => ({
+            videoYoutubeId: v.id,
+            videoTitle: v.title,
+            thumbnailUrl: v.thumbnailUrl,
+            viewCount: v.viewCount,
+            likeCount: v.likeCount,
+            commentCount: v.commentCount,
+            publishedAt: new Date(v.publishedAt),
+          })),
+        });
+      }
+
+      // Update last run stats
+      await updateLastRunMutation.mutateAsync({
+        id: result.id,
+        videoCount: videos.length,
+        commentCount: allComments.length,
+      });
+
+      setIsSaved(true);
+      toast.success(result.isNew ? "Playlist saved to library!" : "Playlist updated!");
+      savedPlaylistQuery.refetch();
+    } catch (error) {
+      console.error("Failed to save playlist:", error);
+      toast.error("Failed to save playlist");
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const loadPlaylist = async () => {
     try {
@@ -443,6 +523,27 @@ export default function Analyze() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* Save to Library Button */}
+            <Button 
+              variant={isSaved ? "outline" : "default"}
+              onClick={handleSavePlaylist}
+              disabled={isSaving || !playlistMutation.data}
+              className={isSaved ? "border-green-500 text-green-600 hover:bg-green-50" : ""}
+            >
+              {isSaving ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : isSaved ? (
+                <BookmarkCheck className="h-4 w-4 mr-2" />
+              ) : (
+                <BookmarkPlus className="h-4 w-4 mr-2" />
+              )}
+              {isSaved ? "Saved" : "Save to Library"}
+            </Button>
+            {isSaved && savedPlaylistQuery.data?.lastRunAt && (
+              <span className="text-xs text-muted-foreground">
+                Last run: {new Date(savedPlaylistQuery.data.lastRunAt).toLocaleDateString()}
+              </span>
+            )}
             <Button variant="outline" onClick={exportCSV} disabled={videos.length === 0}>
               <Download className="h-4 w-4 mr-2" />
               Videos CSV
