@@ -304,3 +304,12 @@
 - [x] Store navigation stack with page state (filters, scroll position)
 - [ ] Enable keyboard shortcuts (Alt+Left/Right) for back/forward
 - [ ] Persist navigation history across page refreshes
+
+## Dark Mode Toggle
+
+### Theme Toggle Feature
+- [x] Create ThemeToggle component with sun/moon icons
+- [x] Add toggle to sidebar footer near Knowledge Base
+- [x] Persist theme preference in localStorage
+- [x] Update CSS variables for dark theme colors
+- [x] Ensure all UI components work in dark mode

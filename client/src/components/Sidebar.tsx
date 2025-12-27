@@ -90,6 +90,7 @@ import {
   Target,
   TrendingUp,
 } from "lucide-react";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 interface FolderItem {
   id: number;
@@ -713,6 +714,7 @@ export function Sidebar({ isCollapsed, onToggle, onOpenSearch }: SidebarProps) {
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium truncate">{user.name}</div>
               </div>
+              <ThemeToggle size="sm" />
               <Button variant="ghost" size="icon" className="h-8 w-8">
                 <Settings className="h-4 w-4" />
               </Button>
