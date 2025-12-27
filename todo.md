@@ -264,3 +264,28 @@
 - [x] Save voice notes attached to projects/comments
 - [x] Display transcribed text with edit capability
 - [x] Allow playback of recorded audio
+
+## List View, Channel Details & Breadcrumb Navigation
+
+### Airtable-Style List View
+- [x] Create reusable DataTable component with sortable columns
+- [x] Add list view option for videos (tabular rows with all metadata)
+- [x] Add list view option for comments (tabular rows with all info)
+- [x] Make list view the default view
+- [x] Add view toggle (list/grid) in page header
+- [ ] Support column resizing and reordering
+- [x] Add row selection with checkboxes
+
+### Channel Detail Page
+- [x] Create channel detail page showing all channel metadata
+- [x] Display all videos from the channel in list view
+- [x] Make channel name clickable in video cards/rows
+- [x] Show channel stats (subscribers, total views, video count)
+- [x] Add channel thumbnail and banner
+
+### Breadcrumb Navigation
+- [x] Create reusable Breadcrumb component
+- [x] Add breadcrumbs to all pages
+- [ ] Track navigation history for back navigation
+- [x] Show current location in app hierarchy
+- [x] Support dynamic breadcrumbs based on context (e.g., Channel > Video)

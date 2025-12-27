@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
@@ -322,7 +323,9 @@ export default function Channels() {
 
                       {/* Info */}
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-medium">{channel.name}</h3>
+                        <Link href={`/channel/${channel.id}`}>
+                          <h3 className="font-medium hover:text-primary hover:underline cursor-pointer">{channel.name}</h3>
+                        </Link>
                         {channel.customUrl && (
                           <p className="text-sm text-muted-foreground">
                             @{channel.customUrl}
@@ -389,7 +392,7 @@ export default function Channels() {
                               <FolderPlus className="h-4 w-4 mr-2" />
                               Move to Folder
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => window.location.href = `/channel/${channel.id}`}>
                               <Video className="h-4 w-4 mr-2" />
                               View Videos
                             </DropdownMenuItem>

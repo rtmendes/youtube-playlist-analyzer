@@ -1,12 +1,11 @@
 import { useState, useMemo, useCallback } from "react";
+import { Link, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -21,24 +20,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import {
   Search,
-  SortAsc,
-  SortDesc,
   Filter,
-  Tag,
-  Trash2,
-  MoreHorizontal,
   Video,
   Eye,
   ThumbsUp,
@@ -46,21 +31,30 @@ import {
   Clock,
   Calendar,
   ExternalLink,
-  Plus,
-  X,
+  MoreHorizontal,
   Star,
-  FolderPlus,
+  Tag,
+  Trash2,
+  Download,
 } from "lucide-react";
 import { useMultiSelect } from "@/hooks/useMultiSelect";
 import { SelectionToolbar } from "@/components/SelectionToolbar";
-
-type SortField = "title" | "views" | "likes" | "comments" | "duration" | "publishedAt";
-type SortOrder = "asc" | "desc";
+import {
+  DataTable,
+  Column,
+  ViewToggle,
+  ThumbnailCell,
+  NumberCell,
+  DateCell,
+  LinkCell,
+} from "@/components/DataTable";
+import { PageHeader } from "@/components/Breadcrumb";
 
 interface VideoItem {
   id: number;
   videoId: string;
   title: string;
+  channelId?: string;
   channelTitle: string;
   thumbnailUrl: string | null;
   viewCount: number;
@@ -74,13 +68,12 @@ interface VideoItem {
 
 export default function Videos() {
   const { user, loading: authLoading } = useAuth();
+  const [, setLocation] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortField, setSortField] = useState<SortField>("publishedAt");
-  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  const [sortField, setSortField] = useState<string>("publishedAt");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-
-  const [showTagDialog, setShowTagDialog] = useState(false);
-  const [newTagName, setNewTagName] = useState("");
+  const [view, setView] = useState<"list" | "grid">("list");
 
   // Fetch videos from analysis sessions
   const { data: analysisData } = trpc.analysis.list.useQuery(undefined, {
@@ -88,38 +81,29 @@ export default function Videos() {
   });
 
   // Fetch user tags
-  const { data: tagsData, refetch: refetchTags } = trpc.tags.list.useQuery(undefined, {
+  const { data: tagsData } = trpc.tags.list.useQuery(undefined, {
     enabled: !!user,
-  });
-
-  // Create tag mutation
-  const createTagMutation = trpc.tags.create.useMutation({
-    onSuccess: () => {
-      refetchTags();
-      setNewTagName("");
-      setShowTagDialog(false);
-      toast.success("Tag created");
-    },
-    onError: (error) => toast.error(error.message),
   });
 
   // Extract all videos from analysis sessions
   const allVideos = useMemo(() => {
     if (!analysisData) return [];
-    
+
     const videos: VideoItem[] = [];
     analysisData.forEach((session: any, sessionIndex: number) => {
       if (session.videosData) {
         try {
-          const videosData = typeof session.videosData === "string" 
-            ? JSON.parse(session.videosData) 
-            : session.videosData;
-          
+          const videosData =
+            typeof session.videosData === "string"
+              ? JSON.parse(session.videosData)
+              : session.videosData;
+
           videosData.forEach((video: any, videoIndex: number) => {
             videos.push({
               id: sessionIndex * 10000 + videoIndex,
               videoId: video.id || video.videoId,
               title: video.title || "Untitled",
+              channelId: video.channelId,
               channelTitle: video.channelTitle || "Unknown Channel",
               thumbnailUrl: video.thumbnailUrl || null,
               viewCount: video.viewCount || video.views || 0,
@@ -139,9 +123,6 @@ export default function Videos() {
     return videos;
   }, [analysisData]);
 
-  // Multi-select hook
-  const getVideoId = useCallback((video: VideoItem) => String(video.id), []);
-  
   // Filter and sort videos
   const filteredVideos = useMemo(() => {
     let result = [...allVideos];
@@ -163,45 +144,17 @@ export default function Videos() {
       );
     }
 
-    // Sort
-    result.sort((a, b) => {
-      let comparison = 0;
-      switch (sortField) {
-        case "title":
-          comparison = a.title.localeCompare(b.title);
-          break;
-        case "views":
-          comparison = a.viewCount - b.viewCount;
-          break;
-        case "likes":
-          comparison = a.likeCount - b.likeCount;
-          break;
-        case "comments":
-          comparison = a.commentCount - b.commentCount;
-          break;
-        case "duration":
-          comparison = (a.duration || "").localeCompare(b.duration || "");
-          break;
-        case "publishedAt":
-          comparison =
-            (a.publishedAt?.getTime() || 0) - (b.publishedAt?.getTime() || 0);
-          break;
-      }
-      return sortOrder === "asc" ? comparison : -comparison;
-    });
-
     return result;
-  }, [allVideos, searchQuery, selectedTags, sortField, sortOrder]);
+  }, [allVideos, searchQuery, selectedTags]);
 
-  // Initialize multi-select with filtered videos
+  // Multi-select hook
+  const getVideoId = useCallback((video: VideoItem) => String(video.id), []);
   const {
     selectedIds,
     isSelected,
     toggle,
     selectAll,
     deselectAll,
-    isAllSelected,
-    isSomeSelected,
     selectedCount,
     handleClick,
   } = useMultiSelect({
@@ -209,19 +162,200 @@ export default function Videos() {
     getItemId: getVideoId,
   });
 
-  const formatNumber = (num: number): string => {
-    if (num >= 1000000) return (num / 1000000).toFixed(1) + "M";
-    if (num >= 1000) return (num / 1000).toFixed(1) + "K";
-    return num.toString();
+  const formatDuration = (duration: string | null): string => {
+    if (!duration) return "-";
+    // Parse ISO 8601 duration (PT1H2M3S)
+    const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+    if (!match) return duration;
+    const hours = match[1] ? parseInt(match[1]) : 0;
+    const minutes = match[2] ? parseInt(match[2]) : 0;
+    const seconds = match[3] ? parseInt(match[3]) : 0;
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+    }
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   };
 
-  const formatDate = (date: Date | null): string => {
-    if (!date) return "Unknown";
-    return date.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
+  // Table columns definition
+  const columns: Column<VideoItem>[] = [
+    {
+      id: "thumbnail",
+      header: "",
+      accessor: "thumbnailUrl",
+      width: "80px",
+      render: (value, row) =>
+        value ? (
+          <ThumbnailCell src={value} alt={row.title} size="sm" />
+        ) : (
+          <div className="w-16 h-9 bg-muted rounded flex items-center justify-center">
+            <Video className="h-4 w-4 text-muted-foreground" />
+          </div>
+        ),
+    },
+    {
+      id: "title",
+      header: "Title",
+      accessor: "title",
+      sortable: true,
+      minWidth: "250px",
+      render: (value, row) => (
+        <div className="flex flex-col gap-0.5">
+          <LinkCell
+            href={`https://youtube.com/watch?v=${row.videoId}`}
+            external
+          >
+            <span className="font-medium line-clamp-1">{value}</span>
+          </LinkCell>
+          <span className="text-xs text-muted-foreground">{row.videoId}</span>
+        </div>
+      ),
+    },
+    {
+      id: "channel",
+      header: "Channel",
+      accessor: "channelTitle",
+      sortable: true,
+      minWidth: "150px",
+      render: (value, row) => (
+        <Link
+          href={`/channel/${row.channelId || row.channelTitle}`}
+          className="text-primary hover:underline flex items-center gap-1"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {value}
+        </Link>
+      ),
+    },
+    {
+      id: "views",
+      header: "Views",
+      accessor: "viewCount",
+      sortable: true,
+      width: "100px",
+      align: "right",
+      render: (value) => <NumberCell value={value} />,
+    },
+    {
+      id: "likes",
+      header: "Likes",
+      accessor: "likeCount",
+      sortable: true,
+      width: "100px",
+      align: "right",
+      render: (value) => <NumberCell value={value} />,
+    },
+    {
+      id: "comments",
+      header: "Comments",
+      accessor: "commentCount",
+      sortable: true,
+      width: "100px",
+      align: "right",
+      render: (value) => <NumberCell value={value} />,
+    },
+    {
+      id: "duration",
+      header: "Duration",
+      accessor: "duration",
+      sortable: true,
+      width: "90px",
+      align: "center",
+      render: (value) => (
+        <span className="font-mono text-sm">{formatDuration(value)}</span>
+      ),
+    },
+    {
+      id: "publishedAt",
+      header: "Published",
+      accessor: "publishedAt",
+      sortable: true,
+      width: "120px",
+      render: (value) =>
+        value ? <DateCell value={value} format="relative" /> : <span>-</span>,
+    },
+    {
+      id: "actions",
+      header: "",
+      accessor: "id",
+      width: "50px",
+      render: (_, row) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={() =>
+                window.open(
+                  `https://youtube.com/watch?v=${row.videoId}`,
+                  "_blank"
+                )
+              }
+            >
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Open on YouTube
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => setLocation(`/channel/${row.channelId || row.channelTitle}`)}
+            >
+              <Video className="h-4 w-4 mr-2" />
+              View Channel
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>
+              <Star className="h-4 w-4 mr-2" />
+              Add to Favorites
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <Tag className="h-4 w-4 mr-2" />
+              Add Tags
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="text-destructive">
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ];
+
+  const handleExportCSV = () => {
+    const headers = [
+      "Video ID",
+      "Title",
+      "Channel",
+      "Views",
+      "Likes",
+      "Comments",
+      "Duration",
+      "Published",
+      "URL",
+    ];
+    const rows = filteredVideos.map((v) => [
+      v.videoId,
+      `"${v.title.replace(/"/g, '""')}"`,
+      `"${v.channelTitle.replace(/"/g, '""')}"`,
+      v.viewCount,
+      v.likeCount,
+      v.commentCount,
+      formatDuration(v.duration),
+      v.publishedAt?.toISOString() || "",
+      `https://youtube.com/watch?v=${v.videoId}`,
+    ]);
+
+    const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `videos-export-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Videos exported to CSV");
   };
 
   if (authLoading) {
@@ -248,362 +382,200 @@ export default function Videos() {
   }
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="border-b p-4">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-2xl font-bold">All Videos</h1>
-            <p className="text-muted-foreground">
-              {filteredVideos.length} videos from your analyses
-            </p>
-          </div>
+    <div className="h-full flex flex-col p-6">
+      {/* Page Header with Breadcrumb */}
+      <PageHeader
+        title="All Videos"
+        description={`${filteredVideos.length} videos from your analyses`}
+        actions={
           <div className="flex items-center gap-2">
-            {selectedCount > 0 && (
-              <Badge variant="secondary">{selectedCount} selected</Badge>
-            )}
+            <ViewToggle view={view} onViewChange={setView} />
+            <Button variant="outline" size="sm" onClick={handleExportCSV}>
+              <Download className="h-4 w-4 mr-2" />
+              Export CSV
+            </Button>
           </div>
+        }
+      />
+
+      {/* Selection Toolbar */}
+      {selectedCount > 0 && (
+        <SelectionToolbar
+          selectedCount={selectedCount}
+          onClearSelection={deselectAll}
+          onTag={() => toast.info("Tag functionality coming soon")}
+          onFavorite={() => toast.info("Favorites functionality coming soon")}
+          onDelete={() => toast.info("Delete functionality coming soon")}
+          onExport={handleExportCSV}
+        />
+      )}
+
+      {/* Search and Filters */}
+      <div className="flex items-center gap-4 my-4">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search videos by title or channel..."
+            className="pl-9"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
         </div>
 
-        {/* Search and Filters */}
-        <div className="flex items-center gap-4">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search videos..."
-              className="pl-9"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-
-          <Select value={sortField} onValueChange={(v) => setSortField(v as SortField)}>
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="Sort by" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="publishedAt">Date</SelectItem>
-              <SelectItem value="title">Title</SelectItem>
-              <SelectItem value="views">Views</SelectItem>
-              <SelectItem value="likes">Likes</SelectItem>
-              <SelectItem value="comments">Comments</SelectItem>
-              <SelectItem value="duration">Duration</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))}
-          >
-            {sortOrder === "asc" ? (
-              <SortAsc className="h-4 w-4" />
-            ) : (
-              <SortDesc className="h-4 w-4" />
-            )}
-          </Button>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Filter className="h-4 w-4 mr-2" />
-                Filter
-                {selectedTags.length > 0 && (
-                  <Badge variant="secondary" className="ml-2">
-                    {selectedTags.length}
-                  </Badge>
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <div className="p-2">
-                <div className="text-sm font-medium mb-2">Filter by Tags</div>
-                {tagsData && tagsData.length > 0 ? (
-                  <div className="space-y-1">
-                    {tagsData.map((tag: any) => (
-                      <label
-                        key={tag.id}
-                        className="flex items-center gap-2 cursor-pointer"
-                      >
-                        <Checkbox
-                          checked={selectedTags.includes(tag.name)}
-                          onCheckedChange={(checked) => {
-                            if (checked) {
-                              setSelectedTags((prev) => [...prev, tag.name]);
-                            } else {
-                              setSelectedTags((prev) =>
-                                prev.filter((t) => t !== tag.name)
-                              );
-                            }
-                          }}
-                        />
-                        <span
-                          className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: tag.color || "#888" }}
-                        />
-                        <span className="text-sm">{tag.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No tags yet</p>
-                )}
-              </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setShowTagDialog(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Create New Tag
-              </DropdownMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm">
+              <Filter className="h-4 w-4 mr-2" />
+              Filter
               {selectedTags.length > 0 && (
-                <DropdownMenuItem onClick={() => setSelectedTags([])}>
-                  <X className="h-4 w-4 mr-2" />
-                  Clear Filters
-                </DropdownMenuItem>
+                <Badge variant="secondary" className="ml-2">
+                  {selectedTags.length}
+                </Badge>
               )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <div className="p-2">
+              <div className="text-sm font-medium mb-2">Filter by Tags</div>
+              {tagsData && tagsData.length > 0 ? (
+                <div className="space-y-1 max-h-48 overflow-y-auto">
+                  {tagsData.map((tag: any) => (
+                    <label
+                      key={tag.id}
+                      className="flex items-center gap-2 p-1 rounded hover:bg-muted cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedTags.includes(tag.name)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedTags([...selectedTags, tag.name]);
+                          } else {
+                            setSelectedTags(
+                              selectedTags.filter((t) => t !== tag.name)
+                            );
+                          }
+                        }}
+                        className="rounded"
+                      />
+                      <span
+                        className="w-3 h-3 rounded-full"
+                        style={{ backgroundColor: tag.color || "#888" }}
+                      />
+                      <span className="text-sm">{tag.name}</span>
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No tags yet</p>
+              )}
+            </div>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
-        {/* Active Filters */}
         {selectedTags.length > 0 && (
-          <div className="flex items-center gap-2 mt-3">
-            <span className="text-sm text-muted-foreground">Active filters:</span>
-            {selectedTags.map((tag) => (
-              <Badge key={tag} variant="secondary" className="gap-1">
-                {tag}
-                <button
-                  onClick={() =>
-                    setSelectedTags((prev) => prev.filter((t) => t !== tag))
-                  }
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            ))}
-          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedTags([])}
+          >
+            Clear filters
+          </Button>
         )}
       </div>
 
-      {/* Video List */}
-      <ScrollArea className="flex-1">
-        <div className="p-4">
-          {filteredVideos.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <Video className="h-16 w-16 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">No videos found</h3>
-              <p className="text-muted-foreground max-w-md">
-                {allVideos.length === 0
-                  ? "Run an analysis to start collecting videos."
-                  : "Try adjusting your search or filter criteria."}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {/* Select All */}
-              <div className="flex items-center gap-2 px-2 py-1">
-                <Checkbox
-                  checked={isAllSelected}
-                  ref={(el) => {
-                    if (el) (el as any).indeterminate = isSomeSelected;
-                  }}
-                  onCheckedChange={(checked) => {
-                    if (checked) selectAll();
-                    else deselectAll();
-                  }}
-                />
-                <span className="text-sm text-muted-foreground">
-                  {isAllSelected ? "Deselect all" : "Select all"}
-                </span>
-                <span className="text-xs text-muted-foreground ml-2">
-                  (Shift+click for range, Cmd/Ctrl+click to toggle)
-                </span>
-              </div>
-
-              {/* Video Items */}
-              {filteredVideos.map((video) => (
-                <Card
-                  key={video.id}
-                  className={`transition-colors cursor-pointer ${
-                    isSelected(String(video.id)) ? "border-primary bg-primary/5" : "hover:bg-muted/50"
-                  }`}
-                  onClick={(e) => handleClick(String(video.id), e)}
-                >
-                  <CardContent className="p-3">
-                    <div className="flex items-start gap-3">
-                      <Checkbox
-                        checked={isSelected(String(video.id))}
-                        onCheckedChange={() => toggle(String(video.id))}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                      
-                      {/* Thumbnail */}
-                      <div className="relative w-32 h-20 flex-shrink-0 bg-muted rounded overflow-hidden">
-                        {video.thumbnailUrl ? (
-                          <img
-                            src={video.thumbnailUrl}
-                            alt={video.title}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <Video className="h-8 w-8 text-muted-foreground" />
-                          </div>
-                        )}
-                        {video.duration && (
-                          <span className="absolute bottom-1 right-1 bg-black/80 text-white text-xs px-1 rounded">
-                            {video.duration}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-medium truncate">{video.title}</h3>
-                        <p className="text-sm text-muted-foreground">
-                          {video.channelTitle}
-                        </p>
-                        <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <Eye className="h-3 w-3" />
-                            {formatNumber(video.viewCount)}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <ThumbsUp className="h-3 w-3" />
-                            {formatNumber(video.likeCount)}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <MessageSquare className="h-3 w-3" />
-                            {formatNumber(video.commentCount)}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            {formatDate(video.publishedAt)}
-                          </span>
-                        </div>
-                        {video.tags && video.tags.length > 0 && (
-                          <div className="flex items-center gap-1 mt-2">
-                            {video.tags.map((tag) => (
-                              <Badge key={tag} variant="outline" className="text-xs">
-                                {tag}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Actions */}
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => {
-                            // Toggle favorite
-                          }}
-                        >
-                          <Star
-                            className={`h-4 w-4 ${
-                              video.isFavorite ? "fill-yellow-400 text-yellow-400" : ""
-                            }`}
-                          />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          asChild
-                        >
-                          <a
-                            href={`https://youtube.com/watch?v=${video.videoId}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </a>
-                        </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
-                              <Tag className="h-4 w-4 mr-2" />
-                              Add Tags
-                            </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <FolderPlus className="h-4 w-4 mr-2" />
-                              Move to Folder
-                            </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <MessageSquare className="h-4 w-4 mr-2" />
-                              View Comments
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-destructive">
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </div>
-      </ScrollArea>
-
-      {/* Create Tag Dialog */}
-      <Dialog open={showTagDialog} onOpenChange={setShowTagDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create New Tag</DialogTitle>
-            <DialogDescription>
-              Tags help you organize and filter your videos.
-            </DialogDescription>
-          </DialogHeader>
-          <Input
-            placeholder="Tag name"
-            value={newTagName}
-            onChange={(e) => setNewTagName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && newTagName.trim()) {
-                createTagMutation.mutate({ name: newTagName.trim() });
-              }
+      {/* Data Table (List View) */}
+      {view === "list" ? (
+        <div className="flex-1 overflow-hidden">
+          <DataTable
+            data={filteredVideos}
+            columns={columns}
+            keyField="id"
+            selectable
+            selectedIds={selectedIds}
+            onSelectionChange={(ids) => {
+              deselectAll();
+              ids.forEach((id) => {
+                toggle(String(id));
+              });
             }}
+            onRowClick={(row) =>
+              window.open(`https://youtube.com/watch?v=${row.videoId}`, "_blank")
+            }
+            emptyMessage="No videos found. Run an analysis to see videos here."
+            compact
           />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowTagDialog(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                if (newTagName.trim()) {
-                  createTagMutation.mutate({ name: newTagName.trim() });
-                }
-              }}
-              disabled={!newTagName.trim()}
-            >
-              Create Tag
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      ) : (
+        /* Grid View */
+        <div className="flex-1 overflow-y-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {filteredVideos.map((video) => (
+              <div
+                key={video.id}
+                className={`group relative border rounded-lg overflow-hidden hover:shadow-md transition-shadow cursor-pointer ${
+                  isSelected(getVideoId(video)) ? "ring-2 ring-primary" : ""
+                }`}
+                onClick={(e) => handleClick(getVideoId(video), e)}
+              >
+                {/* Thumbnail */}
+                <div className="relative aspect-video bg-muted">
+                  {video.thumbnailUrl ? (
+                    <img
+                      src={video.thumbnailUrl}
+                      alt={video.title}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Video className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                  )}
+                  {video.duration && (
+                    <span className="absolute bottom-1 right-1 bg-black/80 text-white text-xs px-1 rounded">
+                      {formatDuration(video.duration)}
+                    </span>
+                  )}
+                </div>
 
-      {/* Selection Toolbar */}
-      <SelectionToolbar
-        selectedCount={selectedCount}
-        onClearSelection={deselectAll}
-        onTag={() => toast.info("Tag feature coming soon")}
-        onMoveToFolder={() => toast.info("Move to folder feature coming soon")}
-        onDelete={() => toast.info("Delete feature coming soon")}
-        onFavorite={() => toast.info("Favorite feature coming soon")}
-        onExport={() => toast.info("Export feature coming soon")}
-      />
+                {/* Content */}
+                <div className="p-3">
+                  <h3 className="font-medium line-clamp-2 text-sm mb-1">
+                    {video.title}
+                  </h3>
+                  <Link
+                    href={`/channel/${video.channelId || video.channelTitle}`}
+                    className="text-xs text-muted-foreground hover:text-primary"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {video.channelTitle}
+                  </Link>
+                  <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Eye className="h-3 w-3" />
+                      {new Intl.NumberFormat("en", {
+                        notation: "compact",
+                      }).format(video.viewCount)}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <ThumbsUp className="h-3 w-3" />
+                      {new Intl.NumberFormat("en", {
+                        notation: "compact",
+                      }).format(video.likeCount)}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <MessageSquare className="h-3 w-3" />
+                      {new Intl.NumberFormat("en", {
+                        notation: "compact",
+                      }).format(video.commentCount)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
