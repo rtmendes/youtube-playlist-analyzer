@@ -34,7 +34,11 @@ import {
   ArrowUp,
   FileSpreadsheet,
   Table,
+  Save,
+  History,
 } from "lucide-react";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface Video {
@@ -98,6 +102,8 @@ export default function BulkAnalyze() {
   const params = new URLSearchParams(searchParams);
   const urlsParam = params.get("urls") || "";
   const apiKey = params.get("key") || "";
+  const videoLimitParam = params.get("limit");
+  const videoLimit = videoLimitParam ? parseInt(videoLimitParam) : null;
   const [, setLocation] = useLocation();
 
   // Parse URLs from query param
@@ -115,8 +121,22 @@ export default function BulkAnalyze() {
   const [commentSort, setCommentSort] = useState<string>("newest");
   const [videoFilter, setVideoFilter] = useState<string>("all");
   const [activeTab, setActiveTab] = useState("progress");
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasSaved, setHasSaved] = useState(false);
+  const { isAuthenticated } = useAuth();
 
   // Mutations
+  const saveAnalysisMutation = trpc.analysis.save.useMutation({
+    onSuccess: () => {
+      toast.success("Analysis saved to history!");
+      setHasSaved(true);
+      setIsSaving(false);
+    },
+    onError: (error) => {
+      toast.error(`Failed to save: ${error.message}`);
+      setIsSaving(false);
+    },
+  });
   // Use mutation wrapper for parseUrl since it's a query
   const parseUrlMutation = {
     mutateAsync: async (input: { url: string }) => {
@@ -317,11 +337,19 @@ export default function BulkAnalyze() {
             continue;
           }
 
+          // Determine effective video count based on limit
+          const effectiveVideoCount = videoLimit ? Math.min(videoLimit, channelInfo.videoCount) : channelInfo.videoCount;
+          
           setProcessingStatuses(prev => prev.map((s, idx) => 
-            idx === i ? { ...s, channelTitle: channelInfo.title, playlistTitle: `${channelInfo.title} (Uploads)`, videoCount: channelInfo.videoCount } : s
+            idx === i ? { 
+              ...s, 
+              channelTitle: channelInfo.title, 
+              playlistTitle: `${channelInfo.title} (Uploads)${videoLimit ? ` - Limited to ${videoLimit}` : ""}`, 
+              videoCount: effectiveVideoCount 
+            } : s
           ));
 
-          // Get all videos from channel's uploads playlist
+          // Get videos from channel's uploads playlist (with limit)
           let pageToken: string | undefined;
           const channelVideos: Video[] = [];
           
@@ -340,6 +368,13 @@ export default function BulkAnalyze() {
             
             channelVideos.push(...videosWithChannel);
             pageToken = result.nextPageToken;
+            
+            // Check if we've reached the video limit
+            if (videoLimit && channelVideos.length >= videoLimit) {
+              // Trim to exact limit
+              channelVideos.splice(videoLimit);
+              pageToken = undefined; // Stop fetching more
+            }
             
             setProcessingStatuses(prev => prev.map((s, idx) => 
               idx === i ? { ...s, videosProcessed: channelVideos.length } : s
@@ -596,6 +631,39 @@ export default function BulkAnalyze() {
     window.open("https://sheets.google.com/create", "_blank");
   };
 
+  const saveAnalysis = () => {
+    if (!isAuthenticated) {
+      toast.error("Please sign in to save your analysis");
+      return;
+    }
+    
+    if (videos.length === 0) {
+      toast.error("No data to save");
+      return;
+    }
+    
+    setIsSaving(true);
+    
+    // Generate a name based on the first playlist/channel or video
+    const firstStatus = processingStatuses.find(s => s.playlistTitle || s.channelTitle);
+    const name = firstStatus?.playlistTitle || firstStatus?.channelTitle || 
+      `Analysis of ${videos.length} videos`;
+    
+    const totalViews = videos.reduce((sum, v) => sum + v.viewCount, 0);
+    const totalLikes = videos.reduce((sum, v) => sum + v.likeCount, 0);
+    
+    saveAnalysisMutation.mutate({
+      name,
+      inputUrls: urls.join("\n"),
+      videosFetched: videos.length,
+      commentsFetched: allComments.length,
+      totalViews,
+      totalLikes,
+      videosData: videos,
+      commentsData: allComments,
+    });
+  };
+
   const formatNumber = (num: number) => {
     if (num >= 1000000) return (num / 1000000).toFixed(1) + "M";
     if (num >= 1000) return (num / 1000).toFixed(1) + "K";
@@ -669,6 +737,30 @@ export default function BulkAnalyze() {
               <FileSpreadsheet className="h-4 w-4" />
               Google Sheets
             </Button>
+            {isAuthenticated && (
+              <>
+                <Button 
+                  variant="outline"
+                  onClick={saveAnalysis}
+                  disabled={videos.length === 0 || isSaving || hasSaved}
+                  className="gap-2"
+                >
+                  {isSaving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : hasSaved ? (
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  {hasSaved ? "Saved" : "Save"}
+                </Button>
+                <Link href="/history">
+                  <Button variant="ghost" size="icon">
+                    <History className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </header>

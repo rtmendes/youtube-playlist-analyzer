@@ -389,14 +389,97 @@ export const appRouter = router({
       if (!db) return [];
 
       const sessions = await db
-        .select()
+        .select({
+          id: analysisSessions.id,
+          name: analysisSessions.name,
+          inputUrls: analysisSessions.inputUrls,
+          status: analysisSessions.status,
+          videosFetched: analysisSessions.videosFetched,
+          commentsFetched: analysisSessions.commentsFetched,
+          totalViews: analysisSessions.totalViews,
+          totalLikes: analysisSessions.totalLikes,
+          startedAt: analysisSessions.startedAt,
+          completedAt: analysisSessions.completedAt,
+        })
         .from(analysisSessions)
         .where(eq(analysisSessions.userId, ctx.user.id))
         .orderBy(desc(analysisSessions.startedAt))
-        .limit(20);
+        .limit(50);
 
       return sessions;
     }),
+
+    getById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return null;
+
+        const session = await db
+          .select()
+          .from(analysisSessions)
+          .where(eq(analysisSessions.id, input.id))
+          .limit(1);
+
+        if (!session[0] || session[0].userId !== ctx.user.id) {
+          throw new Error("Analysis not found");
+        }
+
+        return session[0];
+      }),
+
+    save: protectedProcedure
+      .input(z.object({
+        name: z.string(),
+        inputUrls: z.string(),
+        videosFetched: z.number(),
+        commentsFetched: z.number(),
+        totalViews: z.number(),
+        totalLikes: z.number(),
+        videosData: z.any(),
+        commentsData: z.any(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+
+        const result = await db.insert(analysisSessions).values({
+          userId: ctx.user.id,
+          name: input.name,
+          inputUrls: input.inputUrls,
+          status: "completed",
+          videosFetched: input.videosFetched,
+          commentsFetched: input.commentsFetched,
+          totalViews: input.totalViews,
+          totalLikes: input.totalLikes,
+          videosData: input.videosData,
+          commentsData: input.commentsData,
+          completedAt: new Date(),
+        });
+
+        return { id: Number((result as any)[0]?.insertId || 0), success: true };
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+
+        // Verify ownership
+        const session = await db
+          .select({ userId: analysisSessions.userId })
+          .from(analysisSessions)
+          .where(eq(analysisSessions.id, input.id))
+          .limit(1);
+
+        if (!session[0] || session[0].userId !== ctx.user.id) {
+          throw new Error("Analysis not found");
+        }
+
+        await db.delete(analysisSessions).where(eq(analysisSessions.id, input.id));
+        return { success: true };
+      }),
 
     getPlaylistHistory: protectedProcedure.query(async ({ ctx }) => {
       const db = await getDb();

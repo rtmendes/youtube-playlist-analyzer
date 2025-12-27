@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useLocation } from "wouter";
+import { useState, useEffect } from "react";
+import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,7 +8,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
-import { ArrowRight, Play, MessageSquare, BarChart3, Download, Search, Loader2, List, FileText } from "lucide-react";
+import { ArrowRight, Play, MessageSquare, BarChart3, Download, Search, Loader2, List, FileText, History } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { motion } from "framer-motion";
 
 export default function Home() {
@@ -16,8 +19,39 @@ export default function Home() {
   const [bulkUrls, setBulkUrls] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [inputMode, setInputMode] = useState<"single" | "bulk">("bulk");
+  const [rememberApiKey, setRememberApiKey] = useState(false);
+  const [videoLimit, setVideoLimit] = useState<string>("all");
   const [, setLocation] = useLocation();
   const { user, isAuthenticated } = useAuth();
+
+  // Load saved API key from localStorage on mount
+  useEffect(() => {
+    const savedApiKey = localStorage.getItem("youtube_api_key");
+    const savedRemember = localStorage.getItem("remember_api_key") === "true";
+    if (savedApiKey && savedRemember) {
+      setApiKey(savedApiKey);
+      setRememberApiKey(true);
+    }
+  }, []);
+
+  // Handle remember API key checkbox change
+  const handleRememberChange = (checked: boolean) => {
+    setRememberApiKey(checked);
+    if (checked && apiKey) {
+      localStorage.setItem("youtube_api_key", apiKey);
+      localStorage.setItem("remember_api_key", "true");
+    } else {
+      localStorage.removeItem("youtube_api_key");
+      localStorage.removeItem("remember_api_key");
+    }
+  };
+
+  // Save API key when it changes (if remember is checked)
+  useEffect(() => {
+    if (rememberApiKey && apiKey) {
+      localStorage.setItem("youtube_api_key", apiKey);
+    }
+  }, [apiKey, rememberApiKey]);
 
   const parseUrl = trpc.youtube.parseUrl.useQuery(
     { url },
@@ -46,7 +80,8 @@ export default function Home() {
       }
       // Encode the bulk URLs and navigate to bulk analyze page
       const encodedUrls = encodeURIComponent(urls.join("\n"));
-      setLocation(`/bulk-analyze?urls=${encodedUrls}&key=${encodeURIComponent(apiKey)}`);
+      const limitParam = videoLimit !== "all" ? `&limit=${videoLimit}` : "";
+      setLocation(`/bulk-analyze?urls=${encodedUrls}&key=${encodeURIComponent(apiKey)}${limitParam}`);
     } else {
       if (parseUrl.data?.type === "playlist_id") {
         setLocation(`/analyze?playlist=${parseUrl.data.value}&key=${encodeURIComponent(apiKey)}`);
@@ -95,6 +130,14 @@ export default function Home() {
             <span className="font-bold text-xl tracking-tight">Playlist Analyzer</span>
           </div>
           <div className="flex items-center gap-4">
+            {isAuthenticated && (
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/history">
+                  <History className="h-4 w-4 mr-2" />
+                  History
+                </Link>
+              </Button>
+            )}
             {isAuthenticated ? (
               <span className="text-sm text-muted-foreground">
                 Welcome, {user?.name || "User"}
@@ -210,16 +253,49 @@ https://youtube.com/channel/UCxxxxx`}
                       onChange={(e) => setApiKey(e.target.value)}
                       className="h-12 border-2 border-foreground"
                     />
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-muted-foreground">
+                        Get your API key from the{" "}
+                        <a 
+                          href="https://console.cloud.google.com/apis/credentials" 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-primary underline"
+                        >
+                          Google Cloud Console
+                        </a>
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="remember-api-key"
+                          checked={rememberApiKey}
+                          onCheckedChange={handleRememberChange}
+                        />
+                        <Label htmlFor="remember-api-key" className="text-xs cursor-pointer">
+                          Remember
+                        </Label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Video Limit for Channels */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Video Limit (for channels)</label>
+                    <Select value={videoLimit} onValueChange={setVideoLimit}>
+                      <SelectTrigger className="h-12 border-2 border-foreground">
+                        <SelectValue placeholder="Select video limit" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All videos</SelectItem>
+                        <SelectItem value="10">Last 10 videos</SelectItem>
+                        <SelectItem value="25">Last 25 videos</SelectItem>
+                        <SelectItem value="50">Last 50 videos</SelectItem>
+                        <SelectItem value="100">Last 100 videos</SelectItem>
+                        <SelectItem value="200">Last 200 videos</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <p className="text-xs text-muted-foreground">
-                      Get your API key from the{" "}
-                      <a 
-                        href="https://console.cloud.google.com/apis/credentials" 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-primary underline"
-                      >
-                        Google Cloud Console
-                      </a>
+                      Limit how many recent videos to fetch from channels (playlists fetch all videos)
                     </p>
                   </div>
 

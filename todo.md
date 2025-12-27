@@ -65,3 +65,23 @@
 - [x] Fetch all videos from channel's uploads playlist
 - [x] Show channel name in progress tracking
 - [x] Add unit tests for channel URL parsing
+
+## Remember API Key Feature
+- [x] Add "Remember API Key" checkbox to Home page
+- [x] Store API key in localStorage when checkbox is checked
+- [x] Auto-populate API key field from localStorage on page load
+- [x] Clear localStorage when checkbox is unchecked
+
+## Video Limit for Channels
+- [x] Add video limit dropdown/input to Home page
+- [x] Pass video limit to BulkAnalyze page
+- [x] Implement video limit logic in channel processing
+- [x] Show limit indicator in progress tracking
+
+## Analysis History Page
+- [x] Update database schema to store analysis results
+- [x] Create API endpoints to save and retrieve analysis history
+- [x] Create History page UI with list of past analyses
+- [x] Add re-download functionality for past exports
+- [x] Add navigation link to History page
+- [x] Add Save button to BulkAnalyze page

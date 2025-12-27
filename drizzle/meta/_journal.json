@@ -15,6 +15,13 @@
       "when": 1766800180308,
       "tag": "0001_kind_tusk",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1766802437878,
+      "tag": "0002_green_exiles",
+      "breakpoints": true
     }
   ]
 }
