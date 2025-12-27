@@ -41,6 +41,12 @@ import {
   Settings,
   Palette,
   Send,
+  Youtube,
+  MessageCircle,
+  Database,
+  Filter,
+  CheckCircle2,
+  X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -88,6 +94,7 @@ export default function Canvas() {
   const [activeTab, setActiveTab] = useState("generate");
   const [geminiApiKey, setGeminiApiKey] = useState("");
   const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
+  const [multiSourceFilter, setMultiSourceFilter] = useState<"all" | "youtube" | "amazon" | "reddit">("all");
   
   // Load saved API key
   useEffect(() => {
@@ -103,6 +110,18 @@ export default function Canvas() {
   
   // Load saved assets
   const assetsQuery = trpc.assets.getByProject.useQuery(
+    { projectId: parseInt(projectId || "0") },
+    { enabled: !!projectId && isAuthenticated }
+  );
+
+  // Load multi-source insights
+  const multiInsightsQuery = trpc.multiInsights.listByProject.useQuery(
+    { projectId: parseInt(projectId || "0") },
+    { enabled: !!projectId && isAuthenticated }
+  );
+
+  // Get multi-source stats
+  const multiInsightsStatsQuery = trpc.multiInsights.getStats.useQuery(
     { projectId: parseInt(projectId || "0") },
     { enabled: !!projectId && isAuthenticated }
   );
@@ -381,6 +400,10 @@ Format with the testimonial, attribution, and use case.`;
               <FileText className="h-4 w-4" />
               Saved Assets ({savedAssets.length})
             </TabsTrigger>
+            <TabsTrigger value="insights" className="gap-2">
+              <Database className="h-4 w-4" />
+              Insights ({multiInsightsStatsQuery.data?.total || 0})
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="generate">
@@ -579,6 +602,163 @@ Format with the testimonial, attribution, and use case.`;
                     <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                     <p className="text-muted-foreground">No saved assets yet</p>
                     <p className="text-sm text-muted-foreground">Generate content and save it here</p>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="insights">
+            {/* Source Filter */}
+            <div className="flex items-center gap-4 mb-6">
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Filter by source:</span>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant={multiSourceFilter === "all" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setMultiSourceFilter("all")}
+                >
+                  All ({multiInsightsStatsQuery.data?.total || 0})
+                </Button>
+                <Button
+                  variant={multiSourceFilter === "youtube" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setMultiSourceFilter("youtube")}
+                  className="gap-2"
+                >
+                  <Youtube className="h-4 w-4 text-red-500" />
+                  YouTube ({multiInsightsStatsQuery.data?.youtube || 0})
+                </Button>
+                <Button
+                  variant={multiSourceFilter === "amazon" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setMultiSourceFilter("amazon")}
+                  className="gap-2"
+                >
+                  <ShoppingCart className="h-4 w-4 text-orange-500" />
+                  Amazon ({multiInsightsStatsQuery.data?.amazon || 0})
+                </Button>
+                <Button
+                  variant={multiSourceFilter === "reddit" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setMultiSourceFilter("reddit")}
+                  className="gap-2"
+                >
+                  <MessageCircle className="h-4 w-4 text-orange-600" />
+                  Reddit ({multiInsightsStatsQuery.data?.reddit || 0})
+                </Button>
+              </div>
+            </div>
+
+            {/* Insights Grid */}
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {(multiInsightsQuery.data || [])
+                .filter(insight => multiSourceFilter === "all" || insight.sourceType === multiSourceFilter)
+                .map((insight: any) => {
+                  const sourceIcon = insight.sourceType === "youtube" 
+                    ? Youtube 
+                    : insight.sourceType === "amazon" 
+                      ? ShoppingCart 
+                      : MessageCircle;
+                  const sourceColor = insight.sourceType === "youtube" 
+                    ? "text-red-500" 
+                    : insight.sourceType === "amazon" 
+                      ? "text-orange-500" 
+                      : "text-orange-600";
+                  const SourceIcon = sourceIcon;
+                  
+                  return (
+                    <Card key={insight.id} className="relative">
+                      <CardHeader className="pb-2">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-2">
+                            <SourceIcon className={`h-4 w-4 ${sourceColor}`} />
+                            <Badge variant="outline" className="text-xs capitalize">
+                              {insight.sourceType}
+                            </Badge>
+                            <Badge 
+                              variant="secondary" 
+                              className={`text-xs ${
+                                insight.sentiment === "positive" ? "bg-green-100 text-green-700" :
+                                insight.sentiment === "negative" ? "bg-red-100 text-red-700" :
+                                "bg-gray-100 text-gray-700"
+                              }`}
+                            >
+                              {insight.sentiment}
+                            </Badge>
+                          </div>
+                          {insight.isSelected === 1 && (
+                            <CheckCircle2 className="h-4 w-4 text-green-500" />
+                          )}
+                        </div>
+                        {insight.sourceTitle && (
+                          <CardTitle className="text-sm line-clamp-1 mt-2">
+                            {insight.sourceTitle}
+                          </CardTitle>
+                        )}
+                      </CardHeader>
+                      <CardContent>
+                        <p className="text-sm text-muted-foreground line-clamp-4 mb-3">
+                          {insight.contentText}
+                        </p>
+                        {insight.authorName && (
+                          <p className="text-xs text-muted-foreground mb-2">
+                            — {insight.authorName}
+                          </p>
+                        )}
+                        <div className="flex items-center justify-between">
+                          <Badge variant="outline" className="text-xs capitalize">
+                            {insight.category?.replace("_", " ")}
+                          </Badge>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => copyToClipboard(insight.contentText)}
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+
+              {(multiInsightsQuery.data || []).filter(
+                (insight: any) => multiSourceFilter === "all" || insight.sourceType === multiSourceFilter
+              ).length === 0 && (
+                <Card className="col-span-full">
+                  <CardContent className="py-12 text-center">
+                    <Database className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <p className="text-muted-foreground">No insights collected yet</p>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Add insights from YouTube, Amazon, or Reddit intelligence tools
+                    </p>
+                    <div className="flex justify-center gap-2">
+                      <Link href="/intelligence">
+                        <Button variant="outline" size="sm" className="gap-2">
+                          <Youtube className="h-4 w-4 text-red-500" />
+                          YouTube
+                        </Button>
+                      </Link>
+                      <Link href="/amazon">
+                        <Button variant="outline" size="sm" className="gap-2">
+                          <ShoppingCart className="h-4 w-4 text-orange-500" />
+                          Amazon
+                        </Button>
+                      </Link>
+                      <Link href="/reddit">
+                        <Button variant="outline" size="sm" className="gap-2">
+                          <MessageCircle className="h-4 w-4 text-orange-600" />
+                          Reddit
+                        </Button>
+                      </Link>
+                    </div>
                   </CardContent>
                 </Card>
               )}

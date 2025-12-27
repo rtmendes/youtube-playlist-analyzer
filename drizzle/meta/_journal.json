@@ -29,6 +29,13 @@
       "when": 1766803407343,
       "tag": "0003_third_lilith",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1766848546288,
+      "tag": "0004_fuzzy_freak",
+      "breakpoints": true
     }
   ]
 }

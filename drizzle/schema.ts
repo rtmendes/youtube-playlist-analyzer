@@ -269,3 +269,167 @@ export const generatedAssets = mysqlTable("generatedAssets", {
 
 export type GeneratedAsset = typeof generatedAssets.$inferSelect;
 export type InsertGeneratedAsset = typeof generatedAssets.$inferInsert;
+
+/**
+ * Amazon Products - store product information
+ */
+export const amazonProducts = mysqlTable("amazonProducts", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId"),
+  asin: varchar("asin", { length: 20 }).notNull(),
+  title: text("title"),
+  description: text("description"),
+  brand: varchar("brand", { length: 255 }),
+  price: varchar("price", { length: 50 }),
+  rating: varchar("rating", { length: 10 }),
+  reviewCount: int("reviewCount").default(0),
+  imageUrl: text("imageUrl"),
+  productUrl: text("productUrl"),
+  category: varchar("category", { length: 255 }),
+  features: json("features"),
+  rawData: json("rawData"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type AmazonProduct = typeof amazonProducts.$inferSelect;
+export type InsertAmazonProduct = typeof amazonProducts.$inferInsert;
+
+/**
+ * Amazon Reviews - store product reviews
+ */
+export const amazonReviews = mysqlTable("amazonReviews", {
+  id: int("id").autoincrement().primaryKey(),
+  productId: int("productId").notNull(),
+  reviewId: varchar("reviewId", { length: 64 }),
+  author: varchar("author", { length: 255 }),
+  rating: int("rating"),
+  title: text("title"),
+  body: text("body"),
+  helpfulVotes: int("helpfulVotes").default(0),
+  verified: int("verified").default(0),
+  reviewDate: timestamp("reviewDate"),
+  // AI-analyzed fields
+  sentiment: mysqlEnum("sentiment", ["positive", "neutral", "negative"]).default("neutral"),
+  themes: json("themes"),
+  painPoints: json("painPoints"),
+  praises: json("praises"),
+  rawData: json("rawData"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type AmazonReview = typeof amazonReviews.$inferSelect;
+export type InsertAmazonReview = typeof amazonReviews.$inferInsert;
+
+/**
+ * Reddit Posts - store subreddit posts
+ */
+export const redditPosts = mysqlTable("redditPosts", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId"),
+  postId: varchar("postId", { length: 20 }).notNull(),
+  subreddit: varchar("subreddit", { length: 100 }).notNull(),
+  title: text("title"),
+  body: text("body"),
+  author: varchar("author", { length: 100 }),
+  score: int("score").default(0),
+  upvoteRatio: varchar("upvoteRatio", { length: 10 }),
+  commentCount: int("commentCount").default(0),
+  postUrl: text("postUrl"),
+  isNsfw: int("isNsfw").default(0),
+  flair: varchar("flair", { length: 100 }),
+  mediaUrl: text("mediaUrl"),
+  postedAt: timestamp("postedAt"),
+  rawData: json("rawData"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type RedditPost = typeof redditPosts.$inferSelect;
+export type InsertRedditPost = typeof redditPosts.$inferInsert;
+
+/**
+ * Reddit Comments - store post comments
+ */
+export const redditComments = mysqlTable("redditComments", {
+  id: int("id").autoincrement().primaryKey(),
+  postId: int("postId").notNull(),
+  commentId: varchar("commentId", { length: 20 }).notNull(),
+  parentCommentId: varchar("parentCommentId", { length: 20 }),
+  author: varchar("author", { length: 100 }),
+  body: text("body"),
+  score: int("score").default(0),
+  isOp: int("isOp").default(0),
+  depth: int("depth").default(0),
+  postedAt: timestamp("postedAt"),
+  // AI-analyzed fields
+  sentiment: mysqlEnum("sentiment", ["positive", "neutral", "negative"]).default("neutral"),
+  themes: json("themes"),
+  rawData: json("rawData"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type RedditComment = typeof redditComments.$inferSelect;
+export type InsertRedditComment = typeof redditComments.$inferInsert;
+
+/**
+ * Research Sessions - unified tracking for all research types
+ */
+export const researchSessions = mysqlTable("researchSessions", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId"),
+  projectId: int("projectId"),
+  sourceType: mysqlEnum("sourceType", ["youtube", "amazon", "reddit"]).notNull(),
+  name: varchar("name", { length: 255 }),
+  searchQuery: text("searchQuery"),
+  status: mysqlEnum("status", ["pending", "processing", "completed", "failed"]).default("pending").notNull(),
+  itemsFetched: int("itemsFetched").default(0),
+  insightsGenerated: int("insightsGenerated").default(0),
+  summary: json("summary"),
+  errorMessage: text("errorMessage"),
+  startedAt: timestamp("startedAt").defaultNow().notNull(),
+  completedAt: timestamp("completedAt"),
+});
+
+export type ResearchSession = typeof researchSessions.$inferSelect;
+export type InsertResearchSession = typeof researchSessions.$inferInsert;
+
+/**
+ * Multi-Source Insights - unified insights from all sources
+ */
+export const multiSourceInsights = mysqlTable("multiSourceInsights", {
+  id: int("id").autoincrement().primaryKey(),
+  projectId: int("projectId").notNull(),
+  sourceType: mysqlEnum("sourceType", ["youtube", "amazon", "reddit"]).notNull(),
+  sourceId: varchar("sourceId", { length: 64 }).notNull(),
+  sourceTitle: text("sourceTitle"),
+  authorName: text("authorName"),
+  contentText: text("contentText"),
+  engagementScore: int("engagementScore").default(0),
+  // AI-detected categories (unified across sources)
+  category: mysqlEnum("category", [
+    "personal_story",
+    "testimonial",
+    "product_request",
+    "pain_point",
+    "humor",
+    "question",
+    "praise",
+    "criticism",
+    "suggestion",
+    "comparison",
+    "recommendation",
+    "warning",
+    "tip",
+    "other"
+  ]).default("other").notNull(),
+  sentiment: mysqlEnum("sentiment", ["positive", "neutral", "negative"]).default("neutral"),
+  marketingPotential: int("marketingPotential").default(0),
+  extractedInsights: json("extractedInsights"),
+  suggestedUses: json("suggestedUses"),
+  isSelected: int("isSelected").default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type MultiSourceInsight = typeof multiSourceInsights.$inferSelect;
+export type InsertMultiSourceInsight = typeof multiSourceInsights.$inferInsert;

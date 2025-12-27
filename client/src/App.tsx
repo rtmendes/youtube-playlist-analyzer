@@ -19,6 +19,8 @@ import Channels from "./pages/Channels";
 import Comments from "./pages/Comments";
 import Help from "./pages/Help";
 import Channel from "./pages/Channel";
+import AmazonIntelligence from "./pages/AmazonIntelligence";
+import RedditResearch from "./pages/RedditResearch";
 
 function Router() {
   return (
@@ -36,6 +38,8 @@ function Router() {
       <Route path={"/channel/:channelId"} component={Channel} />
       <Route path={"/comments"} component={Comments} />
       <Route path={"/help/:topic"} component={Help} />
+      <Route path={"/amazon"} component={AmazonIntelligence} />
+      <Route path={"/reddit"} component={RedditResearch} />
       <Route path={"/trash"} component={NotFound} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />

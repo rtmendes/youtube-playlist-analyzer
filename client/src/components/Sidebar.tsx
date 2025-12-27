@@ -89,6 +89,8 @@ import {
   Zap,
   Target,
   TrendingUp,
+  ShoppingCart,
+  MessageCircle,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
@@ -247,7 +249,9 @@ export function Sidebar({ isCollapsed, onToggle, onOpenSearch }: SidebarProps) {
     { icon: Video, label: "All Videos", href: "/videos", section: "library" },
     { icon: Users, label: "All Channels", href: "/channels", section: "library" },
     { icon: MessageSquare, label: "All Comments", href: "/comments", section: "library" },
-    { icon: Brain, label: "Intelligence", href: "/intelligence", section: "tools" },
+    { icon: Brain, label: "YouTube Intelligence", href: "/intelligence", section: "tools" },
+    { icon: ShoppingCart, label: "Amazon Reviews", href: "/amazon", section: "tools" },
+    { icon: MessageCircle, label: "Reddit Research", href: "/reddit", section: "tools" },
     { icon: Palette, label: "Canvas", href: "/canvas", section: "tools" },
     { icon: History, label: "History", href: "/history", section: "tools" },
     { icon: Trash2, label: "Trash", href: "/trash", section: "other" },

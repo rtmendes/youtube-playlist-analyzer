@@ -10,8 +10,10 @@ import {
   formatCount,
 } from "./youtube";
 import { getDb } from "./db";
-import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets } from "../drizzle/schema";
-import { eq, desc } from "drizzle-orm";
+import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets, amazonProducts, amazonReviews, redditPosts, redditComments, researchSessions, multiSourceInsights } from "../drizzle/schema";
+import { eq, desc, and, like, or, sql } from "drizzle-orm";
+import { parseAmazonUrl, generateSampleProduct, generateSampleReviews, calculateReviewStats, analyzeReviewSentiment } from "./amazon";
+import { parseRedditUrl, fetchSubredditPosts, searchReddit, fetchPostComments, analyzeRedditComment, calculateRedditStats, getPopularResearchSubreddits } from "./reddit";
 
 export const appRouter = router({
   system: systemRouter,
@@ -770,6 +772,435 @@ export const appRouter = router({
         if (!db) throw new Error("Database not available");
         await db.delete(generatedAssets).where(eq(generatedAssets.id, input.id));
         return { success: true };
+      }),
+  }),
+
+  // Amazon Intelligence Router
+  amazon: router({
+    parseUrl: publicProcedure
+      .input(z.object({ url: z.string() }))
+      .query(({ input }) => {
+        return parseAmazonUrl(input.url);
+      }),
+
+    getProduct: publicProcedure
+      .input(z.object({ asin: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        
+        // Check if product exists in database
+        if (db) {
+          const existing = await db.select().from(amazonProducts).where(eq(amazonProducts.asin, input.asin)).limit(1);
+          if (existing.length > 0) {
+            return existing[0];
+          }
+        }
+
+        // Generate sample product (in production, fetch from API)
+        const product = generateSampleProduct(input.asin);
+        
+        // Save to database
+        if (db && ctx.user) {
+          await db.insert(amazonProducts).values({
+            userId: ctx.user.id,
+            asin: product.asin,
+            title: product.title,
+            description: product.description,
+            brand: product.brand,
+            price: product.price,
+            rating: product.rating,
+            reviewCount: product.reviewCount,
+            imageUrl: product.imageUrl,
+            productUrl: product.productUrl,
+            category: product.category,
+            features: product.features,
+          }).onDuplicateKeyUpdate({
+            set: { updatedAt: new Date() },
+          });
+        }
+
+        return product;
+      }),
+
+    getReviews: publicProcedure
+      .input(z.object({ 
+        asin: z.string(),
+        count: z.number().min(1).max(100).default(20),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        
+        // Check if reviews exist in database
+        if (db) {
+          const productResult = await db.select().from(amazonProducts).where(eq(amazonProducts.asin, input.asin)).limit(1);
+          if (productResult.length > 0) {
+            const existingReviews = await db.select().from(amazonReviews).where(eq(amazonReviews.productId, productResult[0].id));
+            if (existingReviews.length > 0) {
+              return {
+                reviews: existingReviews,
+                stats: calculateReviewStats(existingReviews.map(r => ({
+                  reviewId: r.reviewId || '',
+                  author: r.author || '',
+                  rating: r.rating || 0,
+                  title: r.title || '',
+                  body: r.body || '',
+                  helpfulVotes: r.helpfulVotes || 0,
+                  verified: r.verified === 1,
+                  reviewDate: r.reviewDate || new Date(),
+                }))),
+              };
+            }
+          }
+        }
+
+        // Generate sample reviews (in production, fetch from API)
+        const reviews = generateSampleReviews(input.asin, input.count);
+        const stats = calculateReviewStats(reviews);
+
+        // Save to database
+        if (db && ctx.user) {
+          const productResult = await db.select().from(amazonProducts).where(eq(amazonProducts.asin, input.asin)).limit(1);
+          if (productResult.length > 0) {
+            for (const review of reviews) {
+              const analysis = analyzeReviewSentiment(review);
+              await db.insert(amazonReviews).values({
+                productId: productResult[0].id,
+                reviewId: review.reviewId,
+                author: review.author,
+                rating: review.rating,
+                title: review.title,
+                body: review.body,
+                helpfulVotes: review.helpfulVotes,
+                verified: review.verified ? 1 : 0,
+                reviewDate: review.reviewDate,
+                sentiment: analysis.sentiment,
+                themes: analysis.themes,
+                painPoints: analysis.painPoints,
+                praises: analysis.praises,
+              }).onDuplicateKeyUpdate({
+                set: { createdAt: new Date() },
+              });
+            }
+          }
+        }
+
+        return { reviews, stats };
+      }),
+
+    listProducts: protectedProcedure
+      .query(async ({ ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        return await db.select().from(amazonProducts).where(eq(amazonProducts.userId, ctx.user.id)).orderBy(desc(amazonProducts.createdAt));
+      }),
+
+    deleteProduct: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        // Delete reviews first
+        await db.delete(amazonReviews).where(eq(amazonReviews.productId, input.id));
+        // Then delete product
+        await db.delete(amazonProducts).where(and(eq(amazonProducts.id, input.id), eq(amazonProducts.userId, ctx.user.id)));
+        return { success: true };
+      }),
+  }),
+
+  // Reddit Research Router
+  reddit: router({
+    parseUrl: publicProcedure
+      .input(z.object({ url: z.string() }))
+      .query(({ input }) => {
+        return parseRedditUrl(input.url);
+      }),
+
+    getSubredditPosts: publicProcedure
+      .input(z.object({
+        subreddit: z.string(),
+        sort: z.enum(["hot", "new", "top", "rising"]).default("hot"),
+        limit: z.number().min(1).max(100).default(25),
+        after: z.string().optional(),
+        timeframe: z.enum(["hour", "day", "week", "month", "year", "all"]).default("week"),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const result = await fetchSubredditPosts(
+          input.subreddit,
+          input.sort,
+          input.limit,
+          input.after,
+          input.timeframe
+        );
+
+        // Save posts to database
+        const db = await getDb();
+        if (db && ctx.user) {
+          for (const post of result.posts) {
+            await db.insert(redditPosts).values({
+              userId: ctx.user.id,
+              postId: post.postId,
+              subreddit: post.subreddit,
+              title: post.title,
+              body: post.body,
+              author: post.author,
+              score: post.score,
+              upvoteRatio: String(post.upvoteRatio),
+              commentCount: post.commentCount,
+              postUrl: post.postUrl,
+              isNsfw: post.isNsfw ? 1 : 0,
+              flair: post.flair,
+              mediaUrl: post.mediaUrl,
+              postedAt: post.postedAt,
+            }).onDuplicateKeyUpdate({
+              set: { score: post.score, commentCount: post.commentCount, updatedAt: new Date() },
+            });
+          }
+        }
+
+        return result;
+      }),
+
+    searchPosts: publicProcedure
+      .input(z.object({
+        query: z.string(),
+        subreddit: z.string().optional(),
+        sort: z.enum(["relevance", "hot", "top", "new", "comments"]).default("relevance"),
+        limit: z.number().min(1).max(100).default(25),
+        after: z.string().optional(),
+        timeframe: z.enum(["hour", "day", "week", "month", "year", "all"]).default("all"),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const result = await searchReddit(
+          input.query,
+          input.subreddit,
+          input.sort,
+          input.limit,
+          input.after,
+          input.timeframe
+        );
+
+        // Save posts to database
+        const db = await getDb();
+        if (db && ctx.user) {
+          for (const post of result.posts) {
+            await db.insert(redditPosts).values({
+              userId: ctx.user.id,
+              postId: post.postId,
+              subreddit: post.subreddit,
+              title: post.title,
+              body: post.body,
+              author: post.author,
+              score: post.score,
+              upvoteRatio: String(post.upvoteRatio),
+              commentCount: post.commentCount,
+              postUrl: post.postUrl,
+              isNsfw: post.isNsfw ? 1 : 0,
+              flair: post.flair,
+              mediaUrl: post.mediaUrl,
+              postedAt: post.postedAt,
+            }).onDuplicateKeyUpdate({
+              set: { score: post.score, commentCount: post.commentCount, updatedAt: new Date() },
+            });
+          }
+        }
+
+        return result;
+      }),
+
+    getPostComments: publicProcedure
+      .input(z.object({
+        subreddit: z.string(),
+        postId: z.string(),
+        sort: z.enum(["best", "top", "new", "controversial", "old", "qa"]).default("best"),
+        limit: z.number().min(1).max(500).default(100),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const result = await fetchPostComments(
+          input.subreddit,
+          input.postId,
+          input.sort,
+          input.limit
+        );
+
+        // Save comments to database
+        const db = await getDb();
+        if (db && ctx.user) {
+          // First, get or create the post record
+          const postResult = await db.select().from(redditPosts).where(eq(redditPosts.postId, input.postId)).limit(1);
+          let dbPostId: number;
+          
+          if (postResult.length > 0) {
+            dbPostId = postResult[0].id;
+          } else {
+            const insertResult = await db.insert(redditPosts).values({
+              userId: ctx.user.id,
+              postId: result.post.postId,
+              subreddit: result.post.subreddit,
+              title: result.post.title,
+              body: result.post.body,
+              author: result.post.author,
+              score: result.post.score,
+              upvoteRatio: String(result.post.upvoteRatio),
+              commentCount: result.post.commentCount,
+              postUrl: result.post.postUrl,
+              isNsfw: result.post.isNsfw ? 1 : 0,
+              flair: result.post.flair,
+              mediaUrl: result.post.mediaUrl,
+              postedAt: result.post.postedAt,
+            });
+            // Get the newly inserted post ID
+            const newPost = await db.select().from(redditPosts).where(eq(redditPosts.postId, result.post.postId)).limit(1);
+            dbPostId = newPost[0]?.id || 0;
+          }
+
+          // Save comments
+          for (const comment of result.comments) {
+            const analysis = analyzeRedditComment(comment);
+            await db.insert(redditComments).values({
+              postId: dbPostId,
+              commentId: comment.commentId,
+              parentCommentId: comment.parentCommentId,
+              author: comment.author,
+              body: comment.body,
+              score: comment.score,
+              isOp: comment.isOp ? 1 : 0,
+              depth: comment.depth,
+              postedAt: comment.postedAt,
+              sentiment: analysis.sentiment,
+              themes: analysis.themes,
+            }).onDuplicateKeyUpdate({
+              set: { score: comment.score, createdAt: new Date() },
+            });
+          }
+        }
+
+        // Calculate stats
+        const stats = calculateRedditStats([result.post], result.comments);
+
+        return { ...result, stats };
+      }),
+
+    getPopularSubreddits: publicProcedure
+      .query(() => {
+        return getPopularResearchSubreddits();
+      }),
+
+    listPosts: protectedProcedure
+      .query(async ({ ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        return await db.select().from(redditPosts).where(eq(redditPosts.userId, ctx.user.id)).orderBy(desc(redditPosts.createdAt)).limit(100);
+      }),
+
+    deletePost: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        // Delete comments first
+        await db.delete(redditComments).where(eq(redditComments.postId, input.id));
+        // Then delete post
+        await db.delete(redditPosts).where(and(eq(redditPosts.id, input.id), eq(redditPosts.userId, ctx.user.id)));
+        return { success: true };
+      }),
+  }),
+
+  // Multi-Source Insights Router
+  multiInsights: router({
+    addToProject: protectedProcedure
+      .input(z.object({
+        projectId: z.number(),
+        sourceType: z.enum(["youtube", "amazon", "reddit"]),
+        sourceId: z.string(),
+        sourceTitle: z.string().optional(),
+        authorName: z.string().optional(),
+        contentText: z.string(),
+        engagementScore: z.number().default(0),
+        category: z.enum([
+          "personal_story", "testimonial", "product_request", "pain_point",
+          "humor", "question", "praise", "criticism", "suggestion",
+          "comparison", "recommendation", "warning", "tip", "other"
+        ]).default("other"),
+        sentiment: z.enum(["positive", "neutral", "negative"]).default("neutral"),
+        marketingPotential: z.number().min(0).max(100).default(50),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+
+        const result = await db.insert(multiSourceInsights).values({
+          projectId: input.projectId,
+          sourceType: input.sourceType,
+          sourceId: input.sourceId,
+          sourceTitle: input.sourceTitle,
+          authorName: input.authorName,
+          contentText: input.contentText,
+          engagementScore: input.engagementScore,
+          category: input.category,
+          sentiment: input.sentiment,
+          marketingPotential: input.marketingPotential,
+          isSelected: 1,
+        });
+
+        return { success: true };
+      }),
+
+    listByProject: protectedProcedure
+      .input(z.object({ projectId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        return await db.select().from(multiSourceInsights).where(eq(multiSourceInsights.projectId, input.projectId)).orderBy(desc(multiSourceInsights.createdAt));
+      }),
+
+    listBySource: protectedProcedure
+      .input(z.object({ 
+        projectId: z.number(),
+        sourceType: z.enum(["youtube", "amazon", "reddit"]),
+      }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        return await db.select().from(multiSourceInsights).where(
+          and(
+            eq(multiSourceInsights.projectId, input.projectId),
+            eq(multiSourceInsights.sourceType, input.sourceType)
+          )
+        ).orderBy(desc(multiSourceInsights.createdAt));
+      }),
+
+    updateSelection: protectedProcedure
+      .input(z.object({ id: z.number(), isSelected: z.boolean() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        await db.update(multiSourceInsights).set({ isSelected: input.isSelected ? 1 : 0 }).where(eq(multiSourceInsights.id, input.id));
+        return { success: true };
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        await db.delete(multiSourceInsights).where(eq(multiSourceInsights.id, input.id));
+        return { success: true };
+      }),
+
+    getStats: protectedProcedure
+      .input(z.object({ projectId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return { youtube: 0, amazon: 0, reddit: 0, total: 0 };
+        
+        const insights = await db.select().from(multiSourceInsights).where(eq(multiSourceInsights.projectId, input.projectId));
+        
+        return {
+          youtube: insights.filter(i => i.sourceType === "youtube").length,
+          amazon: insights.filter(i => i.sourceType === "amazon").length,
+          reddit: insights.filter(i => i.sourceType === "reddit").length,
+          total: insights.length,
+        };
       }),
   }),
 });

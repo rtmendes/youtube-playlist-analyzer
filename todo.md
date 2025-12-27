@@ -313,3 +313,34 @@
 - [x] Persist theme preference in localStorage
 - [x] Update CSS variables for dark theme colors
 - [x] Ensure all UI components work in dark mode
+
+## Multi-Source Intelligence Expansion
+
+### Amazon Comments Intelligence
+- [x] Create Amazon products database table (asin, title, rating, reviewCount, price, imageUrl)
+- [x] Create Amazon reviews database table (productId, reviewId, author, rating, title, body, helpful, verified, date)
+- [x] Build API routes for Amazon product search and review fetching
+- [x] Create AmazonIntelligence page with product search input
+- [x] Display product details with review statistics
+- [x] Show review list with filtering (rating, verified, helpful)
+- [x] Add sentiment analysis for reviews
+- [x] Extract key themes and pain points from reviews
+- [x] Add to sidebar navigation under Tools
+
+### Reddit Research Intelligence
+- [x] Create Reddit posts database table (postId, subreddit, title, body, author, score, commentCount, url, createdAt)
+- [x] Create Reddit comments database table (postId, commentId, author, body, score, createdAt)
+- [x] Build API routes for Reddit search and post/comment fetching
+- [x] Create RedditResearch page with subreddit and keyword search
+- [x] Display posts with engagement metrics
+- [x] Show comment threads with sentiment indicators
+- [x] Extract trending topics and common questions
+- [x] Add to sidebar navigation under Tools
+
+### Canvas Multi-Source Integration
+- [x] Update Canvas data model to support multiple source types (youtube, amazon, reddit)
+- [x] Add source selector when importing insights to Canvas
+- [x] Create unified insight card component for all sources
+- [x] Enable cross-source analysis and comparison
+- [x] Add source attribution badges to Canvas items
+- [ ] Support combining insights from multiple sources into single marketing assets
