@@ -8,7 +8,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
-import { ArrowRight, Play, MessageSquare, BarChart3, Download, Search, Loader2, List, FileText, History, Folder } from "lucide-react";
+import { 
+  ArrowRight, Play, MessageSquare, BarChart3, Download, Search, Loader2, 
+  List, FileText, History, Folder, Video, Users, Brain, Palette, 
+  TrendingUp, Clock, Star, Zap, Database, FileSpreadsheet, Target,
+  Lightbulb, BookOpen, Sparkles
+} from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -78,7 +83,6 @@ export default function Home() {
         alert("Please enter at least one URL");
         return;
       }
-      // Encode the bulk URLs and navigate to bulk analyze page
       const encodedUrls = encodeURIComponent(urls.join("\n"));
       const limitParam = videoLimit !== "all" ? `&limit=${videoLimit}` : "";
       setLocation(`/bulk-analyze?urls=${encodedUrls}&key=${encodeURIComponent(apiKey)}${limitParam}`);
@@ -93,54 +97,181 @@ export default function Home() {
     }
   };
 
-  const features = [
+  // Feature cards that link to app sections
+  const featureCards = [
     {
-      icon: List,
-      title: "Bulk URL Processing",
-      description: "Enter multiple playlist or video URLs at once to analyze them all in a single batch.",
+      icon: Video,
+      title: "Video Library",
+      description: "Browse all collected videos with metadata, views, likes, and engagement metrics.",
+      href: "/videos",
+      color: "bg-red-500/10 text-red-600",
+      iconBg: "bg-red-500",
     },
     {
       icon: MessageSquare,
-      title: "Top 100 Comments",
-      description: "Automatically fetch the top 100 comments from each video with full metadata.",
+      title: "Comment Analysis",
+      description: "Search, filter, and analyze comments. Find stories, testimonials, and product ideas.",
+      href: "/comments",
+      color: "bg-blue-500/10 text-blue-600",
+      iconBg: "bg-blue-500",
     },
     {
-      icon: BarChart3,
-      title: "Video Metrics",
-      description: "Get complete video metadata including views, likes, duration, and comment counts.",
+      icon: Users,
+      title: "Channel Tracking",
+      description: "Monitor YouTube channels and automatically fetch new videos and comments.",
+      href: "/channels",
+      color: "bg-green-500/10 text-green-600",
+      iconBg: "bg-green-500",
     },
     {
-      icon: Download,
-      title: "Export to CSV/Sheets",
-      description: "Download all data as CSV or export directly to Google Sheets for easy analysis.",
+      icon: Brain,
+      title: "Intelligence",
+      description: "AI-powered comment categorization: stories, pain points, product requests, humor.",
+      href: "/intelligence",
+      color: "bg-purple-500/10 text-purple-600",
+      iconBg: "bg-purple-500",
+    },
+    {
+      icon: Palette,
+      title: "Marketing Canvas",
+      description: "Generate advertorials, VSL scripts, UGC scenarios, and sales copy from insights.",
+      href: "/canvas",
+      color: "bg-orange-500/10 text-orange-600",
+      iconBg: "bg-orange-500",
+    },
+    {
+      icon: Folder,
+      title: "Projects",
+      description: "Organize your work with folders, tags, and save marketing assets for later.",
+      href: "/projects",
+      color: "bg-cyan-500/10 text-cyan-600",
+      iconBg: "bg-cyan-500",
+    },
+  ];
+
+  // Quick stats (placeholder values - would be real data in production)
+  const quickStats = [
+    { label: "Videos Analyzed", value: "0", icon: Video, trend: "+0 this week" },
+    { label: "Comments Collected", value: "0", icon: MessageSquare, trend: "+0 this week" },
+    { label: "Channels Tracked", value: "0", icon: Users, trend: "+0 this week" },
+    { label: "Projects Saved", value: "0", icon: Folder, trend: "+0 this week" },
+  ];
+
+  // Workflow steps
+  const workflowSteps = [
+    {
+      step: 1,
+      title: "Enter URLs",
+      description: "Paste YouTube playlist, video, or channel URLs",
+      icon: Search,
+    },
+    {
+      step: 2,
+      title: "Fetch Data",
+      description: "Automatically gather video metadata and top 100 comments",
+      icon: Database,
+    },
+    {
+      step: 3,
+      title: "Analyze",
+      description: "Use AI to categorize comments and find insights",
+      icon: Brain,
+    },
+    {
+      step: 4,
+      title: "Create",
+      description: "Generate marketing assets from audience language",
+      icon: Sparkles,
+    },
+    {
+      step: 5,
+      title: "Export",
+      description: "Download CSV or export to Google Sheets",
+      icon: FileSpreadsheet,
     },
   ];
 
   return (
     <div className="min-h-screen bg-background">
-
-
-      {/* Hero Section */}
-      <section className="py-16 md:py-24 lg:py-32">
+      {/* Hero Section with Input Form */}
+      <section className="py-8 md:py-12">
         <div className="container">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            {/* Left Column - Typography */}
+          <div className="grid lg:grid-cols-2 gap-8 items-start">
+            {/* Left Column - Welcome & Stats */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
+              className="space-y-6"
             >
-              <h1 className="text-balance">
-                Bulk Analyze
-                <br />
-                <span className="text-primary">YouTube</span>
-                <br />
-                Comments
-              </h1>
-              <div className="w-24 h-1 bg-primary mt-6 mb-8" />
-              <p className="text-xl md:text-2xl text-muted-foreground max-w-lg leading-relaxed">
-                Enter playlists, videos, or channels. Fetch top 100 comments per video and export to CSV or Google Sheets.
-              </p>
+              <div>
+                <h1 className="text-4xl md:text-5xl font-black tracking-tight">
+                  YouTube
+                  <br />
+                  <span className="text-primary">Comment</span>
+                  <br />
+                  Intelligence
+                </h1>
+                <div className="w-16 h-1 bg-primary mt-4 mb-4" />
+                <p className="text-lg text-muted-foreground max-w-md">
+                  Transform YouTube comments into marketing gold. Extract stories, pain points, and product ideas from your audience's own words.
+                </p>
+              </div>
+
+              {/* Quick Stats Grid */}
+              <div className="grid grid-cols-2 gap-3">
+                {quickStats.map((stat, index) => (
+                  <motion.div
+                    key={stat.label}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, delay: 0.1 * index }}
+                  >
+                    <Card className="border border-border/50 bg-card/50 hover:bg-card transition-colors">
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-lg bg-primary/10">
+                            <stat.icon className="h-4 w-4 text-primary" />
+                          </div>
+                          <div>
+                            <p className="text-2xl font-bold">{stat.value}</p>
+                            <p className="text-xs text-muted-foreground">{stat.label}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                ))}
+              </div>
+
+              {/* Workflow Steps */}
+              <Card className="border border-border/50">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-primary" />
+                    How It Works
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="flex items-center justify-between">
+                    {workflowSteps.map((step, index) => (
+                      <div key={step.step} className="flex items-center">
+                        <div className="flex flex-col items-center text-center">
+                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center mb-1">
+                            <step.icon className="h-4 w-4 text-primary" />
+                          </div>
+                          <span className="text-[10px] font-medium text-muted-foreground max-w-[60px]">
+                            {step.title}
+                          </span>
+                        </div>
+                        {index < workflowSteps.length - 1 && (
+                          <ArrowRight className="h-3 w-3 text-muted-foreground/50 mx-1" />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
             </motion.div>
 
             {/* Right Column - Input Form */}
@@ -150,8 +281,11 @@ export default function Home() {
               transition={{ duration: 0.6, delay: 0.2 }}
             >
               <Card className="border-2 border-foreground shadow-none">
-                <CardHeader>
-                  <CardTitle className="text-2xl">Start Analysis</CardTitle>
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-xl flex items-center gap-2">
+                    <Play className="h-5 w-5 text-primary" />
+                    Start Analysis
+                  </CardTitle>
                   <CardDescription>
                     Enter YouTube URLs to analyze videos and gather comments
                   </CardDescription>
@@ -179,7 +313,7 @@ https://youtube.com/@channelname
 https://youtube.com/channel/UCxxxxx`}
                           value={bulkUrls}
                           onChange={(e) => setBulkUrls(e.target.value)}
-                          className="min-h-[150px] border-2 border-foreground font-mono text-sm"
+                          className="min-h-[120px] border-2 border-foreground font-mono text-sm"
                         />
                         {bulkUrlCount > 0 && (
                           <p className="text-sm text-muted-foreground">
@@ -220,7 +354,7 @@ https://youtube.com/channel/UCxxxxx`}
                       placeholder="Your YouTube Data API v3 key"
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
-                      className="h-12 border-2 border-foreground"
+                      className="h-10 border-2 border-foreground"
                     />
                     <div className="flex items-center justify-between">
                       <p className="text-xs text-muted-foreground">
@@ -251,16 +385,16 @@ https://youtube.com/channel/UCxxxxx`}
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Video Limit (for channels)</label>
                     <Select value={videoLimit} onValueChange={setVideoLimit}>
-                      <SelectTrigger className="h-12 border-2 border-foreground">
-                        <SelectValue placeholder="Select video limit" />
+                      <SelectTrigger className="border-2 border-foreground">
+                        <SelectValue placeholder="Select limit" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="10">10 videos</SelectItem>
+                        <SelectItem value="25">25 videos</SelectItem>
+                        <SelectItem value="50">50 videos</SelectItem>
+                        <SelectItem value="100">100 videos</SelectItem>
+                        <SelectItem value="200">200 videos</SelectItem>
                         <SelectItem value="all">All videos</SelectItem>
-                        <SelectItem value="10">Last 10 videos</SelectItem>
-                        <SelectItem value="25">Last 25 videos</SelectItem>
-                        <SelectItem value="50">Last 50 videos</SelectItem>
-                        <SelectItem value="100">Last 100 videos</SelectItem>
-                        <SelectItem value="200">Last 200 videos</SelectItem>
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
@@ -270,14 +404,14 @@ https://youtube.com/channel/UCxxxxx`}
 
                   <Button
                     onClick={handleAnalyze}
-                    disabled={
-                      (inputMode === "single" && (!parseUrl.data || parseUrl.data.type === "unknown")) ||
-                      (inputMode === "bulk" && bulkUrlCount === 0) ||
-                      !apiKey
-                    }
-                    className="w-full h-12 text-lg font-semibold"
+                    className="w-full h-12 text-lg font-bold"
+                    disabled={inputMode === "bulk" ? bulkUrlCount === 0 : !parseUrl.data || parseUrl.data.type === "unknown"}
                   >
-                    {inputMode === "bulk" ? `Analyze ${bulkUrlCount} URL${bulkUrlCount !== 1 ? "s" : ""}` : "Analyze"}
+                    {inputMode === "bulk" ? (
+                      <>Analyze {bulkUrlCount} URL{bulkUrlCount !== 1 ? "s" : ""}</>
+                    ) : (
+                      <>Analyze</>
+                    )}
                     <ArrowRight className="ml-2 h-5 w-5" />
                   </Button>
                 </CardContent>
@@ -287,40 +421,90 @@ https://youtube.com/channel/UCxxxxx`}
         </div>
       </section>
 
-      {/* Divider */}
-      <div className="swiss-divider" />
-
-      {/* Features Section */}
-      <section className="py-16 md:py-24 bg-secondary/30">
+      {/* Feature Cards Section */}
+      <section className="py-8 border-t border-border/50">
         <div className="container">
-          <motion.div
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-          >
-            <h2 className="mb-4">Features</h2>
-            <p className="text-xl text-muted-foreground mb-12 max-w-2xl">
-              Powerful tools for bulk YouTube comment analysis and data export.
-            </p>
-          </motion.div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {features.map((feature, index) => (
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-2xl font-bold">Platform Features</h2>
+              <p className="text-muted-foreground">Click any card to explore that feature</p>
+            </div>
+          </div>
+          
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {featureCards.map((feature, index) => (
               <motion.div
                 key={feature.title}
                 initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.4, delay: index * 0.1 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.05 * index }}
               >
-                <Card className="border-2 border-foreground shadow-none h-full hover:bg-accent transition-colors">
-                  <CardHeader>
-                    <feature.icon className="h-8 w-8 text-primary mb-2" />
-                    <CardTitle className="text-xl">{feature.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-muted-foreground">{feature.description}</p>
+                <Link href={feature.href}>
+                  <Card className="h-full border border-border/50 hover:border-primary/50 hover:shadow-lg transition-all cursor-pointer group">
+                    <CardContent className="p-5">
+                      <div className="flex items-start gap-4">
+                        <div className={`p-3 rounded-xl ${feature.iconBg} text-white shrink-0 group-hover:scale-110 transition-transform`}>
+                          <feature.icon className="h-5 w-5" />
+                        </div>
+                        <div className="space-y-1">
+                          <h3 className="font-semibold group-hover:text-primary transition-colors">
+                            {feature.title}
+                          </h3>
+                          <p className="text-sm text-muted-foreground leading-relaxed">
+                            {feature.description}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-4 flex items-center text-sm text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span>Explore</span>
+                        <ArrowRight className="h-4 w-4 ml-1" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Use Cases Section */}
+      <section className="py-8 border-t border-border/50 bg-muted/30">
+        <div className="container">
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold flex items-center gap-2">
+              <Target className="h-6 w-6 text-primary" />
+              What You Can Create
+            </h2>
+            <p className="text-muted-foreground">Turn comment insights into marketing assets</p>
+          </div>
+          
+          <div className="grid md:grid-cols-4 gap-4">
+            {[
+              { title: "Advertorials", desc: "Story-driven ads from personal experiences", icon: FileText },
+              { title: "VSL Scripts", desc: "Video sales letters using audience language", icon: Play },
+              { title: "UGC Scenarios", desc: "Authentic user-generated content scripts", icon: Video },
+              { title: "Course Outlines", desc: "Educational content from questions asked", icon: BookOpen },
+              { title: "Ad Copy", desc: "Headlines and hooks from viral comments", icon: Sparkles },
+              { title: "Sales Pages", desc: "Conversion copy with real testimonials", icon: TrendingUp },
+              { title: "Email Sequences", desc: "Nurture campaigns from pain points", icon: MessageSquare },
+              { title: "Product Ideas", desc: "New offerings from 'I wish' comments", icon: Lightbulb },
+            ].map((item, index) => (
+              <motion.div
+                key={item.title}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.3, delay: 0.03 * index }}
+              >
+                <Card className="border-0 bg-background hover:shadow-md transition-shadow">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-primary/10">
+                      <item.icon className="h-4 w-4 text-primary" />
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-sm">{item.title}</h4>
+                      <p className="text-xs text-muted-foreground">{item.desc}</p>
+                    </div>
                   </CardContent>
                 </Card>
               </motion.div>
@@ -328,104 +512,6 @@ https://youtube.com/channel/UCxxxxx`}
           </div>
         </div>
       </section>
-
-      {/* How It Works */}
-      <section className="py-16 md:py-24">
-        <div className="container">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <h2 className="mb-4">How It Works</h2>
-              <div className="w-16 h-1 bg-primary mb-8" />
-              
-              <div className="space-y-8">
-                <div className="flex gap-4">
-                  <div className="flex-shrink-0 w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-xl">
-                    1
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-semibold mb-2">Enter URLs</h3>
-                    <p className="text-muted-foreground">
-                      Paste multiple YouTube playlist or video URLs, one per line.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex gap-4">
-                  <div className="flex-shrink-0 w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-xl">
-                    2
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-semibold mb-2">Fetch Comments</h3>
-                    <p className="text-muted-foreground">
-                      We automatically fetch the top 100 comments from each video with full metadata.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex gap-4">
-                  <div className="flex-shrink-0 w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-xl">
-                    3
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-semibold mb-2">Export Data</h3>
-                    <p className="text-muted-foreground">
-                      Download everything as CSV or export directly to Google Sheets.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="relative">
-              <img 
-                src="/images/analytics-feature.jpg" 
-                alt="Analytics Dashboard" 
-                className="rounded-lg border-2 border-foreground shadow-lg"
-              />
-              <div className="absolute -bottom-4 -right-4 w-32 h-32 bg-primary opacity-20 -z-10" />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="border-t-2 border-foreground py-8">
-        <div className="container">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="flex items-center gap-2">
-              <img 
-                src="/images/logo-placeholder.png" 
-                alt="Logo" 
-                className="h-6 w-6"
-              />
-              <span className="font-semibold">YouTube Playlist Analyzer</span>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Built with inspiration from{" "}
-              <a 
-                href="https://github.com/mattwright324/youtube-comment-suite" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-primary underline"
-              >
-                youtube-comment-suite
-              </a>
-              {" "}and{" "}
-              <a 
-                href="https://github.com/mattwright324/youtube-metadata" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-primary underline"
-              >
-                youtube-metadata
-              </a>
-            </p>
-            <p className="text-sm text-muted-foreground">
-              © 2025 All rights reserved.
-            </p>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

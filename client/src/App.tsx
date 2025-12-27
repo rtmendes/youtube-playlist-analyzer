@@ -16,6 +16,7 @@ import Projects from "./pages/Projects";
 import Videos from "./pages/Videos";
 import Channels from "./pages/Channels";
 import Comments from "./pages/Comments";
+import Help from "./pages/Help";
 
 function Router() {
   return (
@@ -31,6 +32,7 @@ function Router() {
       <Route path={"/videos"} component={Videos} />
       <Route path={"/channels"} component={Channels} />
       <Route path={"/comments"} component={Comments} />
+      <Route path={"/help/:topic"} component={Help} />
       <Route path={"/trash"} component={NotFound} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />

@@ -215,3 +215,52 @@
 - [ ] Add visual drop indicators
 - [ ] Implement drag handle for items
 - [ ] Add keyboard accessibility for drag operations
+
+## Dashboard & Knowledge Base Improvements
+
+### Modern Dashboard Redesign
+- [ ] Replace generic dashboard image with feature-specific widgets
+- [ ] Add stats cards showing: Total Videos, Total Comments, Total Channels, Projects
+- [ ] Add recent activity feed widget
+- [ ] Add quick action cards linking to app features
+- [ ] Make all dashboard widgets clickable and link to respective features
+- [ ] Add modern visual styling with gradients and icons
+
+### Knowledge Base Section
+- [ ] Add Help/Knowledge Base section to sidebar bottom
+- [ ] Create explanations for each app section:
+  - Home: Start new analyses
+  - All Videos: Browse and manage collected videos
+  - All Channels: Track YouTube channels
+  - All Comments: Search and filter comments
+  - Intelligence: AI-powered comment analysis
+  - Canvas: Generate marketing assets
+  - History: View past analyses
+  - Projects: Organize work into folders
+- [ ] Add collapsible knowledge base panel
+- [ ] Include quick tips and feature descriptions
+
+## Clickable Tags, Export Templates & Voice Recording
+
+### Clickable Tags
+- [x] Make tags clickable in video cards
+- [x] Make tags clickable in comment cards
+- [x] Navigate to filtered view when tag is clicked
+- [x] Show tag filter in URL for shareable links
+- [x] Add tag highlight when active filter
+
+### Export Templates
+- [x] Create export template selection dialog
+- [x] Add preset templates (Full Data, Comments Only, Metrics Only, Marketing Insights)
+- [x] Allow customizable column selection
+- [x] Support CSV, JSON, and Google Sheets formats
+- [x] Save custom templates for reuse
+- [x] Preview export before download
+
+### Voice Recording & Transcription
+- [x] Add voice recording button to comment/video views
+- [x] Implement audio recording using Web Audio API
+- [x] Integrate speech-to-text transcription
+- [x] Save voice notes attached to projects/comments
+- [x] Display transcribed text with edit capability
+- [x] Allow playback of recorded audio

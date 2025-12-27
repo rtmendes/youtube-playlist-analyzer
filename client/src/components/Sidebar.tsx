@@ -83,6 +83,12 @@ import {
   SortAsc,
   FileText,
   Sparkles,
+  HelpCircle,
+  BookOpen,
+  Lightbulb,
+  Zap,
+  Target,
+  TrendingUp,
 } from "lucide-react";
 
 interface FolderItem {
@@ -635,6 +641,63 @@ export function Sidebar({ isCollapsed, onToggle, onOpenSearch }: SidebarProps) {
             </div>
           </div>
         </ScrollArea>
+
+        {/* Knowledge Base Section */}
+        <div className="px-3 py-2 border-t border-sidebar-border">
+          <Collapsible>
+            <CollapsibleTrigger className="flex items-center justify-between w-full px-2 py-1.5 text-sm rounded-md hover:bg-accent transition-colors">
+              <div className="flex items-center gap-2">
+                <BookOpen className="h-4 w-4 text-muted-foreground" />
+                <span className="font-medium">Knowledge Base</span>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-1 space-y-1">
+              <Link href="/help/getting-started">
+                <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded-md cursor-pointer">
+                  <Zap className="h-3.5 w-3.5" />
+                  <span>Getting Started</span>
+                </div>
+              </Link>
+              <Link href="/help/analyze">
+                <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded-md cursor-pointer">
+                  <Target className="h-3.5 w-3.5" />
+                  <span>Analyze Playlists</span>
+                </div>
+              </Link>
+              <Link href="/help/intelligence">
+                <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded-md cursor-pointer">
+                  <Brain className="h-3.5 w-3.5" />
+                  <span>Comment Intelligence</span>
+                </div>
+              </Link>
+              <Link href="/help/canvas">
+                <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded-md cursor-pointer">
+                  <Palette className="h-3.5 w-3.5" />
+                  <span>Marketing Canvas</span>
+                </div>
+              </Link>
+              <Link href="/help/projects">
+                <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded-md cursor-pointer">
+                  <Folder className="h-3.5 w-3.5" />
+                  <span>Projects & Folders</span>
+                </div>
+              </Link>
+              <Link href="/help/export">
+                <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded-md cursor-pointer">
+                  <TrendingUp className="h-3.5 w-3.5" />
+                  <span>Export & Reports</span>
+                </div>
+              </Link>
+              <Link href="/help/tips">
+                <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded-md cursor-pointer">
+                  <Lightbulb className="h-3.5 w-3.5" />
+                  <span>Tips & Best Practices</span>
+                </div>
+              </Link>
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
 
         {/* User Section */}
         <div className="p-3 border-t border-sidebar-border">
