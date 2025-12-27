@@ -47,6 +47,10 @@ import {
   Filter,
   CheckCircle2,
   X,
+  Layers,
+  Zap,
+  TrendingUp,
+  BarChart3,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -64,6 +68,7 @@ const ASSET_TYPES = {
   social_post: { label: "Social Post", icon: Share2, description: "Social media content" },
   testimonial_formatted: { label: "Testimonial", icon: Quote, description: "Formatted testimonials" },
   custom: { label: "Custom", icon: Sparkles, description: "Custom AI generation" },
+  multi_source: { label: "Multi-Source", icon: Layers, description: "Generate from YouTube, Amazon & Reddit insights" },
 };
 
 interface GeneratedAsset {
@@ -270,6 +275,55 @@ Format with platform, post type, and content.`;
 - Can be used in marketing
 Format with the testimonial, attribution, and use case.`;
           break;
+        case "multi_source":
+          // Build context from multi-source insights
+          const insights = multiInsightsQuery.data || [];
+          const youtubeInsights = insights.filter((i: any) => i.sourceType === "youtube").slice(0, 10);
+          const amazonInsights = insights.filter((i: any) => i.sourceType === "amazon").slice(0, 10);
+          const redditInsights = insights.filter((i: any) => i.sourceType === "reddit").slice(0, 10);
+          
+          let contextSummary = "";
+          
+          if (youtubeInsights.length > 0) {
+            contextSummary += "\n\n## YouTube Comments Insights:\n";
+            youtubeInsights.forEach((i: any) => {
+              contextSummary += `- [${i.sentiment}] ${i.contentText.slice(0, 200)}...\n`;
+            });
+          }
+          
+          if (amazonInsights.length > 0) {
+            contextSummary += "\n\n## Amazon Reviews Insights:\n";
+            amazonInsights.forEach((i: any) => {
+              contextSummary += `- [${i.sentiment}] ${i.contentText.slice(0, 200)}...\n`;
+            });
+          }
+          
+          if (redditInsights.length > 0) {
+            contextSummary += "\n\n## Reddit Discussion Insights:\n";
+            redditInsights.forEach((i: any) => {
+              contextSummary += `- [${i.sentiment}] ${i.contentText.slice(0, 200)}...\n`;
+            });
+          }
+          
+          systemPrompt = `You are a marketing strategist with access to real customer insights from multiple sources. 
+Analyze the following customer feedback from YouTube comments, Amazon reviews, and Reddit discussions to create comprehensive marketing content.
+
+${contextSummary}
+
+Based on these real customer insights:
+1. Identify the main pain points and desires
+2. Extract the most compelling testimonial-style quotes
+3. Note the language and phrases customers actually use
+4. Find patterns across different platforms
+5. Generate marketing content that directly addresses what customers care about
+
+Create content that:
+- Uses authentic customer language
+- Addresses real pain points discovered in the research
+- Incorporates actual praise and positive feedback
+- Feels genuine and relatable
+- Is optimized for conversion`;
+          break;
         default:
           systemPrompt = "You are a marketing content expert. Generate high-quality marketing content based on the user's request.";
       }
@@ -320,9 +374,12 @@ Format with the testimonial, attribution, and use case.`;
   const handleSaveAsset = () => {
     if (!projectId || !generatedContent) return;
     
+    // Map multi_source to custom for database storage
+    const dbType = selectedAssetType === "multi_source" ? "custom" : selectedAssetType;
+    
     saveAssetMutation.mutate({
       projectId: parseInt(projectId),
-      type: selectedAssetType,
+      type: dbType as any,
       title: assetTitle,
       content: generatedContent,
       generationPrompt: customPrompt,
@@ -450,7 +507,11 @@ Format with the testimonial, attribution, and use case.`;
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                      <Sparkles className="h-5 w-5 text-primary" />
+                      {selectedAssetType === "multi_source" ? (
+                        <Layers className="h-5 w-5 text-primary" />
+                      ) : (
+                        <Sparkles className="h-5 w-5 text-primary" />
+                      )}
                       {ASSET_TYPES[selectedAssetType].label} Generator
                     </CardTitle>
                     <CardDescription>
@@ -458,10 +519,45 @@ Format with the testimonial, attribution, and use case.`;
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    {/* Multi-source insights summary */}
+                    {selectedAssetType === "multi_source" && (
+                      <div className="bg-secondary/50 rounded-lg p-4 space-y-3">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <Zap className="h-4 w-4 text-primary" />
+                          Insights Available for Generation
+                        </div>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="flex items-center gap-2 text-sm">
+                            <Youtube className="h-4 w-4 text-red-500" />
+                            <span>{multiInsightsStatsQuery.data?.youtube || 0} YouTube</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm">
+                            <ShoppingCart className="h-4 w-4 text-orange-500" />
+                            <span>{multiInsightsStatsQuery.data?.amazon || 0} Amazon</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm">
+                            <MessageCircle className="h-4 w-4 text-orange-600" />
+                            <span>{multiInsightsStatsQuery.data?.reddit || 0} Reddit</span>
+                          </div>
+                        </div>
+                        {(multiInsightsStatsQuery.data?.total || 0) === 0 && (
+                          <p className="text-xs text-muted-foreground">
+                            Add insights from the Intelligence tools to enable multi-source generation.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    
                     <div className="space-y-2">
-                      <Label>Custom Instructions (Optional)</Label>
+                      <Label>
+                        {selectedAssetType === "multi_source" 
+                          ? "What would you like to create? (e.g., ad copy, landing page, email sequence)"
+                          : "Custom Instructions (Optional)"}
+                      </Label>
                       <Textarea
-                        placeholder="Add specific instructions, target audience details, product information, or tone preferences..."
+                        placeholder={selectedAssetType === "multi_source"
+                          ? "Describe the content you want to create using insights from all sources. E.g., 'Create Facebook ad copy that addresses the main pain points customers mention across YouTube, Amazon, and Reddit...'"
+                          : "Add specific instructions, target audience details, product information, or tone preferences..."}
                         value={customPrompt}
                         onChange={(e) => setCustomPrompt(e.target.value)}
                         rows={4}
@@ -469,13 +565,18 @@ Format with the testimonial, attribution, and use case.`;
                     </div>
                     <Button 
                       onClick={generateContent} 
-                      disabled={isGenerating}
+                      disabled={isGenerating || (selectedAssetType === "multi_source" && (multiInsightsStatsQuery.data?.total || 0) === 0)}
                       className="w-full gap-2"
                     >
                       {isGenerating ? (
                         <>
                           <Loader2 className="h-4 w-4 animate-spin" />
                           Generating...
+                        </>
+                      ) : selectedAssetType === "multi_source" ? (
+                        <>
+                          <Layers className="h-4 w-4" />
+                          Generate from {multiInsightsStatsQuery.data?.total || 0} Insights
                         </>
                       ) : (
                         <>

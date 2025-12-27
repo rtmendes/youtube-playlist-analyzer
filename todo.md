@@ -344,3 +344,30 @@
 - [x] Enable cross-source analysis and comparison
 - [x] Add source attribution badges to Canvas items
 - [ ] Support combining insights from multiple sources into single marketing assets
+
+## Advanced Features Implementation
+
+### Real Amazon API Integration
+- [x] Research and select Amazon product data API (Rainforest API, ScraperAPI, or similar)
+- [x] Create API service wrapper for fetching real product data
+- [x] Update Amazon Intelligence page to use real API
+- [x] Add API key configuration in settings
+- [x] Handle rate limiting and error responses
+- [x] Cache product data to reduce API calls
+
+### Multi-Source AI Generation in Canvas
+- [x] Create unified prompt builder that combines YouTube, Amazon, and Reddit insights
+- [x] Add "Generate from All Sources" button in Canvas
+- [x] Build context aggregator to summarize insights from each source
+- [x] Create specialized prompts for multi-source content types
+- [ ] Add source weighting options (prioritize certain sources)
+- [x] Show which sources contributed to generated content
+
+### Competitor Analysis Feature
+- [x] Create competitor comparison database schema
+- [x] Build competitor analysis page UI
+- [x] Add side-by-side product/channel comparison view
+- [x] Calculate sentiment comparison across competitors
+- [x] Identify unique selling points and gaps
+- [x] Generate competitive positioning recommendations
+- [ ] Add competitor tracking with alerts for new reviews/comments

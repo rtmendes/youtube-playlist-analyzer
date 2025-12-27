@@ -12,7 +12,7 @@ import {
 import { getDb } from "./db";
 import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets, amazonProducts, amazonReviews, redditPosts, redditComments, researchSessions, multiSourceInsights } from "../drizzle/schema";
 import { eq, desc, and, like, or, sql } from "drizzle-orm";
-import { parseAmazonUrl, generateSampleProduct, generateSampleReviews, calculateReviewStats, analyzeReviewSentiment } from "./amazon";
+import { parseAmazonUrl, generateSampleProduct, generateSampleReviews, calculateReviewStats, analyzeReviewSentiment, fetchAmazonProduct, fetchAmazonReviews, searchAmazonProducts, compareProducts, AmazonApiConfig } from "./amazon";
 import { parseRedditUrl, fetchSubredditPosts, searchReddit, fetchPostComments, analyzeRedditComment, calculateRedditStats, getPopularResearchSubreddits } from "./reddit";
 
 export const appRouter = router({
@@ -784,20 +784,34 @@ export const appRouter = router({
       }),
 
     getProduct: publicProcedure
-      .input(z.object({ asin: z.string() }))
+      .input(z.object({ 
+        asin: z.string(),
+        apiKey: z.string().optional(),
+        apiProvider: z.enum(["rainforest", "scraperapi", "sample"]).default("sample"),
+        marketplace: z.string().default("com"),
+      }))
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         
-        // Check if product exists in database
+        // Check if product exists in database (unless forcing refresh)
         if (db) {
           const existing = await db.select().from(amazonProducts).where(eq(amazonProducts.asin, input.asin)).limit(1);
-          if (existing.length > 0) {
+          if (existing.length > 0 && !input.apiKey) {
             return existing[0];
           }
         }
 
-        // Generate sample product (in production, fetch from API)
-        const product = generateSampleProduct(input.asin);
+        // Configure API
+        const apiConfig: AmazonApiConfig = {
+          provider: input.apiProvider,
+          apiKey: input.apiKey,
+        };
+
+        // Fetch product from API or generate sample
+        const product = await fetchAmazonProduct(input.asin, apiConfig, input.marketplace);
+        if (!product) {
+          throw new Error("Failed to fetch product data");
+        }
         
         // Save to database
         if (db && ctx.user) {
@@ -826,12 +840,16 @@ export const appRouter = router({
       .input(z.object({ 
         asin: z.string(),
         count: z.number().min(1).max(100).default(20),
+        apiKey: z.string().optional(),
+        apiProvider: z.enum(["rainforest", "scraperapi", "sample"]).default("sample"),
+        marketplace: z.string().default("com"),
+        forceRefresh: z.boolean().default(false),
       }))
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         
-        // Check if reviews exist in database
-        if (db) {
+        // Check if reviews exist in database (unless forcing refresh)
+        if (db && !input.forceRefresh) {
           const productResult = await db.select().from(amazonProducts).where(eq(amazonProducts.asin, input.asin)).limit(1);
           if (productResult.length > 0) {
             const existingReviews = await db.select().from(amazonReviews).where(eq(amazonReviews.productId, productResult[0].id));
@@ -853,8 +871,14 @@ export const appRouter = router({
           }
         }
 
-        // Generate sample reviews (in production, fetch from API)
-        const reviews = generateSampleReviews(input.asin, input.count);
+        // Configure API
+        const apiConfig: AmazonApiConfig = {
+          provider: input.apiProvider,
+          apiKey: input.apiKey,
+        };
+
+        // Fetch reviews from API or generate sample
+        const reviews = await fetchAmazonReviews(input.asin, apiConfig, input.marketplace, Math.ceil(input.count / 10));
         const stats = calculateReviewStats(reviews);
 
         // Save to database
@@ -904,6 +928,50 @@ export const appRouter = router({
         // Then delete product
         await db.delete(amazonProducts).where(and(eq(amazonProducts.id, input.id), eq(amazonProducts.userId, ctx.user.id)));
         return { success: true };
+      }),
+
+    searchProducts: publicProcedure
+      .input(z.object({
+        query: z.string(),
+        apiKey: z.string().optional(),
+        apiProvider: z.enum(["rainforest", "scraperapi", "sample"]).default("sample"),
+        marketplace: z.string().default("com"),
+      }))
+      .mutation(async ({ input }) => {
+        const apiConfig: AmazonApiConfig = {
+          provider: input.apiProvider,
+          apiKey: input.apiKey,
+        };
+        return await searchAmazonProducts(input.query, apiConfig, input.marketplace);
+      }),
+
+    compareProducts: publicProcedure
+      .input(z.object({
+        asins: z.array(z.string()).min(2).max(5),
+        apiKey: z.string().optional(),
+        apiProvider: z.enum(["rainforest", "scraperapi", "sample"]).default("sample"),
+        marketplace: z.string().default("com"),
+      }))
+      .mutation(async ({ input }) => {
+        const apiConfig: AmazonApiConfig = {
+          provider: input.apiProvider,
+          apiKey: input.apiKey,
+        };
+
+        // Fetch all products and their reviews
+        const products = await Promise.all(
+          input.asins.map(asin => fetchAmazonProduct(asin, apiConfig, input.marketplace))
+        );
+        
+        const validProducts = products.filter((p): p is NonNullable<typeof p> => p !== null);
+        
+        const reviewsMap = new Map();
+        for (const product of validProducts) {
+          const reviews = await fetchAmazonReviews(product.asin, apiConfig, input.marketplace, 2);
+          reviewsMap.set(product.asin, reviews);
+        }
+
+        return compareProducts(validProducts, reviewsMap);
       }),
   }),
 
