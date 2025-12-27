@@ -206,6 +206,79 @@ export const appRouter = router({
           throw error;
         }
       }),
+
+    // Batch fetch comments for a single video (all pages)
+    getBatchVideoComments: publicProcedure
+      .input(z.object({
+        videoId: z.string(),
+        videoTitle: z.string().optional(),
+        apiKey: z.string(),
+        maxComments: z.number().min(1).max(5000).default(500),
+      }))
+      .mutation(async ({ input }) => {
+        youtubeClient.setApiKey(input.apiKey);
+        
+        const allComments: any[] = [];
+        let pageToken: string | undefined;
+        let fetched = 0;
+
+        try {
+          while (fetched < input.maxComments) {
+            const response = await youtubeClient.getCommentThreads(
+              input.videoId,
+              pageToken,
+              Math.min(100, input.maxComments - fetched)
+            );
+
+            for (const thread of response.items) {
+              allComments.push({
+                id: thread.id,
+                videoId: thread.snippet.videoId,
+                videoTitle: input.videoTitle || "",
+                authorDisplayName: thread.snippet.topLevelComment.snippet.authorDisplayName,
+                authorProfileImageUrl: thread.snippet.topLevelComment.snippet.authorProfileImageUrl,
+                authorChannelId: thread.snippet.topLevelComment.snippet.authorChannelId?.value,
+                textDisplay: thread.snippet.topLevelComment.snippet.textDisplay,
+                textOriginal: thread.snippet.topLevelComment.snippet.textOriginal,
+                likeCount: thread.snippet.topLevelComment.snippet.likeCount,
+                replyCount: thread.snippet.totalReplyCount,
+                publishedAt: thread.snippet.topLevelComment.snippet.publishedAt,
+                replies: thread.replies?.comments.map(reply => ({
+                  id: reply.id,
+                  authorDisplayName: reply.snippet.authorDisplayName,
+                  authorProfileImageUrl: reply.snippet.authorProfileImageUrl,
+                  textDisplay: reply.snippet.textDisplay,
+                  likeCount: reply.snippet.likeCount,
+                  publishedAt: reply.snippet.publishedAt,
+                })) || [],
+              });
+              fetched++;
+            }
+
+            pageToken = response.nextPageToken;
+            if (!pageToken) break;
+          }
+
+          return {
+            videoId: input.videoId,
+            videoTitle: input.videoTitle || "",
+            comments: allComments,
+            totalFetched: allComments.length,
+            commentsDisabled: false,
+          };
+        } catch (error: any) {
+          if (error.response?.data?.error?.errors?.[0]?.reason === "commentsDisabled") {
+            return {
+              videoId: input.videoId,
+              videoTitle: input.videoTitle || "",
+              comments: [],
+              totalFetched: 0,
+              commentsDisabled: true,
+            };
+          }
+          throw error;
+        }
+      }),
   }),
 
   analysis: router({

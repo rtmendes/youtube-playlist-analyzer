@@ -33,3 +33,10 @@
 - [x] YouTube Data API v3 integration
 - [ ] Rate limiting handling
 - [ ] Quota management
+
+## Batch Comment Fetching Feature
+- [x] Add batch comment fetching API endpoint
+- [x] Add "Fetch All Comments" button to Analyze page
+- [x] Implement progress tracking for batch fetching
+- [x] Add all comments view with combined search/filter
+- [x] Add export all comments functionality

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useLocation, useSearch, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { 
   ArrowLeft, 
@@ -25,6 +26,9 @@ import {
   Calendar,
   User,
   Filter,
+  CheckCircle2,
+  XCircle,
+  MessageSquareDashed,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -50,6 +54,7 @@ interface Video {
 interface Comment {
   id: string;
   videoId: string;
+  videoTitle?: string;
   authorDisplayName: string;
   authorProfileImageUrl: string;
   authorChannelId?: string;
@@ -58,7 +63,7 @@ interface Comment {
   likeCount: number;
   replyCount: number;
   publishedAt: string;
-  updatedAt: string;
+  updatedAt?: string;
   replies: Array<{
     id: string;
     authorDisplayName: string;
@@ -67,6 +72,16 @@ interface Comment {
     likeCount: number;
     publishedAt: string;
   }>;
+}
+
+interface BatchProgress {
+  currentVideo: number;
+  totalVideos: number;
+  currentVideoTitle: string;
+  commentsFetched: number;
+  videosWithComments: number;
+  videosWithDisabledComments: number;
+  errors: number;
 }
 
 export default function Analyze() {
@@ -78,18 +93,23 @@ export default function Analyze() {
 
   const [videos, setVideos] = useState<Video[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
+  const [allComments, setAllComments] = useState<Comment[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [commentSearchQuery, setCommentSearchQuery] = useState("");
   const [loadingVideos, setLoadingVideos] = useState(false);
   const [loadingComments, setLoadingComments] = useState(false);
+  const [loadingBatchComments, setLoadingBatchComments] = useState(false);
   const [progress, setProgress] = useState(0);
   const [activeTab, setActiveTab] = useState("videos");
+  const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
+  const [videoFilter, setVideoFilter] = useState<string>("all");
 
   // Fetch playlist info
   const playlistMutation = trpc.youtube.getPlaylist.useMutation();
   const videosMutation = trpc.youtube.getPlaylistVideos.useMutation();
   const commentsMutation = trpc.youtube.getVideoComments.useMutation();
+  const batchCommentsMutation = trpc.youtube.getBatchVideoComments.useMutation();
 
   // Load playlist on mount
   useEffect(() => {
@@ -155,16 +175,75 @@ export default function Analyze() {
     }
   };
 
+  // Batch fetch all comments from all videos
+  const fetchAllComments = useCallback(async () => {
+    if (videos.length === 0) return;
+
+    setLoadingBatchComments(true);
+    setAllComments([]);
+    setActiveTab("all-comments");
+    
+    const progress: BatchProgress = {
+      currentVideo: 0,
+      totalVideos: videos.length,
+      currentVideoTitle: "",
+      commentsFetched: 0,
+      videosWithComments: 0,
+      videosWithDisabledComments: 0,
+      errors: 0,
+    };
+    setBatchProgress(progress);
+
+    const fetchedComments: Comment[] = [];
+
+    for (let i = 0; i < videos.length; i++) {
+      const video = videos[i];
+      progress.currentVideo = i + 1;
+      progress.currentVideoTitle = video.title;
+      setBatchProgress({ ...progress });
+
+      try {
+        const result = await batchCommentsMutation.mutateAsync({
+          videoId: video.id,
+          videoTitle: video.title,
+          apiKey,
+          maxComments: 200, // Limit per video to avoid quota issues
+        });
+
+        if (result.commentsDisabled) {
+          progress.videosWithDisabledComments++;
+        } else if (result.comments.length > 0) {
+          progress.videosWithComments++;
+          progress.commentsFetched += result.comments.length;
+          fetchedComments.push(...result.comments);
+          setAllComments([...fetchedComments]);
+        }
+      } catch (error) {
+        console.error(`Failed to fetch comments for video ${video.id}:`, error);
+        progress.errors++;
+      }
+
+      setBatchProgress({ ...progress });
+    }
+
+    setLoadingBatchComments(false);
+  }, [videos, apiKey, batchCommentsMutation]);
+
   // Filter videos by search
   const filteredVideos = useMemo(() => {
-    if (!searchQuery) return videos;
-    const query = searchQuery.toLowerCase();
-    return videos.filter(
-      (v) =>
-        v.title.toLowerCase().includes(query) ||
-        v.channelTitle.toLowerCase().includes(query) ||
-        v.description.toLowerCase().includes(query)
-    );
+    let filtered = videos;
+    
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (v) =>
+          v.title.toLowerCase().includes(query) ||
+          v.channelTitle.toLowerCase().includes(query) ||
+          v.description.toLowerCase().includes(query)
+      );
+    }
+    
+    return filtered;
   }, [videos, searchQuery]);
 
   // Filter comments by search
@@ -177,6 +256,27 @@ export default function Analyze() {
         c.authorDisplayName.toLowerCase().includes(query)
     );
   }, [comments, commentSearchQuery]);
+
+  // Filter all comments by search and video
+  const filteredAllComments = useMemo(() => {
+    let filtered = allComments;
+    
+    if (commentSearchQuery) {
+      const query = commentSearchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (c) =>
+          c.textOriginal.toLowerCase().includes(query) ||
+          c.authorDisplayName.toLowerCase().includes(query) ||
+          (c.videoTitle && c.videoTitle.toLowerCase().includes(query))
+      );
+    }
+    
+    if (videoFilter !== "all") {
+      filtered = filtered.filter((c) => c.videoId === videoFilter);
+    }
+    
+    return filtered;
+  }, [allComments, commentSearchQuery, videoFilter]);
 
   // Calculate stats
   const stats = useMemo(() => {
@@ -193,7 +293,7 @@ export default function Analyze() {
     const data = {
       playlist: playlistMutation.data,
       videos,
-      comments,
+      comments: allComments.length > 0 ? allComments : comments,
       exportedAt: new Date().toISOString(),
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -223,6 +323,29 @@ export default function Analyze() {
     const a = document.createElement("a");
     a.href = url;
     a.download = `playlist-${playlistId}-videos.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportCommentsCSV = () => {
+    const commentsToExport = allComments.length > 0 ? allComments : comments;
+    const headers = ["Comment ID", "Video ID", "Video Title", "Author", "Text", "Likes", "Replies", "Published"];
+    const rows = commentsToExport.map((c) => [
+      c.id,
+      c.videoId,
+      `"${(c.videoTitle || "").replace(/"/g, '""')}"`,
+      `"${c.authorDisplayName.replace(/"/g, '""')}"`,
+      `"${c.textOriginal.replace(/"/g, '""').replace(/\n/g, " ")}"`,
+      c.likeCount,
+      c.replyCount,
+      c.publishedAt,
+    ]);
+    const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `playlist-${playlistId}-comments.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -280,7 +403,15 @@ export default function Analyze() {
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={exportCSV} disabled={videos.length === 0}>
               <Download className="h-4 w-4 mr-2" />
-              CSV
+              Videos CSV
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={exportCommentsCSV} 
+              disabled={allComments.length === 0 && comments.length === 0}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Comments CSV
             </Button>
             <Button variant="outline" onClick={exportJSON} disabled={videos.length === 0}>
               <Download className="h-4 w-4 mr-2" />
@@ -290,7 +421,7 @@ export default function Analyze() {
         </div>
       </header>
 
-      {/* Progress Bar */}
+      {/* Progress Bar for Videos */}
       {loadingVideos && (
         <div className="border-b border-border">
           <div className="container py-2">
@@ -305,10 +436,47 @@ export default function Analyze() {
         </div>
       )}
 
+      {/* Progress Bar for Batch Comments */}
+      {loadingBatchComments && batchProgress && (
+        <div className="border-b border-border bg-primary/5">
+          <div className="container py-3">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium">Fetching comments from all videos...</span>
+                <span className="text-muted-foreground">
+                  Video {batchProgress.currentVideo} of {batchProgress.totalVideos}
+                </span>
+              </div>
+              <Progress 
+                value={(batchProgress.currentVideo / batchProgress.totalVideos) * 100} 
+                className="h-2"
+              />
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <span className="truncate max-w-md">
+                  Current: {batchProgress.currentVideoTitle}
+                </span>
+                <span className="flex items-center gap-1">
+                  <CheckCircle2 className="h-3 w-3 text-green-500" />
+                  {batchProgress.videosWithComments} with comments
+                </span>
+                <span className="flex items-center gap-1">
+                  <XCircle className="h-3 w-3 text-yellow-500" />
+                  {batchProgress.videosWithDisabledComments} disabled
+                </span>
+                <span className="flex items-center gap-1">
+                  <MessageSquare className="h-3 w-3" />
+                  {batchProgress.commentsFetched} total comments
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Stats Bar */}
       <div className="border-b border-border bg-secondary/30">
         <div className="container py-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div>
               <p className="text-sm text-muted-foreground">Videos</p>
               <p className="text-2xl font-bold">{videos.length}</p>
@@ -325,6 +493,10 @@ export default function Analyze() {
               <p className="text-sm text-muted-foreground">Total Comments</p>
               <p className="text-2xl font-bold">{formatNumber(stats.totalComments)}</p>
             </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Fetched Comments</p>
+              <p className="text-2xl font-bold">{formatNumber(allComments.length)}</p>
+            </div>
           </div>
         </div>
       </div>
@@ -332,16 +504,36 @@ export default function Analyze() {
       {/* Main Content */}
       <div className="container py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="mb-6">
-            <TabsTrigger value="videos" className="gap-2">
-              <Play className="h-4 w-4" />
-              Videos ({videos.length})
-            </TabsTrigger>
-            <TabsTrigger value="comments" className="gap-2">
-              <MessageSquare className="h-4 w-4" />
-              Comments {selectedVideo && `(${comments.length})`}
-            </TabsTrigger>
-          </TabsList>
+          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+            <TabsList>
+              <TabsTrigger value="videos" className="gap-2">
+                <Play className="h-4 w-4" />
+                Videos ({videos.length})
+              </TabsTrigger>
+              <TabsTrigger value="comments" className="gap-2">
+                <MessageSquare className="h-4 w-4" />
+                Video Comments {selectedVideo && `(${comments.length})`}
+              </TabsTrigger>
+              <TabsTrigger value="all-comments" className="gap-2">
+                <MessageSquareDashed className="h-4 w-4" />
+                All Comments ({allComments.length})
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Fetch All Comments Button */}
+            <Button
+              onClick={fetchAllComments}
+              disabled={loadingBatchComments || videos.length === 0 || loadingVideos}
+              className="gap-2"
+            >
+              {loadingBatchComments ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <MessageSquare className="h-4 w-4" />
+              )}
+              {loadingBatchComments ? "Fetching..." : "Fetch All Comments"}
+            </Button>
+          </div>
 
           <TabsContent value="videos" className="space-y-4">
             {/* Search */}
@@ -553,6 +745,126 @@ export default function Analyze() {
               <div className="text-center py-12 text-muted-foreground">
                 <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-50" />
                 <p>Select a video from the Videos tab to view its comments.</p>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="all-comments" className="space-y-4">
+            {allComments.length > 0 ? (
+              <>
+                {/* Filters */}
+                <div className="flex flex-wrap gap-4">
+                  <div className="relative flex-1 max-w-md">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search all comments..."
+                      value={commentSearchQuery}
+                      onChange={(e) => setCommentSearchQuery(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                  <Select value={videoFilter} onValueChange={setVideoFilter}>
+                    <SelectTrigger className="w-[250px]">
+                      <SelectValue placeholder="Filter by video" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Videos</SelectItem>
+                      {videos.map((video) => (
+                        <SelectItem key={video.id} value={video.id}>
+                          {video.title.substring(0, 40)}...
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Stats */}
+                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                  <span>Showing {filteredAllComments.length} of {allComments.length} comments</span>
+                </div>
+
+                {/* All Comments List */}
+                <div className="space-y-4">
+                  {filteredAllComments.slice(0, 100).map((comment) => (
+                    <Card key={comment.id} className="border">
+                      <CardContent className="p-4">
+                        <div className="flex gap-3">
+                          <img
+                            src={comment.authorProfileImageUrl}
+                            alt={comment.authorDisplayName}
+                            className="w-10 h-10 rounded-full"
+                          />
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              <span className="font-medium">
+                                {comment.authorDisplayName}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(comment.publishedAt).toLocaleDateString()}
+                              </span>
+                              {comment.videoTitle && (
+                                <Badge variant="secondary" className="text-xs">
+                                  {comment.videoTitle.substring(0, 30)}...
+                                </Badge>
+                              )}
+                            </div>
+                            <p 
+                              className="text-sm whitespace-pre-wrap"
+                              dangerouslySetInnerHTML={{ __html: comment.textDisplay }}
+                            />
+                            <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <ThumbsUp className="h-3.5 w-3.5" />
+                                {comment.likeCount}
+                              </span>
+                              {comment.replyCount > 0 && (
+                                <span className="flex items-center gap-1">
+                                  <MessageSquare className="h-3.5 w-3.5" />
+                                  {comment.replyCount} replies
+                                </span>
+                              )}
+                              <a
+                                href={`https://youtube.com/watch?v=${comment.videoId}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary flex items-center gap-1"
+                              >
+                                View Video
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+
+                  {filteredAllComments.length > 100 && (
+                    <div className="text-center py-4 text-muted-foreground">
+                      <p>Showing first 100 comments. Use search or export to access all {filteredAllComments.length} comments.</p>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-12 text-muted-foreground">
+                <MessageSquareDashed className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p className="mb-4">No comments fetched yet.</p>
+                <Button
+                  onClick={fetchAllComments}
+                  disabled={loadingBatchComments || videos.length === 0 || loadingVideos}
+                  className="gap-2"
+                >
+                  {loadingBatchComments ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <MessageSquare className="h-4 w-4" />
+                  )}
+                  Fetch All Comments
+                </Button>
+                <p className="text-sm mt-4">
+                  This will fetch comments from all {videos.length} videos in the playlist.
+                </p>
               </div>
             )}
           </TabsContent>
