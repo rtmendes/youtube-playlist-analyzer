@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
-import { ArrowRight, Play, MessageSquare, BarChart3, Download, Search, Loader2, List, FileText, History } from "lucide-react";
+import { ArrowRight, Play, MessageSquare, BarChart3, Download, Search, Loader2, List, FileText, History, Folder } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -131,12 +131,20 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-4">
             {isAuthenticated && (
-              <Button variant="ghost" size="sm" asChild>
-                <Link href="/history">
-                  <History className="h-4 w-4 mr-2" />
-                  History
-                </Link>
-              </Button>
+              <>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link href="/projects">
+                    <Folder className="h-4 w-4 mr-2" />
+                    Projects
+                  </Link>
+                </Button>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link href="/history">
+                    <History className="h-4 w-4 mr-2" />
+                    History
+                  </Link>
+                </Button>
+              </>
             )}
             {isAuthenticated ? (
               <span className="text-sm text-muted-foreground">

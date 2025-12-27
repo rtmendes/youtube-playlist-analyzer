@@ -10,7 +10,7 @@ import {
   formatCount,
 } from "./youtube";
 import { getDb } from "./db";
-import { playlists, analysisSessions } from "../drizzle/schema";
+import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets } from "../drizzle/schema";
 import { eq, desc } from "drizzle-orm";
 
 export const appRouter = router({
@@ -494,6 +494,283 @@ export const appRouter = router({
 
       return userPlaylists;
     }),
+  }),
+
+  // Folders management
+  folders: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const db = await getDb();
+      if (!db) return [];
+      return await db.select().from(folders).where(eq(folders.userId, ctx.user.id)).orderBy(desc(folders.createdAt));
+    }),
+
+    create: protectedProcedure
+      .input(z.object({ name: z.string(), description: z.string().optional(), color: z.string().optional(), parentFolderId: z.number().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        const result = await db.insert(folders).values({ userId: ctx.user.id, ...input });
+        return { id: Number((result as any)[0]?.insertId || 0), success: true };
+      }),
+
+    update: protectedProcedure
+      .input(z.object({ id: z.number(), name: z.string().optional(), description: z.string().optional(), color: z.string().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        const { id, ...updates } = input;
+        await db.update(folders).set(updates).where(eq(folders.id, id));
+        return { success: true };
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        await db.delete(folders).where(eq(folders.id, input.id));
+        return { success: true };
+      }),
+  }),
+
+  // Tags management
+  tags: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const db = await getDb();
+      if (!db) return [];
+      return await db.select().from(tags).where(eq(tags.userId, ctx.user.id)).orderBy(tags.name);
+    }),
+
+    create: protectedProcedure
+      .input(z.object({ name: z.string(), color: z.string().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        const result = await db.insert(tags).values({ userId: ctx.user.id, ...input });
+        return { id: Number((result as any)[0]?.insertId || 0), success: true };
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        await db.delete(tags).where(eq(tags.id, input.id));
+        return { success: true };
+      }),
+  }),
+
+  // Projects management
+  projects: router({
+    list: protectedProcedure
+      .input(z.object({ folderId: z.number().optional(), tagId: z.number().optional() }).optional())
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        
+        let query = db.select().from(projects).where(eq(projects.userId, ctx.user.id));
+        
+        if (input?.folderId) {
+          query = db.select().from(projects).where(eq(projects.folderId, input.folderId));
+        }
+        
+        return await query.orderBy(desc(projects.updatedAt));
+      }),
+
+    getById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return null;
+        const result = await db.select().from(projects).where(eq(projects.id, input.id)).limit(1);
+        if (!result[0] || result[0].userId !== ctx.user.id) throw new Error("Project not found");
+        return result[0];
+      }),
+
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string(),
+        description: z.string().optional(),
+        folderId: z.number().optional(),
+        analysisSessionId: z.number().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        const result = await db.insert(projects).values({ userId: ctx.user.id, ...input });
+        return { id: Number((result as any)[0]?.insertId || 0), success: true };
+      }),
+
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().optional(),
+        description: z.string().optional(),
+        folderId: z.number().optional().nullable(),
+        searchQueries: z.any().optional(),
+        selectedComments: z.any().optional(),
+        audienceInsights: z.any().optional(),
+        psychographicProfile: z.any().optional(),
+        canvasState: z.any().optional(),
+        generatedAssets: z.any().optional(),
+        status: z.enum(["draft", "active", "archived"]).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        const { id, ...updates } = input;
+        await db.update(projects).set(updates).where(eq(projects.id, id));
+        return { success: true };
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        await db.delete(projects).where(eq(projects.id, input.id));
+        return { success: true };
+      }),
+
+    addTag: protectedProcedure
+      .input(z.object({ projectId: z.number(), tagId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        await db.insert(projectTags).values(input);
+        return { success: true };
+      }),
+
+    removeTag: protectedProcedure
+      .input(z.object({ projectId: z.number(), tagId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        await db.delete(projectTags).where(eq(projectTags.projectId, input.projectId));
+        return { success: true };
+      }),
+
+    getTags: protectedProcedure
+      .input(z.object({ projectId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        const pts = await db.select().from(projectTags).where(eq(projectTags.projectId, input.projectId));
+        const tagIds = pts.map(pt => pt.tagId);
+        if (tagIds.length === 0) return [];
+        return await db.select().from(tags).where(eq(tags.userId, ctx.user.id));
+      }),
+  }),
+
+  // Comment Insights
+  insights: router({
+    saveComments: protectedProcedure
+      .input(z.object({
+        projectId: z.number(),
+        comments: z.array(z.object({
+          commentId: z.string(),
+          videoId: z.string().optional(),
+          videoTitle: z.string().optional(),
+          authorName: z.string().optional(),
+          commentText: z.string(),
+          likeCount: z.number().optional(),
+          replyCount: z.number().optional(),
+          category: z.enum(["personal_story", "testimonial", "product_request", "pain_point", "humor", "question", "praise", "criticism", "suggestion", "other"]).optional(),
+          sentimentScore: z.number().optional(),
+          marketingPotential: z.number().optional(),
+          extractedInsights: z.any().optional(),
+          suggestedUses: z.any().optional(),
+        })),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        
+        for (const comment of input.comments) {
+          await db.insert(commentInsights).values({
+            projectId: input.projectId,
+            ...comment,
+          });
+        }
+        
+        return { success: true, count: input.comments.length };
+      }),
+
+    getByProject: protectedProcedure
+      .input(z.object({ projectId: z.number(), category: z.string().optional() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        return await db.select().from(commentInsights).where(eq(commentInsights.projectId, input.projectId)).orderBy(desc(commentInsights.marketingPotential));
+      }),
+
+    updateCategory: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        category: z.enum(["personal_story", "testimonial", "product_request", "pain_point", "humor", "question", "praise", "criticism", "suggestion", "other"]),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        await db.update(commentInsights).set({ category: input.category }).where(eq(commentInsights.id, input.id));
+        return { success: true };
+      }),
+
+    toggleSelected: protectedProcedure
+      .input(z.object({ id: z.number(), isSelected: z.boolean() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        await db.update(commentInsights).set({ isSelected: input.isSelected ? 1 : 0 }).where(eq(commentInsights.id, input.id));
+        return { success: true };
+      }),
+  }),
+
+  // Generated Assets
+  assets: router({
+    create: protectedProcedure
+      .input(z.object({
+        projectId: z.number(),
+        type: z.enum(["advertorial", "vsl_script", "ugc_scenario", "ebook_outline", "course_structure", "ad_copy", "sales_page", "product_offer", "email_sequence", "social_post", "testimonial_formatted", "custom"]),
+        title: z.string(),
+        content: z.string(),
+        sourceCommentIds: z.array(z.string()).optional(),
+        generationPrompt: z.string().optional(),
+        metadata: z.any().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        const result = await db.insert(generatedAssets).values(input);
+        return { id: Number((result as any)[0]?.insertId || 0), success: true };
+      }),
+
+    getByProject: protectedProcedure
+      .input(z.object({ projectId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        return await db.select().from(generatedAssets).where(eq(generatedAssets.projectId, input.projectId)).orderBy(desc(generatedAssets.createdAt));
+      }),
+
+    update: protectedProcedure
+      .input(z.object({ id: z.number(), title: z.string().optional(), content: z.string().optional(), isFavorite: z.boolean().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        const { id, isFavorite, ...updates } = input;
+        await db.update(generatedAssets).set({ ...updates, isFavorite: isFavorite ? 1 : 0 }).where(eq(generatedAssets.id, id));
+        return { success: true };
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        await db.delete(generatedAssets).where(eq(generatedAssets.id, input.id));
+        return { success: true };
+      }),
   }),
 });
 

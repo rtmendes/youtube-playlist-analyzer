@@ -120,3 +120,152 @@ export const analysisSessions = mysqlTable("analysisSessions", {
 
 export type AnalysisSession = typeof analysisSessions.$inferSelect;
 export type InsertAnalysisSession = typeof analysisSessions.$inferInsert;
+
+/**
+ * Folders - organize projects
+ */
+export const folders = mysqlTable("folders", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  color: varchar("color", { length: 7 }).default("#3B82F6"),
+  parentFolderId: int("parentFolderId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Folder = typeof folders.$inferSelect;
+export type InsertFolder = typeof folders.$inferInsert;
+
+/**
+ * Tags - for organizing and filtering
+ */
+export const tags = mysqlTable("tags", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  name: varchar("name", { length: 100 }).notNull(),
+  color: varchar("color", { length: 7 }).default("#6366F1"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type Tag = typeof tags.$inferSelect;
+export type InsertTag = typeof tags.$inferInsert;
+
+/**
+ * Projects - main workspace for comment intelligence
+ */
+export const projects = mysqlTable("projects", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  folderId: int("folderId"),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  analysisSessionId: int("analysisSessionId"),
+  // Stored search queries and filters
+  searchQueries: json("searchQueries"),
+  // Selected comments for the canvas
+  selectedComments: json("selectedComments"),
+  // AI-generated insights
+  audienceInsights: json("audienceInsights"),
+  psychographicProfile: json("psychographicProfile"),
+  // Canvas state (generated assets)
+  canvasState: json("canvasState"),
+  // Generated marketing assets
+  generatedAssets: json("generatedAssets"),
+  status: mysqlEnum("status", ["draft", "active", "archived"]).default("draft").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Project = typeof projects.$inferSelect;
+export type InsertProject = typeof projects.$inferInsert;
+
+/**
+ * Project Tags - many-to-many relationship
+ */
+export const projectTags = mysqlTable("projectTags", {
+  id: int("id").autoincrement().primaryKey(),
+  projectId: int("projectId").notNull(),
+  tagId: int("tagId").notNull(),
+});
+
+export type ProjectTag = typeof projectTags.$inferSelect;
+export type InsertProjectTag = typeof projectTags.$inferInsert;
+
+/**
+ * Comment Insights - AI-analyzed comments with categories
+ */
+export const commentInsights = mysqlTable("commentInsights", {
+  id: int("id").autoincrement().primaryKey(),
+  projectId: int("projectId").notNull(),
+  commentId: varchar("commentId", { length: 64 }).notNull(),
+  videoId: varchar("videoId", { length: 64 }),
+  videoTitle: text("videoTitle"),
+  authorName: text("authorName"),
+  commentText: text("commentText"),
+  likeCount: int("likeCount").default(0),
+  replyCount: int("replyCount").default(0),
+  // AI-detected categories
+  category: mysqlEnum("category", [
+    "personal_story",
+    "testimonial",
+    "product_request",
+    "pain_point",
+    "humor",
+    "question",
+    "praise",
+    "criticism",
+    "suggestion",
+    "other"
+  ]).default("other").notNull(),
+  // Sentiment score (-1 to 1)
+  sentimentScore: int("sentimentScore").default(0),
+  // Marketing potential score (0-100)
+  marketingPotential: int("marketingPotential").default(0),
+  // AI-extracted insights
+  extractedInsights: json("extractedInsights"),
+  // Suggested use cases
+  suggestedUses: json("suggestedUses"),
+  isSelected: int("isSelected").default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type CommentInsight = typeof commentInsights.$inferSelect;
+export type InsertCommentInsight = typeof commentInsights.$inferInsert;
+
+/**
+ * Generated Assets - marketing content created from insights
+ */
+export const generatedAssets = mysqlTable("generatedAssets", {
+  id: int("id").autoincrement().primaryKey(),
+  projectId: int("projectId").notNull(),
+  type: mysqlEnum("type", [
+    "advertorial",
+    "vsl_script",
+    "ugc_scenario",
+    "ebook_outline",
+    "course_structure",
+    "ad_copy",
+    "sales_page",
+    "product_offer",
+    "email_sequence",
+    "social_post",
+    "testimonial_formatted",
+    "custom"
+  ]).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  content: text("content"),
+  // Source comments used to generate this asset
+  sourceCommentIds: json("sourceCommentIds"),
+  // The prompt used to generate
+  generationPrompt: text("generationPrompt"),
+  // Metadata about the generation
+  metadata: json("metadata"),
+  isFavorite: int("isFavorite").default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type GeneratedAsset = typeof generatedAssets.$inferSelect;
+export type InsertGeneratedAsset = typeof generatedAssets.$inferInsert;

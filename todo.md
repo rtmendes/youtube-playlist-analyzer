@@ -85,3 +85,45 @@
 - [x] Add re-download functionality for past exports
 - [x] Add navigation link to History page
 - [x] Add Save button to BulkAnalyze page
+
+## Comment Intelligence & Marketing Asset Generator
+
+### Smart Comment Search & Pattern Detection
+- [x] Add comment search with keyword/phrase filtering
+- [x] Detect personal stories and testimonials in comments
+- [x] Identify product requests ("I want that", "needs to be a tshirt", "make a course")
+- [x] Find pain points and problems mentioned
+- [x] Extract funny moments and viral potential comments
+- [x] Highlight high-engagement comments (likes, replies)
+- [x] Tag comments by category (story, request, pain point, humor, testimonial)
+
+### Google Gemini AI Integration
+- [x] Set up Gemini API integration
+- [ ] Analyze psychographic profiles from comments
+- [ ] Identify demographic patterns
+- [ ] Detect personality tendencies (Enneagram, MBTI, DISC, Kolbe, attachment style, love language)
+- [ ] Generate audience persona summaries
+- [ ] Suggest optimal offer types based on audience insights
+
+### Marketing Canvas Workspace
+- [x] Create interactive canvas page
+- [x] Add comment search results to canvas
+- [x] Generate advertorials from personal stories
+- [x] Create video sales letter (VSL) scripts
+- [x] Generate UGC video scenarios
+- [x] Build ebook outlines from insights
+- [x] Create course structure suggestions
+- [x] Generate ad copy variations
+- [x] Build sales page copy
+- [x] Create product offer recommendations
+- [x] Add custom prompt input for AI generation
+
+### Project Management System
+- [x] Create projects database table
+- [x] Create folders database table
+- [x] Create tags database table
+- [x] Build project creation and editing UI
+- [x] Implement folder organization
+- [x] Add tagging system with clickable tags
+- [x] Save canvas states to projects
+- [x] Export project assets

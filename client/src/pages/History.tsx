@@ -18,7 +18,8 @@ import {
   FileSpreadsheet,
   Loader2,
   History as HistoryIcon,
-  AlertCircle
+  AlertCircle,
+  Brain
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
@@ -345,6 +346,17 @@ export default function History() {
                               <Download className="h-4 w-4" />
                             )}
                             Comments
+                          </Button>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            asChild
+                            className="gap-2"
+                          >
+                            <Link href={`/intelligence?analysisId=${analysis.id}`}>
+                              <Brain className="h-4 w-4" />
+                              Analyze
+                            </Link>
                           </Button>
                           
                           <AlertDialog>
