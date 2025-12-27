@@ -47,3 +47,13 @@
 - [x] Implement sorting by likes (most liked first)
 - [x] Implement sorting by date (newest/oldest first)
 - [x] Implement sorting by reply count (most replies first)
+
+## Bulk URL Input & Export Feature
+- [x] Add bulk URL textarea input (multiple URLs, one per line)
+- [x] Parse multiple playlist/video URLs
+- [x] Fetch top 100 comments per video automatically
+- [x] Display video metadata with comment counts
+- [x] Show comment text content for each video
+- [x] Add CSV download for all comments with video metadata
+- [x] Add Google Sheets export integration
+- [x] Streamline UI for bulk processing workflow

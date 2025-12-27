@@ -2,58 +2,82 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
-import { ArrowRight, Play, MessageSquare, BarChart3, Download, Search, Loader2 } from "lucide-react";
+import { ArrowRight, Play, MessageSquare, BarChart3, Download, Search, Loader2, List, FileText } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function Home() {
   const [url, setUrl] = useState("");
+  const [bulkUrls, setBulkUrls] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [inputMode, setInputMode] = useState<"single" | "bulk">("bulk");
   const [, setLocation] = useLocation();
   const { user, isAuthenticated } = useAuth();
 
   const parseUrl = trpc.youtube.parseUrl.useQuery(
     { url },
-    { enabled: url.length > 5 }
+    { enabled: url.length > 5 && inputMode === "single" }
   );
+
+  // Parse bulk URLs to count valid entries
+  const parseBulkUrls = () => {
+    const lines = bulkUrls.split("\n").filter(line => line.trim().length > 0);
+    return lines;
+  };
+
+  const bulkUrlCount = parseBulkUrls().length;
 
   const handleAnalyze = () => {
     if (!apiKey.trim()) {
       alert("Please enter your YouTube API key");
       return;
     }
-    if (parseUrl.data?.type === "playlist_id") {
-      setLocation(`/analyze?playlist=${parseUrl.data.value}&key=${encodeURIComponent(apiKey)}`);
-    } else if (parseUrl.data?.type === "video_id") {
-      setLocation(`/video?id=${parseUrl.data.value}&key=${encodeURIComponent(apiKey)}`);
-    } else if (parseUrl.data?.type === "channel_id" || parseUrl.data?.type === "channel_handle") {
-      setLocation(`/channel?id=${parseUrl.data.value}&key=${encodeURIComponent(apiKey)}`);
+
+    if (inputMode === "bulk") {
+      const urls = parseBulkUrls();
+      if (urls.length === 0) {
+        alert("Please enter at least one URL");
+        return;
+      }
+      // Encode the bulk URLs and navigate to bulk analyze page
+      const encodedUrls = encodeURIComponent(urls.join("\n"));
+      setLocation(`/bulk-analyze?urls=${encodedUrls}&key=${encodeURIComponent(apiKey)}`);
+    } else {
+      if (parseUrl.data?.type === "playlist_id") {
+        setLocation(`/analyze?playlist=${parseUrl.data.value}&key=${encodeURIComponent(apiKey)}`);
+      } else if (parseUrl.data?.type === "video_id") {
+        setLocation(`/video?id=${parseUrl.data.value}&key=${encodeURIComponent(apiKey)}`);
+      } else if (parseUrl.data?.type === "channel_id" || parseUrl.data?.type === "channel_handle") {
+        setLocation(`/channel?id=${parseUrl.data.value}&key=${encodeURIComponent(apiKey)}`);
+      }
     }
   };
 
   const features = [
     {
-      icon: Play,
-      title: "Playlist Analysis",
-      description: "Extract metadata from entire playlists including video counts, durations, and engagement metrics.",
+      icon: List,
+      title: "Bulk URL Processing",
+      description: "Enter multiple playlist or video URLs at once to analyze them all in a single batch.",
     },
     {
       icon: MessageSquare,
-      title: "Comment Gathering",
-      description: "Collect and analyze comments from videos with author information and engagement data.",
+      title: "Top 100 Comments",
+      description: "Automatically fetch the top 100 comments from each video with full metadata.",
     },
     {
       icon: BarChart3,
-      title: "Data Visualization",
-      description: "View statistics and trends across your playlist with interactive charts and tables.",
+      title: "Video Metrics",
+      description: "Get complete video metadata including views, likes, duration, and comment counts.",
     },
     {
       icon: Download,
-      title: "Export Options",
-      description: "Export your data as JSON or CSV for further analysis in spreadsheets or other tools.",
+      title: "Export to CSV/Sheets",
+      description: "Download all data as CSV or export directly to Google Sheets for easy analysis.",
     },
   ];
 
@@ -95,15 +119,15 @@ export default function Home() {
               transition={{ duration: 0.6 }}
             >
               <h1 className="text-balance">
-                Analyze
+                Bulk Analyze
                 <br />
                 <span className="text-primary">YouTube</span>
                 <br />
-                Playlists
+                Comments
               </h1>
               <div className="w-24 h-1 bg-primary mt-6 mb-8" />
               <p className="text-xl md:text-2xl text-muted-foreground max-w-lg leading-relaxed">
-                Extract video metadata, gather comments, and export data from any YouTube playlist for analysis.
+                Enter multiple URLs, fetch top 100 comments per video, and export everything to CSV or Google Sheets.
               </p>
             </motion.div>
 
@@ -117,30 +141,64 @@ export default function Home() {
                 <CardHeader>
                   <CardTitle className="text-2xl">Start Analysis</CardTitle>
                   <CardDescription>
-                    Enter a YouTube playlist, video, or channel URL
+                    Enter YouTube URLs to analyze videos and gather comments
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">YouTube URL</label>
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        placeholder="https://youtube.com/playlist?list=..."
-                        value={url}
-                        onChange={(e) => setUrl(e.target.value)}
-                        className="pl-10 h-12 border-2 border-foreground"
-                      />
-                    </div>
-                    {parseUrl.data && url.length > 5 && (
-                      <p className="text-sm text-muted-foreground">
-                        Detected: <span className="font-medium text-foreground">{parseUrl.data.type.replace("_", " ")}</span>
-                        {parseUrl.data.type !== "unknown" && (
-                          <span className="ml-2 text-primary">{parseUrl.data.value}</span>
+                  <Tabs value={inputMode} onValueChange={(v) => setInputMode(v as "single" | "bulk")}>
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="bulk" className="gap-2">
+                        <List className="h-4 w-4" />
+                        Bulk URLs
+                      </TabsTrigger>
+                      <TabsTrigger value="single" className="gap-2">
+                        <FileText className="h-4 w-4" />
+                        Single URL
+                      </TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="bulk" className="space-y-4 mt-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">YouTube URLs (one per line)</label>
+                        <Textarea
+                          placeholder={`https://youtube.com/playlist?list=PLxxxxx
+https://youtube.com/watch?v=xxxxx
+https://youtube.com/playlist?list=PLyyyyy`}
+                          value={bulkUrls}
+                          onChange={(e) => setBulkUrls(e.target.value)}
+                          className="min-h-[150px] border-2 border-foreground font-mono text-sm"
+                        />
+                        {bulkUrlCount > 0 && (
+                          <p className="text-sm text-muted-foreground">
+                            <span className="font-medium text-foreground">{bulkUrlCount}</span> URL{bulkUrlCount !== 1 ? "s" : ""} entered
+                          </p>
                         )}
-                      </p>
-                    )}
-                  </div>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="single" className="space-y-4 mt-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">YouTube URL</label>
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            placeholder="https://youtube.com/playlist?list=..."
+                            value={url}
+                            onChange={(e) => setUrl(e.target.value)}
+                            className="pl-10 h-12 border-2 border-foreground"
+                          />
+                        </div>
+                        {parseUrl.data && url.length > 5 && (
+                          <p className="text-sm text-muted-foreground">
+                            Detected: <span className="font-medium text-foreground">{parseUrl.data.type.replace("_", " ")}</span>
+                            {parseUrl.data.type !== "unknown" && (
+                              <span className="ml-2 text-primary">{parseUrl.data.value}</span>
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    </TabsContent>
+                  </Tabs>
 
                   <div className="space-y-2">
                     <label className="text-sm font-medium">YouTube API Key</label>
@@ -166,10 +224,14 @@ export default function Home() {
 
                   <Button
                     onClick={handleAnalyze}
-                    disabled={!parseUrl.data || parseUrl.data.type === "unknown" || !apiKey}
+                    disabled={
+                      (inputMode === "single" && (!parseUrl.data || parseUrl.data.type === "unknown")) ||
+                      (inputMode === "bulk" && bulkUrlCount === 0) ||
+                      !apiKey
+                    }
                     className="w-full h-12 text-lg font-semibold"
                   >
-                    Analyze
+                    {inputMode === "bulk" ? `Analyze ${bulkUrlCount} URL${bulkUrlCount !== 1 ? "s" : ""}` : "Analyze"}
                     <ArrowRight className="ml-2 h-5 w-5" />
                   </Button>
                 </CardContent>
@@ -193,7 +255,7 @@ export default function Home() {
           >
             <h2 className="mb-4">Features</h2>
             <p className="text-xl text-muted-foreground mb-12 max-w-2xl">
-              Powerful tools for YouTube content analysis, inspired by the best open-source projects.
+              Powerful tools for bulk YouTube comment analysis and data export.
             </p>
           </motion.div>
 
@@ -235,9 +297,9 @@ export default function Home() {
                     1
                   </div>
                   <div>
-                    <h3 className="text-xl font-semibold mb-2">Enter URL</h3>
+                    <h3 className="text-xl font-semibold mb-2">Enter URLs</h3>
                     <p className="text-muted-foreground">
-                      Paste any YouTube playlist, video, or channel URL into the analyzer.
+                      Paste multiple YouTube playlist or video URLs, one per line.
                     </p>
                   </div>
                 </div>
@@ -247,9 +309,9 @@ export default function Home() {
                     2
                   </div>
                   <div>
-                    <h3 className="text-xl font-semibold mb-2">Fetch Data</h3>
+                    <h3 className="text-xl font-semibold mb-2">Fetch Comments</h3>
                     <p className="text-muted-foreground">
-                      We use the YouTube Data API to gather metadata, statistics, and comments.
+                      We automatically fetch the top 100 comments from each video with full metadata.
                     </p>
                   </div>
                 </div>
@@ -259,9 +321,9 @@ export default function Home() {
                     3
                   </div>
                   <div>
-                    <h3 className="text-xl font-semibold mb-2">Analyze & Export</h3>
+                    <h3 className="text-xl font-semibold mb-2">Export Data</h3>
                     <p className="text-muted-foreground">
-                      View insights, search through comments, and export data in your preferred format.
+                      Download everything as CSV or export directly to Google Sheets.
                     </p>
                   </div>
                 </div>

@@ -207,6 +207,44 @@ export const appRouter = router({
         }
       }),
 
+    // Get single video details
+    getVideoDetails: publicProcedure
+      .input(z.object({
+        videoId: z.string(),
+        apiKey: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        youtubeClient.setApiKey(input.apiKey);
+        
+        const response = await youtubeClient.getVideos([input.videoId]);
+        
+        if (!response.items || response.items.length === 0) {
+          throw new Error("Video not found");
+        }
+
+        const video = response.items[0];
+        
+        return {
+          id: video.id,
+          title: video.snippet.title,
+          description: video.snippet.description,
+          channelId: video.snippet.channelId,
+          channelTitle: video.snippet.channelTitle,
+          thumbnailUrl: video.snippet.thumbnails.medium?.url ||
+            video.snippet.thumbnails.default?.url,
+          duration: video.contentDetails?.duration || "",
+          durationFormatted: formatDuration(video.contentDetails?.duration || ""),
+          viewCount: parseInt(video.statistics?.viewCount || "0"),
+          viewCountFormatted: formatCount(parseInt(video.statistics?.viewCount || "0")),
+          likeCount: parseInt(video.statistics?.likeCount || "0"),
+          likeCountFormatted: formatCount(parseInt(video.statistics?.likeCount || "0")),
+          commentCount: parseInt(video.statistics?.commentCount || "0"),
+          commentCountFormatted: formatCount(parseInt(video.statistics?.commentCount || "0")),
+          publishedAt: video.snippet.publishedAt,
+          tags: video.snippet.tags || [],
+        };
+      }),
+
     // Batch fetch comments for a single video (all pages)
     getBatchVideoComments: publicProcedure
       .input(z.object({
