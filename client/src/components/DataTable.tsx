@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import {
   Table,
   TableBody,
@@ -27,10 +27,12 @@ export interface Column<T> {
   header: string;
   accessor: keyof T | ((row: T) => any);
   sortable?: boolean;
-  width?: string;
-  minWidth?: string;
+  width?: number; // Changed to number for resizing
+  minWidth?: number;
+  maxWidth?: number;
   render?: (value: any, row: T) => React.ReactNode;
   align?: "left" | "center" | "right";
+  resizable?: boolean;
 }
 
 interface DataTableProps<T> {
@@ -47,6 +49,7 @@ interface DataTableProps<T> {
   className?: string;
   stickyHeader?: boolean;
   compact?: boolean;
+  storageKey?: string; // Key for localStorage to persist column widths
 }
 
 type SortDirection = "asc" | "desc" | null;
@@ -65,10 +68,98 @@ export function DataTable<T extends Record<string, any>>({
   className,
   stickyHeader = true,
   compact = false,
+  storageKey,
 }: DataTableProps<T>) {
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  
+  // Column resizing state
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
+    // Load from localStorage if storageKey is provided
+    if (storageKey) {
+      const saved = localStorage.getItem(`datatable-widths-${storageKey}`);
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          // Ignore parse errors
+        }
+      }
+    }
+    // Initialize with default widths from columns
+    const widths: Record<string, number> = {};
+    columns.forEach((col) => {
+      widths[col.id] = col.width || 150;
+    });
+    return widths;
+  });
+  
+  const [resizing, setResizing] = useState<{
+    columnId: string;
+    startX: number;
+    startWidth: number;
+  } | null>(null);
+  
+  const tableRef = useRef<HTMLTableElement>(null);
+
+  // Save column widths to localStorage when they change
+  useEffect(() => {
+    if (storageKey) {
+      localStorage.setItem(`datatable-widths-${storageKey}`, JSON.stringify(columnWidths));
+    }
+  }, [columnWidths, storageKey]);
+
+  // Handle mouse move during resize
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!resizing) return;
+    
+    const column = columns.find((c) => c.id === resizing.columnId);
+    const minWidth = column?.minWidth || 50;
+    const maxWidth = column?.maxWidth || 500;
+    
+    const diff = e.clientX - resizing.startX;
+    const newWidth = Math.max(minWidth, Math.min(maxWidth, resizing.startWidth + diff));
+    
+    setColumnWidths((prev) => ({
+      ...prev,
+      [resizing.columnId]: newWidth,
+    }));
+  }, [resizing, columns]);
+
+  // Handle mouse up to end resize
+  const handleMouseUp = useCallback(() => {
+    setResizing(null);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  }, []);
+
+  // Add/remove event listeners for resizing
+  useEffect(() => {
+    if (resizing) {
+      document.addEventListener("mousemove", handleMouseMove);
+      document.addEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+    }
+    
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [resizing, handleMouseMove, handleMouseUp]);
+
+  // Start resizing a column
+  const startResize = (columnId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    setResizing({
+      columnId,
+      startX: e.clientX,
+      startWidth: columnWidths[columnId] || 150,
+    });
+  };
 
   const getValue = (row: T, accessor: keyof T | ((row: T) => any)) => {
     if (typeof accessor === "function") {
@@ -161,7 +252,7 @@ export function DataTable<T extends Record<string, any>>({
     <div className={cn("flex flex-col", className)}>
       <div className="border rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
-          <Table>
+          <Table ref={tableRef} style={{ tableLayout: "fixed" }}>
             <TableHeader className={cn(stickyHeader && "sticky top-0 z-10 bg-background")}>
               <TableRow className="bg-muted/50 hover:bg-muted/50">
                 {selectable && (
@@ -174,19 +265,20 @@ export function DataTable<T extends Record<string, any>>({
                     />
                   </TableHead>
                 )}
-                {columns.map((column) => (
+                {columns.map((column, index) => (
                   <TableHead
                     key={column.id}
                     className={cn(
-                      "font-semibold text-xs uppercase tracking-wider",
+                      "font-semibold text-xs uppercase tracking-wider relative",
                       column.sortable && "cursor-pointer select-none hover:bg-muted/80",
                       compact ? "py-2 px-3" : "py-3 px-4",
                       column.align === "center" && "text-center",
                       column.align === "right" && "text-right"
                     )}
                     style={{
-                      width: column.width,
-                      minWidth: column.minWidth,
+                      width: columnWidths[column.id] || column.width || 150,
+                      minWidth: column.minWidth || 50,
+                      maxWidth: column.maxWidth || 500,
                     }}
                     onClick={() => handleSort(column.id)}
                   >
@@ -212,6 +304,19 @@ export function DataTable<T extends Record<string, any>>({
                         </span>
                       )}
                     </div>
+                    {/* Column resize handle */}
+                    {(column.resizable !== false) && index < columns.length - 1 && (
+                      <div
+                        className={cn(
+                          "absolute right-0 top-0 h-full w-1 cursor-col-resize",
+                          "hover:bg-primary/50 active:bg-primary",
+                          "transition-colors",
+                          resizing?.columnId === column.id && "bg-primary"
+                        )}
+                        onMouseDown={(e) => startResize(column.id, e)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    )}
                   </TableHead>
                 ))}
               </TableRow>
@@ -263,8 +368,13 @@ export function DataTable<T extends Record<string, any>>({
                             className={cn(
                               compact ? "py-2 px-3" : "py-3 px-4",
                               column.align === "center" && "text-center",
-                              column.align === "right" && "text-right"
+                              column.align === "right" && "text-right",
+                              "overflow-hidden text-ellipsis"
                             )}
+                            style={{
+                              width: columnWidths[column.id] || column.width || 150,
+                              maxWidth: columnWidths[column.id] || column.width || 150,
+                            }}
                           >
                             {column.render ? column.render(value, row) : value}
                           </TableCell>

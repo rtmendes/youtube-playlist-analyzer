@@ -1,6 +1,13 @@
 import { Link, useLocation } from "wouter";
-import { ChevronRight, Home } from "lucide-react";
+import { ChevronRight, Home, ChevronLeft, ArrowLeft, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useNavigationHistory } from "@/contexts/NavigationHistory";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export interface BreadcrumbItem {
   label: string;
@@ -12,17 +19,72 @@ interface BreadcrumbProps {
   items: BreadcrumbItem[];
   className?: string;
   showHome?: boolean;
+  showNavigation?: boolean;
 }
 
-export function Breadcrumb({ items, className, showHome = true }: BreadcrumbProps) {
+export function Breadcrumb({ items, className, showHome = true, showNavigation = true }: BreadcrumbProps) {
   const [location] = useLocation();
+  const { canGoBack, canGoForward, goBack, goForward, getBackLabel, getForwardLabel } = useNavigationHistory();
 
   const allItems: BreadcrumbItem[] = showHome
     ? [{ label: "Home", href: "/", icon: <Home className="h-4 w-4" /> }, ...items]
     : items;
 
+  const backLabel = getBackLabel();
+  const forwardLabel = getForwardLabel();
+
   return (
-    <nav aria-label="Breadcrumb" className={cn("flex items-center", className)}>
+    <nav aria-label="Breadcrumb" className={cn("flex items-center gap-2", className)}>
+      {/* Back/Forward Navigation Buttons */}
+      {showNavigation && (
+        <div className="flex items-center gap-1 mr-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "h-8 w-8 rounded-md",
+                  canGoBack 
+                    ? "hover:bg-muted text-foreground" 
+                    : "text-muted-foreground/40 cursor-not-allowed"
+                )}
+                onClick={goBack}
+                disabled={!canGoBack}
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {canGoBack ? `Back to ${backLabel}` : "No previous page"}
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "h-8 w-8 rounded-md",
+                  canGoForward 
+                    ? "hover:bg-muted text-foreground" 
+                    : "text-muted-foreground/40 cursor-not-allowed"
+                )}
+                onClick={goForward}
+                disabled={!canGoForward}
+              >
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {canGoForward ? `Forward to ${forwardLabel}` : "No next page"}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      )}
+
+      {/* Breadcrumb Trail */}
       <ol className="flex items-center gap-1 text-sm">
         {allItems.map((item, index) => {
           const isLast = index === allItems.length - 1;
@@ -141,6 +203,7 @@ interface PageHeaderProps {
   breadcrumbs?: BreadcrumbItem[];
   actions?: React.ReactNode;
   className?: string;
+  showNavigation?: boolean;
 }
 
 export function PageHeader({
@@ -149,6 +212,7 @@ export function PageHeader({
   breadcrumbs,
   actions,
   className,
+  showNavigation = true,
 }: PageHeaderProps) {
   const autoBreadcrumbs = useBreadcrumbs();
   const items = breadcrumbs || autoBreadcrumbs;
@@ -156,7 +220,7 @@ export function PageHeader({
   return (
     <div className={cn("space-y-4", className)}>
       {items.length > 0 && (
-        <Breadcrumb items={items} />
+        <Breadcrumb items={items} showNavigation={showNavigation} />
       )}
       <div className="flex items-start justify-between gap-4">
         <div>

@@ -182,7 +182,7 @@ export default function Videos() {
       id: "thumbnail",
       header: "",
       accessor: "thumbnailUrl",
-      width: "80px",
+      width: 80,
       render: (value, row) =>
         value ? (
           <ThumbnailCell src={value} alt={row.title} size="sm" />
@@ -197,7 +197,7 @@ export default function Videos() {
       header: "Title",
       accessor: "title",
       sortable: true,
-      minWidth: "250px",
+      minWidth: 250,
       render: (value, row) => (
         <div className="flex flex-col gap-0.5">
           <LinkCell
@@ -215,7 +215,7 @@ export default function Videos() {
       header: "Channel",
       accessor: "channelTitle",
       sortable: true,
-      minWidth: "150px",
+      minWidth: 150,
       render: (value, row) => (
         <Link
           href={`/channel/${row.channelId || row.channelTitle}`}
@@ -231,7 +231,7 @@ export default function Videos() {
       header: "Views",
       accessor: "viewCount",
       sortable: true,
-      width: "100px",
+      width: 100,
       align: "right",
       render: (value) => <NumberCell value={value} />,
     },
@@ -240,7 +240,7 @@ export default function Videos() {
       header: "Likes",
       accessor: "likeCount",
       sortable: true,
-      width: "100px",
+      width: 100,
       align: "right",
       render: (value) => <NumberCell value={value} />,
     },
@@ -249,7 +249,7 @@ export default function Videos() {
       header: "Comments",
       accessor: "commentCount",
       sortable: true,
-      width: "100px",
+      width: 100,
       align: "right",
       render: (value) => <NumberCell value={value} />,
     },
@@ -258,7 +258,7 @@ export default function Videos() {
       header: "Duration",
       accessor: "duration",
       sortable: true,
-      width: "90px",
+      width: 90,
       align: "center",
       render: (value) => (
         <span className="font-mono text-sm">{formatDuration(value)}</span>
@@ -269,7 +269,7 @@ export default function Videos() {
       header: "Published",
       accessor: "publishedAt",
       sortable: true,
-      width: "120px",
+      width: 120,
       render: (value) =>
         value ? <DateCell value={value} format="relative" /> : <span>-</span>,
     },
@@ -277,7 +277,7 @@ export default function Videos() {
       id: "actions",
       header: "",
       accessor: "id",
-      width: "50px",
+      width: 50,
       render: (_, row) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -504,6 +504,7 @@ export default function Videos() {
             }
             emptyMessage="No videos found. Run an analysis to see videos here."
             compact
+            storageKey="videos-list"
           />
         </div>
       ) : (

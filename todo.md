@@ -273,7 +273,7 @@
 - [x] Add list view option for comments (tabular rows with all info)
 - [x] Make list view the default view
 - [x] Add view toggle (list/grid) in page header
-- [ ] Support column resizing and reordering
+- [x] Support column resizing and reordering
 - [x] Add row selection with checkboxes
 
 ### Channel Detail Page
@@ -286,6 +286,21 @@
 ### Breadcrumb Navigation
 - [x] Create reusable Breadcrumb component
 - [x] Add breadcrumbs to all pages
-- [ ] Track navigation history for back navigation
+- [x] Track navigation history for back navigation
 - [x] Show current location in app hierarchy
 - [x] Support dynamic breadcrumbs based on context (e.g., Channel > Video)
+
+## Column Resizing & In-App Navigation
+
+### Column Resizing
+- [x] Add draggable column borders to DataTable
+- [x] Store column widths in localStorage for persistence
+- [x] Add minimum/maximum column width constraints
+- [x] Show resize cursor on hover over column borders
+
+### In-App Navigation History
+- [x] Create NavigationHistory context to track visited pages
+- [x] Add back/forward buttons to breadcrumb component
+- [x] Store navigation stack with page state (filters, scroll position)
+- [ ] Enable keyboard shortcuts (Alt+Left/Right) for back/forward
+- [ ] Persist navigation history across page refreshes

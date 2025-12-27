@@ -174,7 +174,7 @@ export default function Channel() {
       id: "thumbnail",
       header: "",
       accessor: "thumbnailUrl",
-      width: "80px",
+      width: 80,
       render: (value, row) =>
         value ? (
           <ThumbnailCell src={value} alt={row.title} size="sm" />
@@ -189,7 +189,7 @@ export default function Channel() {
       header: "Title",
       accessor: "title",
       sortable: true,
-      minWidth: "300px",
+      minWidth: 300,
       render: (value, row) => (
         <div className="flex flex-col gap-0.5">
           <LinkCell
@@ -206,7 +206,7 @@ export default function Channel() {
       header: "Views",
       accessor: "viewCount",
       sortable: true,
-      width: "100px",
+      width: 100,
       align: "right",
       render: (value) => <NumberCell value={value} />,
     },
@@ -215,7 +215,7 @@ export default function Channel() {
       header: "Likes",
       accessor: "likeCount",
       sortable: true,
-      width: "100px",
+      width: 100,
       align: "right",
       render: (value) => <NumberCell value={value} />,
     },
@@ -224,7 +224,7 @@ export default function Channel() {
       header: "Comments",
       accessor: "commentCount",
       sortable: true,
-      width: "100px",
+      width: 100,
       align: "right",
       render: (value) => <NumberCell value={value} />,
     },
@@ -233,7 +233,7 @@ export default function Channel() {
       header: "Duration",
       accessor: "duration",
       sortable: true,
-      width: "90px",
+      width: 90,
       align: "center",
       render: (value) => (
         <span className="font-mono text-sm">{formatDuration(value)}</span>
@@ -244,7 +244,7 @@ export default function Channel() {
       header: "Published",
       accessor: "publishedAt",
       sortable: true,
-      width: "120px",
+      width: 120,
       render: (value) =>
         value ? <DateCell value={value} format="relative" /> : <span>-</span>,
     },
@@ -506,6 +506,7 @@ export default function Channel() {
               }
               emptyMessage="No videos found for this channel."
               compact
+              storageKey="channel-videos"
             />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
