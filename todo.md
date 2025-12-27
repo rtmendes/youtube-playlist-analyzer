@@ -185,3 +185,33 @@
 - [ ] Breadcrumb navigation
 - [ ] Recent items section
 - [ ] Pinned items section
+
+## Global Search & Enhanced Interactions
+
+### Global Search
+- [x] Create global search component in sidebar
+- [x] Search across projects by name and description
+- [x] Search across folders by name
+- [x] Search across tags
+- [x] Search across videos by title and channel
+- [x] Search across comments by text content
+- [x] Display unified search results with categories
+- [x] Add keyboard shortcut (Cmd/Ctrl+K) to open search
+- [x] Show recent searches
+
+### Multi-Select Functionality
+- [ ] Add shift+click for range selection
+- [ ] Add Cmd/Ctrl+click for individual toggle
+- [ ] Add "Select All" checkbox in headers
+- [ ] Show selection count in toolbar
+- [ ] Enable bulk actions on selected items (tag, move, delete)
+- [ ] Add selection persistence across page navigation
+
+### Drag and Drop
+- [ ] Install and configure dnd-kit library
+- [ ] Enable drag-and-drop folder reordering in sidebar
+- [ ] Enable drag items into folders
+- [ ] Enable drag folders into other folders (nesting)
+- [ ] Add visual drop indicators
+- [ ] Implement drag handle for items
+- [ ] Add keyboard accessibility for drag operations

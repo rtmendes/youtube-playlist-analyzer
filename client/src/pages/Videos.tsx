@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
@@ -51,6 +51,8 @@ import {
   Star,
   FolderPlus,
 } from "lucide-react";
+import { useMultiSelect } from "@/hooks/useMultiSelect";
+import { SelectionToolbar } from "@/components/SelectionToolbar";
 
 type SortField = "title" | "views" | "likes" | "comments" | "duration" | "publishedAt";
 type SortOrder = "asc" | "desc";
@@ -76,7 +78,7 @@ export default function Videos() {
   const [sortField, setSortField] = useState<SortField>("publishedAt");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [selectedVideos, setSelectedVideos] = useState<Set<number>>(new Set());
+
   const [showTagDialog, setShowTagDialog] = useState(false);
   const [newTagName, setNewTagName] = useState("");
 
@@ -137,6 +139,9 @@ export default function Videos() {
     return videos;
   }, [analysisData]);
 
+  // Multi-select hook
+  const getVideoId = useCallback((video: VideoItem) => String(video.id), []);
+  
   // Filter and sort videos
   const filteredVideos = useMemo(() => {
     let result = [...allVideos];
@@ -188,25 +193,21 @@ export default function Videos() {
     return result;
   }, [allVideos, searchQuery, selectedTags, sortField, sortOrder]);
 
-  const toggleVideoSelection = (videoId: number) => {
-    setSelectedVideos((prev) => {
-      const next = new Set(prev);
-      if (next.has(videoId)) {
-        next.delete(videoId);
-      } else {
-        next.add(videoId);
-      }
-      return next;
-    });
-  };
-
-  const selectAllVideos = () => {
-    if (selectedVideos.size === filteredVideos.length) {
-      setSelectedVideos(new Set());
-    } else {
-      setSelectedVideos(new Set(filteredVideos.map((v) => v.id)));
-    }
-  };
+  // Initialize multi-select with filtered videos
+  const {
+    selectedIds,
+    isSelected,
+    toggle,
+    selectAll,
+    deselectAll,
+    isAllSelected,
+    isSomeSelected,
+    selectedCount,
+    handleClick,
+  } = useMultiSelect({
+    items: filteredVideos,
+    getItemId: getVideoId,
+  });
 
   const formatNumber = (num: number): string => {
     if (num >= 1000000) return (num / 1000000).toFixed(1) + "M";
@@ -258,22 +259,8 @@ export default function Videos() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {selectedVideos.size > 0 && (
-              <>
-                <Badge variant="secondary">{selectedVideos.size} selected</Badge>
-                <Button variant="outline" size="sm">
-                  <Tag className="h-4 w-4 mr-2" />
-                  Add Tags
-                </Button>
-                <Button variant="outline" size="sm">
-                  <FolderPlus className="h-4 w-4 mr-2" />
-                  Move to Folder
-                </Button>
-                <Button variant="outline" size="sm" className="text-destructive">
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete
-                </Button>
-              </>
+            {selectedCount > 0 && (
+              <Badge variant="secondary">{selectedCount} selected</Badge>
             )}
           </div>
         </div>
@@ -415,28 +402,38 @@ export default function Videos() {
               {/* Select All */}
               <div className="flex items-center gap-2 px-2 py-1">
                 <Checkbox
-                  checked={
-                    selectedVideos.size === filteredVideos.length &&
-                    filteredVideos.length > 0
-                  }
-                  onCheckedChange={selectAllVideos}
+                  checked={isAllSelected}
+                  ref={(el) => {
+                    if (el) (el as any).indeterminate = isSomeSelected;
+                  }}
+                  onCheckedChange={(checked) => {
+                    if (checked) selectAll();
+                    else deselectAll();
+                  }}
                 />
-                <span className="text-sm text-muted-foreground">Select all</span>
+                <span className="text-sm text-muted-foreground">
+                  {isAllSelected ? "Deselect all" : "Select all"}
+                </span>
+                <span className="text-xs text-muted-foreground ml-2">
+                  (Shift+click for range, Cmd/Ctrl+click to toggle)
+                </span>
               </div>
 
               {/* Video Items */}
               {filteredVideos.map((video) => (
                 <Card
                   key={video.id}
-                  className={`transition-colors ${
-                    selectedVideos.has(video.id) ? "border-primary bg-primary/5" : ""
+                  className={`transition-colors cursor-pointer ${
+                    isSelected(String(video.id)) ? "border-primary bg-primary/5" : "hover:bg-muted/50"
                   }`}
+                  onClick={(e) => handleClick(String(video.id), e)}
                 >
                   <CardContent className="p-3">
                     <div className="flex items-start gap-3">
                       <Checkbox
-                        checked={selectedVideos.has(video.id)}
-                        onCheckedChange={() => toggleVideoSelection(video.id)}
+                        checked={isSelected(String(video.id))}
+                        onCheckedChange={() => toggle(String(video.id))}
+                        onClick={(e) => e.stopPropagation()}
                       />
                       
                       {/* Thumbnail */}
@@ -596,6 +593,17 @@ export default function Videos() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Selection Toolbar */}
+      <SelectionToolbar
+        selectedCount={selectedCount}
+        onClearSelection={deselectAll}
+        onTag={() => toast.info("Tag feature coming soon")}
+        onMoveToFolder={() => toast.info("Move to folder feature coming soon")}
+        onDelete={() => toast.info("Delete feature coming soon")}
+        onFavorite={() => toast.info("Favorite feature coming soon")}
+        onExport={() => toast.info("Export feature coming soon")}
+      />
     </div>
   );
 }

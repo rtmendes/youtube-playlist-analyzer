@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Sidebar } from "./Sidebar";
+import { GlobalSearch, useGlobalSearch } from "./GlobalSearch";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -7,6 +8,7 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const { isOpen: searchOpen, setIsOpen: setSearchOpen } = useGlobalSearch();
 
   // Load sidebar state from localStorage
   useEffect(() => {
@@ -27,10 +29,15 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar isCollapsed={sidebarCollapsed} onToggle={handleToggleSidebar} />
+      <Sidebar 
+        isCollapsed={sidebarCollapsed} 
+        onToggle={handleToggleSidebar}
+        onOpenSearch={() => setSearchOpen(true)}
+      />
       <main className="flex-1 overflow-auto">
         {children}
       </main>
+      <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   );
 }

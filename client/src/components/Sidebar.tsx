@@ -1,4 +1,22 @@
 import { useState, useEffect } from "react";
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Link, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -79,17 +97,54 @@ interface FolderItem {
 interface SidebarProps {
   isCollapsed: boolean;
   onToggle: () => void;
+  onOpenSearch?: () => void;
 }
 
-export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
+export function Sidebar({ isCollapsed, onToggle, onOpenSearch }: SidebarProps) {
   const [location] = useLocation();
   const { user, loading: authLoading } = useAuth();
-  const [searchQuery, setSearchQuery] = useState("");
+  
   const [expandedFolders, setExpandedFolders] = useState<Set<number>>(new Set());
   const [editingFolder, setEditingFolder] = useState<FolderItem | null>(null);
   const [newFolderName, setNewFolderName] = useState("");
   const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
   const [parentFolderForNew, setParentFolderForNew] = useState<number | null>(null);
+  const [activeId, setActiveId] = useState<number | null>(null);
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as number);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveId(null);
+
+    if (!over || active.id === over.id) return;
+
+    // Find the dragged folder and target folder
+    const draggedId = active.id as number;
+    const targetId = over.id as number;
+
+    // Update folder's parent to move it
+    updateFolderMutation.mutate({
+      id: draggedId,
+      parentFolderId: targetId === 0 ? null : targetId,
+    });
+
+    toast.success("Folder moved");
+  };
 
   // Fetch folders
   const { data: foldersData, refetch: refetchFolders } = trpc.folders.list.useQuery(
@@ -191,21 +246,38 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     { icon: Trash2, label: "Trash", href: "/trash", section: "other" },
   ];
 
-  const renderFolderItem = (folder: FolderItem, depth: number = 0) => {
+  // Sortable folder item component
+  const SortableFolderItem = ({ folder, depth = 0 }: { folder: FolderItem; depth?: number }) => {
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+      isDragging,
+    } = useSortable({ id: folder.id });
+
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.5 : 1,
+    };
+
     const isExpanded = expandedFolders.has(folder.id);
     const hasChildren = folder.children && folder.children.length > 0;
 
     return (
-      <div key={folder.id}>
+      <div ref={setNodeRef} style={style} {...attributes}>
         <ContextMenu>
           <ContextMenuTrigger>
             <div
               className={cn(
-                "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-accent transition-colors",
-                "text-sm text-muted-foreground hover:text-foreground"
+                "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-grab hover:bg-accent transition-colors",
+                "text-sm text-muted-foreground hover:text-foreground",
+                isDragging && "cursor-grabbing bg-accent"
               )}
               style={{ paddingLeft: `${depth * 12 + 8}px` }}
-              onClick={() => hasChildren && toggleFolder(folder.id)}
+              {...listeners}
             >
               {hasChildren ? (
                 <button className="p-0.5 hover:bg-muted rounded">
@@ -305,7 +377,9 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
 
         {hasChildren && isExpanded && (
           <div>
-            {folder.children!.map((child) => renderFolderItem(child, depth + 1))}
+            {folder.children!.map((child) => (
+              <SortableFolderItem key={child.id} folder={child} depth={depth + 1} />
+            ))}
           </div>
         )}
       </div>
@@ -361,17 +435,18 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           </Button>
         </div>
 
-        {/* Search */}
+        {/* Search - Opens Global Search Dialog */}
         <div className="p-3">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search..."
-              className="pl-8 h-8 bg-muted/50"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
+          <button
+            onClick={() => onOpenSearch?.()}
+            className="w-full flex items-center gap-2 px-2.5 h-8 bg-muted/50 rounded-md text-sm text-muted-foreground hover:bg-muted transition-colors"
+          >
+            <Search className="h-4 w-4" />
+            <span>Search...</span>
+            <kbd className="ml-auto pointer-events-none hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
+              ⌘K
+            </kbd>
+          </button>
         </div>
 
         <ScrollArea className="flex-1">
@@ -452,9 +527,33 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                   </button>
                 </div>
                 {folderTree.length > 0 ? (
-                  <div className="mt-1">
-                    {folderTree.map((folder) => renderFolderItem(folder))}
-                  </div>
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragStart={handleDragStart}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <SortableContext
+                      items={folderTree.map((f) => f.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="mt-1">
+                        {folderTree.map((folder) => (
+                          <SortableFolderItem key={folder.id} folder={folder} />
+                        ))}
+                      </div>
+                    </SortableContext>
+                    <DragOverlay>
+                      {activeId ? (
+                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-accent text-accent-foreground text-sm shadow-lg">
+                          <Folder className="h-4 w-4" />
+                          <span>
+                            {foldersData?.find((f: any) => f.id === activeId)?.name || "Folder"}
+                          </span>
+                        </div>
+                      ) : null}
+                    </DragOverlay>
+                  </DndContext>
                 ) : (
                   <div className="px-2 py-2 text-xs text-muted-foreground/60 italic">
                     No folders yet
