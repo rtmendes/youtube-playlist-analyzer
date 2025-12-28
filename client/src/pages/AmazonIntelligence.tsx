@@ -117,17 +117,21 @@ export default function AmazonIntelligence() {
 
     setIsLoading(true);
     try {
-      // Parse URL to get ASIN
-      const response = await fetch(`/api/trpc/amazon.parseUrl?input=${encodeURIComponent(JSON.stringify({ url: urlInput }))}`);
+      // Parse URL to get ASIN using proper TRPC batch format
+      const batchInput = encodeURIComponent(JSON.stringify({ "0": { json: { url: urlInput } } }));
+      const response = await fetch(`/api/trpc/amazon.parseUrl?batch=1&input=${batchInput}`);
       const data = await response.json();
       
-      if (!data.result?.data?.asin) {
+      // TRPC batch response is an array
+      const result = Array.isArray(data) ? data[0]?.result?.data?.json : data.result?.data;
+      
+      if (!result?.asin) {
         toast.error("Could not extract ASIN from URL. Please enter a valid Amazon product URL or ASIN.");
         setIsLoading(false);
         return;
       }
 
-      const asin = data.result.data.asin;
+      const asin = result.asin;
 
       // Fetch product details
       const productResult = await getProductMutation.mutateAsync({ asin });

@@ -434,8 +434,11 @@
 - [ ] Add schedule indicator badge on playlist cards in sidebar
 
 ### Amazon Research Bug Fix
-- [ ] Fix Amazon search not returning results
-- [ ] Ensure sample data is returned when no API key configured
+- [x] Fix Amazon search not returning results
+- [x] Ensure sample data is returned when no API key configured
+- [x] Debug getProduct and getReviews mutations
+- [x] Verify sample data generation works correctly
+- [x] Test end-to-end product analysis flow
 
 ### Reddit Research Bug Fix
 - [x] Fix Reddit 403 error - API requires authentication
