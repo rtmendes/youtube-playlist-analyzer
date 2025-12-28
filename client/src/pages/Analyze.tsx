@@ -117,6 +117,12 @@ export default function Analyze() {
   const [allCommentSort, setAllCommentSort] = useState<string>("newest");
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState(() => {
+    // Check localStorage for auto-save preference
+    const saved = localStorage.getItem("youtube_auto_save_playlists");
+    return saved === "true";
+  });
+  const [hasAutoSaved, setHasAutoSaved] = useState(false);
 
   // Fetch playlist info
   const playlistMutation = trpc.youtube.getPlaylist.useMutation();
@@ -139,6 +145,68 @@ export default function Analyze() {
       setIsSaved(true);
     }
   }, [savedPlaylistQuery.data]);
+
+  // Auto-save playlist after videos are loaded
+  useEffect(() => {
+    const performAutoSave = async () => {
+      // Only auto-save if:
+      // 1. Auto-save is enabled
+      // 2. User is authenticated
+      // 3. Videos have been loaded
+      // 4. Playlist data is available
+      // 5. Not already saved
+      // 6. Haven't already auto-saved this session
+      if (
+        autoSaveEnabled &&
+        isAuthenticated &&
+        videos.length > 0 &&
+        playlistMutation.data &&
+        !isSaved &&
+        !hasAutoSaved &&
+        !loadingVideos
+      ) {
+        setHasAutoSaved(true);
+        try {
+          const result = await savePlaylistMutation.mutateAsync({
+            youtubePlaylistId: playlistId,
+            title: playlistMutation.data.title || "Untitled Playlist",
+            description: playlistMutation.data.description || "",
+            channelTitle: playlistMutation.data.channelTitle || "",
+            thumbnailUrl: playlistMutation.data.thumbnailUrl || "",
+            videoCount: videos.length,
+          });
+
+          // Save videos to the playlist
+          if (videos.length > 0) {
+            await saveVideosMutation.mutateAsync({
+              savedPlaylistId: result.id,
+              videos: videos.map(v => ({
+                videoYoutubeId: v.id,
+                videoTitle: v.title,
+                thumbnailUrl: v.thumbnailUrl,
+                viewCount: v.viewCount,
+                likeCount: v.likeCount,
+                commentCount: v.commentCount,
+                publishedAt: new Date(v.publishedAt),
+              })),
+            });
+          }
+
+          setIsSaved(true);
+          toast.success("Playlist auto-saved to library!", {
+            description: "You can disable auto-save in the header.",
+            duration: 4000,
+          });
+          savedPlaylistQuery.refetch();
+        } catch (error) {
+          console.error("Auto-save failed:", error);
+          // Don't show error toast for auto-save to avoid confusion
+        }
+      }
+    };
+
+    performAutoSave();
+  }, [videos.length, playlistMutation.data, autoSaveEnabled, isAuthenticated, isSaved, hasAutoSaved, loadingVideos]);
 
   // Load playlist on mount
   useEffect(() => {
@@ -523,6 +591,24 @@ export default function Analyze() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* Auto-Save Toggle */}
+            {isAuthenticated && (
+              <div className="flex items-center gap-2 mr-2 px-3 py-1.5 rounded-md bg-muted/50">
+                <label className="text-xs text-muted-foreground cursor-pointer flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={autoSaveEnabled}
+                    onChange={(e) => {
+                      setAutoSaveEnabled(e.target.checked);
+                      localStorage.setItem("youtube_auto_save_playlists", e.target.checked.toString());
+                      toast.success(e.target.checked ? "Auto-save enabled" : "Auto-save disabled");
+                    }}
+                    className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                  <span>Auto-save</span>
+                </label>
+              </div>
+            )}
             {/* Save to Library Button */}
             <Button 
               variant={isSaved ? "outline" : "default"}

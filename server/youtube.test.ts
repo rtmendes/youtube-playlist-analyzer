@@ -88,6 +88,85 @@ describe("YouTube URL Parser", () => {
       expect(result.value).toBe("MrBeast");
     });
 
+    // Additional comprehensive URL format tests
+    it("should parse mobile YouTube URLs (m.youtube.com)", () => {
+      const result = parseYouTubeInput("https://m.youtube.com/watch?v=dQw4w9WgXcQ");
+      expect(result.type).toBe("video_id");
+      expect(result.value).toBe("dQw4w9WgXcQ");
+    });
+
+    it("should parse YouTube Music video URLs", () => {
+      const result = parseYouTubeInput("https://music.youtube.com/watch?v=dQw4w9WgXcQ");
+      expect(result.type).toBe("video_id");
+      expect(result.value).toBe("dQw4w9WgXcQ");
+    });
+
+    it("should parse YouTube Music playlist URLs", () => {
+      const result = parseYouTubeInput("https://music.youtube.com/playlist?list=OLAK5uy_test123");
+      expect(result.type).toBe("playlist_id");
+      expect(result.value).toBe("OLAK5uy_test123");
+    });
+
+    it("should parse youtube-nocookie.com embed URLs", () => {
+      const result = parseYouTubeInput("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ");
+      expect(result.type).toBe("video_id");
+      expect(result.value).toBe("dQw4w9WgXcQ");
+    });
+
+    it("should parse live stream URLs", () => {
+      const result = parseYouTubeInput("https://www.youtube.com/live/dQw4w9WgXcQ");
+      expect(result.type).toBe("video_id");
+      expect(result.value).toBe("dQw4w9WgXcQ");
+    });
+
+    it("should parse old-style /v/ URLs", () => {
+      const result = parseYouTubeInput("https://www.youtube.com/v/dQw4w9WgXcQ");
+      expect(result.type).toBe("video_id");
+      expect(result.value).toBe("dQw4w9WgXcQ");
+    });
+
+    it("should parse URLs with additional query parameters", () => {
+      const result = parseYouTubeInput("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=120&feature=share");
+      expect(result.type).toBe("video_id");
+      expect(result.value).toBe("dQw4w9WgXcQ");
+    });
+
+    it("should parse youtu.be URLs with query params", () => {
+      const result = parseYouTubeInput("https://youtu.be/dQw4w9WgXcQ?t=30");
+      expect(result.type).toBe("video_id");
+      expect(result.value).toBe("dQw4w9WgXcQ");
+    });
+
+    it("should parse mobile playlist URLs", () => {
+      const result = parseYouTubeInput("https://m.youtube.com/playlist?list=PLtest123");
+      expect(result.type).toBe("playlist_id");
+      expect(result.value).toBe("PLtest123");
+    });
+
+    it("should parse legacy /user/ channel URLs", () => {
+      const result = parseYouTubeInput("https://www.youtube.com/user/PewDiePie");
+      expect(result.type).toBe("channel_id");
+      expect(result.value).toBe("PewDiePie");
+    });
+
+    it("should parse /c/ custom channel URLs", () => {
+      const result = parseYouTubeInput("https://www.youtube.com/c/MrBeast");
+      expect(result.type).toBe("channel_id");
+      expect(result.value).toBe("MrBeast");
+    });
+
+    it("should parse Radio/Mix playlist IDs (RD prefix)", () => {
+      const result = parseYouTubeInput("RDdQw4w9WgXcQ");
+      expect(result.type).toBe("playlist_id");
+      expect(result.value).toBe("RDdQw4w9WgXcQ");
+    });
+
+    it("should parse RDMM playlist IDs (My Mix)", () => {
+      const result = parseYouTubeInput("RDMMdQw4w9WgXcQ");
+      expect(result.type).toBe("playlist_id");
+      expect(result.value).toBe("RDMMdQw4w9WgXcQ");
+    });
+
     it("should return unknown for invalid URLs", () => {
       const result = parseYouTubeInput("https://example.com/not-youtube");
       expect(result.type).toBe("unknown");

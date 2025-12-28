@@ -405,3 +405,15 @@
 ### YouTube URL Parser
 - [x] Fix parser to handle youtube.com/?list=PLAYLIST_ID format
 - [x] Support playlist URLs without /playlist path
+
+### Expanded YouTube URL Support
+- [x] Add support for all YouTube video URL formats
+- [x] Support music.youtube.com URLs
+- [x] Support youtube-nocookie.com embed URLs
+- [x] Support URLs with additional query parameters
+
+### Auto-Save Playlists Feature
+- [x] Add auto-save toggle setting in user preferences
+- [x] Automatically save playlists after successful analysis
+- [x] Show auto-save status indicator during analysis
+- [x] Allow users to opt-out of auto-save per analysis

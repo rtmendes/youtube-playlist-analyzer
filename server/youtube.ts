@@ -6,27 +6,54 @@
 import axios from "axios";
 import { ENV } from "./_core/env";
 
-// YouTube URL patterns
+// YouTube URL patterns - comprehensive support for all YouTube URL formats
 const patterns = {
   video_id: [
-    /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\/watch\?v=([\w_-]+)(?:[\/&].*)?/i,
-    /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\/(?:v|embed|shorts|video|watch|live)\/([\w_-]+)(?:[\/&].*)?/i,
-    /(?:http[s]?:\/\/)?youtu\.be\/([\w_-]+)(?:\?.*)?/i,
+    // Standard watch URLs with various query params
+    /(?:http[s]?:\/\/)?(?:www\.|m\.|music\.)?youtube\.com\/watch\?(?:.*&)?v=([\w_-]{11})(?:[&\/].*)?/i,
+    // Embed URLs (including youtube-nocookie.com)
+    /(?:http[s]?:\/\/)?(?:www\.)?youtube(?:-nocookie)?\.com\/embed\/([\w_-]{11})(?:[\/?].*)?/i,
+    // Shorts URLs
+    /(?:http[s]?:\/\/)?(?:www\.|m\.)?youtube\.com\/shorts\/([\w_-]{11})(?:[\/?].*)?/i,
+    // Live stream URLs
+    /(?:http[s]?:\/\/)?(?:www\.|m\.)?youtube\.com\/live\/([\w_-]{11})(?:[\/?].*)?/i,
+    // Old-style /v/ URLs
+    /(?:http[s]?:\/\/)?(?:www\.)?youtube\.com\/v\/([\w_-]{11})(?:[\/?].*)?/i,
+    // Attribution link URLs
+    /(?:http[s]?:\/\/)?(?:www\.)?youtube\.com\/attribution_link\?.*v%3D([\w_-]{11})(?:%26.*)?/i,
+    // Short URLs (youtu.be)
+    /(?:http[s]?:\/\/)?youtu\.be\/([\w_-]{11})(?:[\/?].*)?/i,
+    // YouTube Music URLs
+    /(?:http[s]?:\/\/)?music\.youtube\.com\/watch\?(?:.*&)?v=([\w_-]{11})(?:[&\/].*)?/i,
+    // Raw video ID (11 characters)
     /^([\w-]{11})$/i,
   ],
   playlist_id: [
-    /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\/playlist\?list=([\w_-]+)(?:&.*)?/i,
-    /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\/watch\?.*list=([\w_-]+)(?:&.*)?/i,
-    /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\/\?list=([\w_-]+)(?:&.*)?/i,
-    /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\?list=([\w_-]+)(?:&.*)?/i,
-    /^((UU|UUSH|PL|FL|SP|OLAK)[A-Za-z0-9_-]+)$/i,
+    // Standard playlist URLs
+    /(?:http[s]?:\/\/)?(?:www\.|m\.|music\.)?youtube\.com\/playlist\?(?:.*&)?list=([\w_-]+)(?:&.*)?/i,
+    // Watch URLs with list parameter
+    /(?:http[s]?:\/\/)?(?:www\.|m\.|music\.)?youtube\.com\/watch\?(?:.*&)?list=([\w_-]+)(?:&.*)?/i,
+    // Homepage with list parameter (/?list= or ?list=)
+    /(?:http[s]?:\/\/)?(?:www\.|m\.)?youtube\.com\/\?list=([\w_-]+)(?:&.*)?/i,
+    /(?:http[s]?:\/\/)?(?:www\.|m\.)?youtube\.com\?list=([\w_-]+)(?:&.*)?/i,
+    // YouTube Music playlist URLs
+    /(?:http[s]?:\/\/)?music\.youtube\.com\/playlist\?(?:.*&)?list=([\w_-]+)(?:&.*)?/i,
+    // Raw playlist IDs (various prefixes)
+    /^((UU|UUSH|PL|FL|SP|OLAK|RD|RDMM|RDCLAK|RDGMEM)[A-Za-z0-9_-]+)$/i,
   ],
   channel_id: [
-    /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\/channel\/([\w_-]+)(?:\?.*)?/i,
+    // Standard channel URLs
+    /(?:http[s]?:\/\/)?(?:www\.|m\.)?youtube\.com\/channel\/([\w_-]+)(?:[\/?].*)?/i,
+    // User URLs (legacy)
+    /(?:http[s]?:\/\/)?(?:www\.|m\.)?youtube\.com\/user\/([\w_-]+)(?:[\/?].*)?/i,
+    // Custom URL format /c/
+    /(?:http[s]?:\/\/)?(?:www\.|m\.)?youtube\.com\/c\/([\w_-]+)(?:[\/?].*)?/i,
+    // Raw channel ID
     /^((UC|SC)[\w-]{22})$/i,
   ],
   channel_handle: [
-    /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\/@([^\/?]+)(?:\?.*)?/i,
+    // Handle URLs (@username)
+    /(?:http[s]?:\/\/)?(?:www\.|m\.)?youtube\.com\/@([^\/?]+)(?:[\/?].*)?/i,
   ],
 };
 
