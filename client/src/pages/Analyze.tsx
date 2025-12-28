@@ -39,6 +39,8 @@ import {
 import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import { SplitPaneComments } from "@/components/SplitPaneComments";
+import { LayoutGrid } from "lucide-react";
 
 interface Video {
   id: string;
@@ -747,6 +749,10 @@ export default function Analyze() {
                 <MessageSquareDashed className="h-4 w-4" />
                 All Comments ({allComments.length})
               </TabsTrigger>
+              <TabsTrigger value="split-view" className="gap-2">
+                <LayoutGrid className="h-4 w-4" />
+                Split View
+              </TabsTrigger>
             </TabsList>
 
             {/* Fetch All Comments Button */}
@@ -1153,6 +1159,37 @@ export default function Analyze() {
                 <p className="text-sm mt-4">
                   This will fetch comments from all {videos.length} videos in the playlist.
                 </p>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="split-view" className="space-y-4">
+            {allComments.length > 0 ? (
+              <SplitPaneComments
+                videos={videos}
+                comments={allComments}
+                selectedVideo={selectedVideo}
+                onVideoSelect={(video) => {
+                  setSelectedVideo(video);
+                  loadVideoComments(video);
+                }}
+              />
+            ) : (
+              <div className="text-center py-12 text-muted-foreground">
+                <LayoutGrid className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p className="mb-4">Fetch all comments first to use the split view.</p>
+                <Button
+                  onClick={fetchAllComments}
+                  disabled={loadingBatchComments || videos.length === 0 || loadingVideos}
+                  className="gap-2"
+                >
+                  {loadingBatchComments ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <MessageSquare className="h-4 w-4" />
+                  )}
+                  Fetch All Comments
+                </Button>
               </div>
             )}
           </TabsContent>

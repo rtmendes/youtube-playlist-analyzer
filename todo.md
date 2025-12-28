@@ -447,3 +447,38 @@
 ### YouTube URL Parser Bug (Recurring)
 - [x] Fix youtube.com/?list= format still not working - fixed client-side parser in BulkAnalyze.tsx
 - [x] Debug parseYouTubeInput function - server-side was working, client-side needed update
+
+## TikTok Intelligence & Enhanced Comments
+
+### TikTok Intelligence Tool
+- [x] Create TikTok database tables (videos, creators, comments)
+- [x] Build TikTok URL parser for video links
+- [x] Create TikTok API service with sample data fallback
+- [x] Build TikTok Intelligence page with video search
+- [x] Display video metrics (views, likes, shares, comments)
+- [x] Show creator profile and engagement stats
+- [x] Analyze trending sounds and hashtags
+- [x] Add to sidebar navigation under Tools
+
+### Enhanced YouTube Video Metadata
+- [ ] Display all video metadata fields (duration, definition, dimension, caption, licensedContent)
+- [ ] Show parent channel full details (subscribers, total videos, join date)
+- [ ] Display video statistics (views, likes, comments, favorites)
+- [ ] Show video tags and category
+- [ ] Display publish date and last updated
+- [ ] Add thumbnail preview options (default, medium, high, maxres)
+
+### Split-Pane CSV Comment View
+- [x] Create split-pane layout with video metadata on left, comments on right
+- [x] Display comments in sortable table/CSV format
+- [x] Add column sorting (date, likes, replies, sentiment)
+- [x] Implement quick scroll with keyboard navigation
+- [x] Add row selection for bulk operations
+
+### Comment Quick Actions
+- [x] Add one-click copy button for each comment
+- [x] Implement highlight/bookmark feature for important comments
+- [x] Add "Save to Collection" option for future reference
+- [x] Enable multi-select for bulk copy/export
+- [x] Add export selected comments to CSV/clipboard
+- [x] Show copy confirmation toast

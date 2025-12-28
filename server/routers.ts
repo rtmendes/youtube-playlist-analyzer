@@ -10,10 +10,11 @@ import {
   formatCount,
 } from "./youtube";
 import { getDb } from "./db";
-import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets, amazonProducts, amazonReviews, redditPosts, redditComments, researchSessions, multiSourceInsights, savedPlaylists, playlistRuns, playlistVideos, videos, comments } from "../drizzle/schema";
+import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets, amazonProducts, amazonReviews, redditPosts, redditComments, researchSessions, multiSourceInsights, savedPlaylists, playlistRuns, playlistVideos, videos, comments, tiktokCreators, tiktokVideos, tiktokComments, savedComments } from "../drizzle/schema";
 import { eq, desc, and, like, or, sql } from "drizzle-orm";
 import { parseAmazonUrl, generateSampleProduct, generateSampleReviews, calculateReviewStats, analyzeReviewSentiment, fetchAmazonProduct, fetchAmazonReviews, searchAmazonProducts, compareProducts, AmazonApiConfig } from "./amazon";
-import { parseRedditUrl, fetchSubredditPosts, searchReddit, fetchPostComments, analyzeRedditComment, calculateRedditStats, getPopularResearchSubreddits, fetchSubredditPostsWithFallback, searchRedditWithFallback, fetchPostCommentsWithFallback, generateSamplePosts, generateSampleComments } from "./reddit";
+import { parseRedditUrl, fetchSubredditPosts, searchReddit, fetchPostComments, analyzeRedditComment, calculateRedditStats, getPopularResearchSubreddits, fetchSubredditPostsWithFallback, searchRedditWithFallback, fetchPostCommentsWithFallback, generateSamplePosts, generateSampleComments as generateSampleRedditComments } from "./reddit";
+import { parseTikTokUrl, generateSampleVideo, generateSampleCreator, generateSampleComments as generateSampleTikTokComments, analyzeTikTokSentiment, extractTrendingHashtags, TikTokVideoInfo } from "./tiktok";
 
 export const appRouter = router({
   system: systemRouter,
@@ -1721,6 +1722,303 @@ export const appRouter = router({
         }).where(eq(playlistVideos.id, input.id));
 
         return { success: true };
+      }),
+  }),
+
+  // TikTok Intelligence Router
+  tiktok: router({
+    parseUrl: publicProcedure
+      .input(z.object({ url: z.string() }))
+      .query(({ input }) => {
+        return parseTikTokUrl(input.url);
+      }),
+
+    getVideo: publicProcedure
+      .input(z.object({
+        videoId: z.string(),
+        creatorId: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const db = await getDb();
+        
+        // Check if video exists in database
+        if (db) {
+          const existing = await db.select().from(tiktokVideos).where(eq(tiktokVideos.videoId, input.videoId)).limit(1);
+          if (existing.length > 0) {
+            // Get creator info
+            let creator = null;
+            if (existing[0].creatorUniqueId) {
+              const creatorResult = await db.select().from(tiktokCreators).where(eq(tiktokCreators.uniqueId, existing[0].creatorUniqueId)).limit(1);
+              creator = creatorResult[0] || generateSampleCreator(existing[0].creatorUniqueId);
+            }
+            return { ...existing[0], creator };
+          }
+        }
+
+        // Generate sample data
+        const video = generateSampleVideo(input.videoId, input.creatorId);
+        
+        // Store in database
+        if (db) {
+          // Store creator first
+          await db.insert(tiktokCreators).values({
+            uniqueId: video.creator.uniqueId,
+            nickname: video.creator.nickname,
+            avatarUrl: video.creator.avatarUrl,
+            signature: video.creator.signature,
+            verified: video.creator.verified,
+            followerCount: video.creator.followerCount,
+            followingCount: video.creator.followingCount,
+            heartCount: video.creator.heartCount,
+            videoCount: video.creator.videoCount,
+          }).onDuplicateKeyUpdate({ set: { updatedAt: new Date() } });
+
+          // Store video
+          await db.insert(tiktokVideos).values({
+            videoId: video.videoId,
+            creatorUniqueId: video.creator.uniqueId,
+            description: video.description,
+            coverUrl: video.coverUrl,
+            duration: video.duration,
+            playCount: video.playCount,
+            diggCount: video.diggCount,
+            shareCount: video.shareCount,
+            commentCount: video.commentCount,
+            collectCount: video.collectCount,
+            musicId: video.musicId,
+            musicTitle: video.musicTitle,
+            musicAuthor: video.musicAuthor,
+            hashtags: video.hashtags,
+            createTime: video.createTime,
+          }).onDuplicateKeyUpdate({ set: { fetchedAt: new Date() } });
+        }
+
+        return video;
+      }),
+
+    getComments: publicProcedure
+      .input(z.object({
+        videoId: z.string(),
+        count: z.number().default(20),
+      }))
+      .mutation(async ({ input }) => {
+        const db = await getDb();
+        
+        // Check if comments exist in database
+        if (db) {
+          const existing = await db.select().from(tiktokComments).where(eq(tiktokComments.videoId, input.videoId)).limit(input.count);
+          if (existing.length > 0) {
+            return {
+              comments: existing,
+              stats: {
+                total: existing.length,
+                positive: existing.filter(c => c.sentiment === 'positive').length,
+                negative: existing.filter(c => c.sentiment === 'negative').length,
+                neutral: existing.filter(c => c.sentiment === 'neutral').length,
+              },
+            };
+          }
+        }
+
+        // Generate sample comments
+        const comments = generateSampleTikTokComments(input.videoId, input.count);
+        
+        // Analyze sentiment and store
+        const analyzedComments = comments.map(comment => {
+          const { sentiment, score } = analyzeTikTokSentiment(comment.text);
+          return { ...comment, sentiment, sentimentScore: score };
+        });
+
+        // Store in database
+        if (db) {
+          for (const comment of analyzedComments) {
+            await db.insert(tiktokComments).values({
+              commentId: comment.commentId,
+              videoId: comment.videoId,
+              authorUniqueId: comment.authorUniqueId,
+              authorNickname: comment.authorNickname,
+              authorAvatarUrl: comment.authorAvatarUrl,
+              text: comment.text,
+              diggCount: comment.diggCount,
+              replyCount: comment.replyCount,
+              sentiment: comment.sentiment as any,
+              sentimentScore: String(comment.sentimentScore),
+              createTime: comment.createTime,
+            }).onDuplicateKeyUpdate({ set: { fetchedAt: new Date() } });
+          }
+        }
+
+        return {
+          comments: analyzedComments,
+          stats: {
+            total: analyzedComments.length,
+            positive: analyzedComments.filter(c => c.sentiment === 'positive').length,
+            negative: analyzedComments.filter(c => c.sentiment === 'negative').length,
+            neutral: analyzedComments.filter(c => c.sentiment === 'neutral').length,
+          },
+        };
+      }),
+
+    getCreator: publicProcedure
+      .input(z.object({ uniqueId: z.string() }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        
+        if (db) {
+          const existing = await db.select().from(tiktokCreators).where(eq(tiktokCreators.uniqueId, input.uniqueId)).limit(1);
+          if (existing.length > 0) {
+            return existing[0];
+          }
+        }
+
+        return generateSampleCreator(input.uniqueId);
+      }),
+
+    getTrendingHashtags: publicProcedure
+      .input(z.object({ limit: z.number().default(10) }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        
+        if (db) {
+          const videos = await db.select().from(tiktokVideos).limit(100);
+          const videoInfos: TikTokVideoInfo[] = videos.map(v => ({
+            ...v,
+            hashtags: (v.hashtags as string[]) || [],
+            creator: generateSampleCreator(v.creatorUniqueId || 'unknown'),
+          })) as any;
+          return extractTrendingHashtags(videoInfos).slice(0, input.limit);
+        }
+
+        // Return sample trending hashtags
+        return [
+          { hashtag: 'fyp', count: 150, totalViews: 50000000 },
+          { hashtag: 'viral', count: 120, totalViews: 45000000 },
+          { hashtag: 'trending', count: 100, totalViews: 40000000 },
+          { hashtag: 'tech', count: 80, totalViews: 30000000 },
+          { hashtag: 'review', count: 70, totalViews: 25000000 },
+        ].slice(0, input.limit);
+      }),
+  }),
+
+  // Saved Comments Router (for quick copy/highlight/save feature)
+  savedComments: router({
+    save: protectedProcedure
+      .input(z.object({
+        sourceType: z.enum(['youtube', 'amazon', 'reddit', 'tiktok']),
+        sourceId: z.string(),
+        commentId: z.string(),
+        authorName: z.string().optional(),
+        text: z.string(),
+        highlighted: z.boolean().default(false),
+        notes: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+        collectionName: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const result = await db.insert(savedComments).values({
+          userId: ctx.user.id,
+          sourceType: input.sourceType,
+          sourceId: input.sourceId,
+          commentId: input.commentId,
+          authorName: input.authorName,
+          text: input.text,
+          highlighted: input.highlighted,
+          notes: input.notes,
+          tags: input.tags,
+          collectionName: input.collectionName,
+        });
+
+        return { id: result[0].insertId, success: true };
+      }),
+
+    list: protectedProcedure
+      .input(z.object({
+        sourceType: z.enum(['youtube', 'amazon', 'reddit', 'tiktok']).optional(),
+        collectionName: z.string().optional(),
+        highlightedOnly: z.boolean().default(false),
+      }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        let query = db.select().from(savedComments).where(eq(savedComments.userId, ctx.user.id));
+        
+        // Note: Additional filtering would be done in application code
+        // due to drizzle query builder limitations
+        const results = await query.orderBy(desc(savedComments.savedAt));
+        
+        return results.filter(c => {
+          if (input.sourceType && c.sourceType !== input.sourceType) return false;
+          if (input.collectionName && c.collectionName !== input.collectionName) return false;
+          if (input.highlightedOnly && !c.highlighted) return false;
+          return true;
+        });
+      }),
+
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        highlighted: z.boolean().optional(),
+        notes: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+        collectionName: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const updateData: any = {};
+        if (input.highlighted !== undefined) updateData.highlighted = input.highlighted;
+        if (input.notes !== undefined) updateData.notes = input.notes;
+        if (input.tags !== undefined) updateData.tags = input.tags;
+        if (input.collectionName !== undefined) updateData.collectionName = input.collectionName;
+
+        await db.update(savedComments).set(updateData).where(
+          and(
+            eq(savedComments.id, input.id),
+            eq(savedComments.userId, ctx.user.id)
+          )
+        );
+
+        return { success: true };
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.delete(savedComments).where(
+          and(
+            eq(savedComments.id, input.id),
+            eq(savedComments.userId, ctx.user.id)
+          )
+        );
+
+        return { success: true };
+      }),
+
+    getCollections: protectedProcedure
+      .query(async ({ ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        const results = await db.select({ collectionName: savedComments.collectionName })
+          .from(savedComments)
+          .where(eq(savedComments.userId, ctx.user.id));
+        
+        const collectionSet = new Set(results.map(r => r.collectionName).filter(Boolean));
+        const collections = Array.from(collectionSet);
+        return collections as string[];
       }),
   }),
 });

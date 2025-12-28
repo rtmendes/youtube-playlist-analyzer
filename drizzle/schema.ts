@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, bigint, json } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, bigint, json, boolean, decimal } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -511,3 +511,111 @@ export const playlistVideos = mysqlTable("playlistVideos", {
 
 export type PlaylistVideo = typeof playlistVideos.$inferSelect;
 export type InsertPlaylistVideo = typeof playlistVideos.$inferInsert;
+
+
+/**
+ * TikTok Creators - stores TikTok creator/account information
+ */
+export const tiktokCreators = mysqlTable("tiktokCreators", {
+  id: int("id").autoincrement().primaryKey(),
+  uniqueId: varchar("uniqueId", { length: 128 }).notNull().unique(), // @username
+  nickname: varchar("nickname", { length: 256 }),
+  avatarUrl: text("avatarUrl"),
+  signature: text("signature"), // bio
+  verified: boolean("verified").default(false),
+  followerCount: bigint("followerCount", { mode: "number" }).default(0),
+  followingCount: bigint("followingCount", { mode: "number" }).default(0),
+  heartCount: bigint("heartCount", { mode: "number" }).default(0), // total likes
+  videoCount: int("videoCount").default(0),
+  // Timestamps
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type TikTokCreator = typeof tiktokCreators.$inferSelect;
+export type InsertTikTokCreator = typeof tiktokCreators.$inferInsert;
+
+/**
+ * TikTok Videos - stores TikTok video information
+ */
+export const tiktokVideos = mysqlTable("tiktokVideos", {
+  id: int("id").autoincrement().primaryKey(),
+  videoId: varchar("videoId", { length: 64 }).notNull().unique(),
+  creatorId: int("creatorId"),
+  creatorUniqueId: varchar("creatorUniqueId", { length: 128 }),
+  // Video content
+  description: text("description"),
+  coverUrl: text("coverUrl"),
+  videoUrl: text("videoUrl"),
+  duration: int("duration"), // seconds
+  // Engagement metrics
+  playCount: bigint("playCount", { mode: "number" }).default(0),
+  diggCount: bigint("diggCount", { mode: "number" }).default(0), // likes
+  shareCount: bigint("shareCount", { mode: "number" }).default(0),
+  commentCount: bigint("commentCount", { mode: "number" }).default(0),
+  collectCount: bigint("collectCount", { mode: "number" }).default(0), // saves
+  // Music/Sound
+  musicId: varchar("musicId", { length: 64 }),
+  musicTitle: varchar("musicTitle", { length: 256 }),
+  musicAuthor: varchar("musicAuthor", { length: 256 }),
+  // Hashtags (stored as JSON array)
+  hashtags: json("hashtags").$type<string[]>(),
+  // Timestamps
+  createTime: timestamp("createTime"),
+  fetchedAt: timestamp("fetchedAt").defaultNow().notNull(),
+});
+
+export type TikTokVideo = typeof tiktokVideos.$inferSelect;
+export type InsertTikTokVideo = typeof tiktokVideos.$inferInsert;
+
+/**
+ * TikTok Comments - stores TikTok video comments
+ */
+export const tiktokComments = mysqlTable("tiktokComments", {
+  id: int("id").autoincrement().primaryKey(),
+  commentId: varchar("commentId", { length: 64 }).notNull(),
+  videoId: varchar("videoId", { length: 64 }).notNull(),
+  // Author info
+  authorUniqueId: varchar("authorUniqueId", { length: 128 }),
+  authorNickname: varchar("authorNickname", { length: 256 }),
+  authorAvatarUrl: text("authorAvatarUrl"),
+  // Comment content
+  text: text("text"),
+  diggCount: bigint("diggCount", { mode: "number" }).default(0), // likes
+  replyCount: int("replyCount").default(0),
+  // Sentiment analysis
+  sentiment: mysqlEnum("sentiment", ["positive", "negative", "neutral", "mixed"]),
+  sentimentScore: decimal("sentimentScore", { precision: 5, scale: 4 }),
+  // Timestamps
+  createTime: timestamp("createTime"),
+  fetchedAt: timestamp("fetchedAt").defaultNow().notNull(),
+});
+
+export type TikTokComment = typeof tiktokComments.$inferSelect;
+export type InsertTikTokComment = typeof tiktokComments.$inferInsert;
+
+/**
+ * Saved Comments - user's highlighted/bookmarked comments from any source
+ */
+export const savedComments = mysqlTable("savedComments", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  // Source reference
+  sourceType: mysqlEnum("sourceType", ["youtube", "amazon", "reddit", "tiktok"]).notNull(),
+  sourceId: varchar("sourceId", { length: 128 }).notNull(), // video/product/post ID
+  commentId: varchar("commentId", { length: 128 }).notNull(),
+  // Comment content snapshot
+  authorName: varchar("authorName", { length: 256 }),
+  text: text("text").notNull(),
+  // User annotations
+  highlighted: boolean("highlighted").default(false),
+  notes: text("notes"),
+  tags: json("tags").$type<string[]>(),
+  // Collection/folder
+  collectionName: varchar("collectionName", { length: 128 }),
+  // Timestamps
+  savedAt: timestamp("savedAt").defaultNow().notNull(),
+});
+
+export type SavedComment = typeof savedComments.$inferSelect;
+export type InsertSavedComment = typeof savedComments.$inferInsert;
