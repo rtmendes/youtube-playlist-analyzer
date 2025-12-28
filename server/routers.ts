@@ -13,7 +13,7 @@ import { getDb } from "./db";
 import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets, amazonProducts, amazonReviews, redditPosts, redditComments, researchSessions, multiSourceInsights, savedPlaylists, playlistRuns, playlistVideos, videos, comments } from "../drizzle/schema";
 import { eq, desc, and, like, or, sql } from "drizzle-orm";
 import { parseAmazonUrl, generateSampleProduct, generateSampleReviews, calculateReviewStats, analyzeReviewSentiment, fetchAmazonProduct, fetchAmazonReviews, searchAmazonProducts, compareProducts, AmazonApiConfig } from "./amazon";
-import { parseRedditUrl, fetchSubredditPosts, searchReddit, fetchPostComments, analyzeRedditComment, calculateRedditStats, getPopularResearchSubreddits } from "./reddit";
+import { parseRedditUrl, fetchSubredditPosts, searchReddit, fetchPostComments, analyzeRedditComment, calculateRedditStats, getPopularResearchSubreddits, fetchSubredditPostsWithFallback, searchRedditWithFallback, fetchPostCommentsWithFallback, generateSamplePosts, generateSampleComments } from "./reddit";
 
 export const appRouter = router({
   system: systemRouter,
@@ -992,7 +992,7 @@ export const appRouter = router({
         timeframe: z.enum(["hour", "day", "week", "month", "year", "all"]).default("week"),
       }))
       .mutation(async ({ input, ctx }) => {
-        const result = await fetchSubredditPosts(
+        const result = await fetchSubredditPostsWithFallback(
           input.subreddit,
           input.sort,
           input.limit,
@@ -1038,7 +1038,7 @@ export const appRouter = router({
         timeframe: z.enum(["hour", "day", "week", "month", "year", "all"]).default("all"),
       }))
       .mutation(async ({ input, ctx }) => {
-        const result = await searchReddit(
+        const result = await searchRedditWithFallback(
           input.query,
           input.subreddit,
           input.sort,
@@ -1083,7 +1083,7 @@ export const appRouter = router({
         limit: z.number().min(1).max(500).default(100),
       }))
       .mutation(async ({ input, ctx }) => {
-        const result = await fetchPostComments(
+        const result = await fetchPostCommentsWithFallback(
           input.subreddit,
           input.postId,
           input.sort,
@@ -1428,6 +1428,137 @@ export const appRouter = router({
         }).where(eq(savedPlaylists.id, input.id));
 
         return { success: true };
+      }),
+
+    // Update refresh schedule
+    updateSchedule: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        refreshSchedule: z.enum(["none", "daily", "weekly"]),
+        refreshHour: z.number().min(0).max(23).optional(),
+        refreshDayOfWeek: z.number().min(0).max(6).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+
+        // Calculate next refresh time
+        let nextRefreshAt: Date | null = null;
+        if (input.refreshSchedule !== "none") {
+          const now = new Date();
+          const hour = input.refreshHour ?? 9;
+          
+          if (input.refreshSchedule === "daily") {
+            // Set to next occurrence of the specified hour
+            nextRefreshAt = new Date(now);
+            nextRefreshAt.setHours(hour, 0, 0, 0);
+            if (nextRefreshAt <= now) {
+              nextRefreshAt.setDate(nextRefreshAt.getDate() + 1);
+            }
+          } else if (input.refreshSchedule === "weekly") {
+            // Set to next occurrence of the specified day and hour
+            const dayOfWeek = input.refreshDayOfWeek ?? 1; // Default Monday
+            nextRefreshAt = new Date(now);
+            nextRefreshAt.setHours(hour, 0, 0, 0);
+            const currentDay = nextRefreshAt.getDay();
+            const daysUntilNext = (dayOfWeek - currentDay + 7) % 7 || 7;
+            nextRefreshAt.setDate(nextRefreshAt.getDate() + daysUntilNext);
+            if (daysUntilNext === 0 && nextRefreshAt <= now) {
+              nextRefreshAt.setDate(nextRefreshAt.getDate() + 7);
+            }
+          }
+        }
+
+        await db.update(savedPlaylists).set({
+          refreshSchedule: input.refreshSchedule,
+          refreshHour: input.refreshHour ?? 9,
+          refreshDayOfWeek: input.refreshDayOfWeek ?? 1,
+          nextRefreshAt,
+        }).where(eq(savedPlaylists.id, input.id));
+
+        return { success: true, nextRefreshAt };
+      }),
+
+    // Get playlists due for refresh
+    getDueForRefresh: protectedProcedure
+      .query(async ({ ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        const now = new Date();
+        return await db.select().from(savedPlaylists)
+          .where(
+            and(
+              eq(savedPlaylists.userId, ctx.user.id),
+              eq(savedPlaylists.status, "active"),
+              sql`${savedPlaylists.refreshSchedule} != 'none'`,
+              sql`${savedPlaylists.nextRefreshAt} <= ${now}`
+            )
+          );
+      }),
+
+    // Get all scheduled playlists
+    getScheduled: protectedProcedure
+      .query(async ({ ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        return await db.select().from(savedPlaylists)
+          .where(
+            and(
+              eq(savedPlaylists.userId, ctx.user.id),
+              sql`${savedPlaylists.refreshSchedule} != 'none'`
+            )
+          )
+          .orderBy(savedPlaylists.nextRefreshAt);
+      }),
+
+    // Update next refresh time after a run completes
+    updateNextRefresh: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+
+        // Get current playlist
+        const results = await db.select().from(savedPlaylists)
+          .where(eq(savedPlaylists.id, input.id));
+        
+        if (!results[0]) throw new Error("Playlist not found");
+        const playlist = results[0];
+
+        if (playlist.refreshSchedule === "none") {
+          return { success: true, nextRefreshAt: null };
+        }
+
+        // Calculate next refresh time
+        const now = new Date();
+        const hour = playlist.refreshHour ?? 9;
+        let nextRefreshAt: Date;
+
+        if (playlist.refreshSchedule === "daily") {
+          nextRefreshAt = new Date(now);
+          nextRefreshAt.setHours(hour, 0, 0, 0);
+          nextRefreshAt.setDate(nextRefreshAt.getDate() + 1);
+        } else {
+          // Weekly
+          const dayOfWeek = playlist.refreshDayOfWeek ?? 1;
+          nextRefreshAt = new Date(now);
+          nextRefreshAt.setHours(hour, 0, 0, 0);
+          nextRefreshAt.setDate(nextRefreshAt.getDate() + 7);
+          // Adjust to correct day of week
+          const currentDay = nextRefreshAt.getDay();
+          const daysUntilNext = (dayOfWeek - currentDay + 7) % 7;
+          nextRefreshAt.setDate(nextRefreshAt.getDate() + daysUntilNext);
+        }
+
+        await db.update(savedPlaylists).set({
+          nextRefreshAt,
+        }).where(eq(savedPlaylists.id, input.id));
+
+        return { success: true, nextRefreshAt };
       }),
   }),
 

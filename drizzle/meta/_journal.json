@@ -43,6 +43,13 @@
       "when": 1766856254747,
       "tag": "0005_shallow_rockslide",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1766888626813,
+      "tag": "0006_violet_the_santerians",
+      "breakpoints": true
     }
   ]
 }

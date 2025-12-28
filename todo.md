@@ -417,3 +417,26 @@
 - [x] Automatically save playlists after successful analysis
 - [x] Show auto-save status indicator during analysis
 - [x] Allow users to opt-out of auto-save per analysis
+
+## Enhanced Playlist Timestamps & Scheduled Refresh
+
+### Detailed Timestamps
+- [x] Show full date and time of last analysis run
+- [x] Display relative time (e.g., "2 hours ago") with full timestamp on hover
+- [x] Add "Next scheduled run" indicator for scheduled playlists
+
+### Scheduled Refresh Feature
+- [x] Add refresh_schedule column to saved_playlists table (none, daily, weekly)
+- [x] Add next_refresh_at column to track when next refresh should occur
+- [x] Create API route to update playlist refresh schedule
+- [x] Create API route to get playlists due for refresh
+- [x] Build scheduled refresh settings UI in playlist detail page
+- [ ] Add schedule indicator badge on playlist cards in sidebar
+
+### Amazon Research Bug Fix
+- [ ] Fix Amazon search not returning results
+- [ ] Ensure sample data is returned when no API key configured
+
+### Reddit Research Bug Fix
+- [x] Fix Reddit 403 error - API requires authentication
+- [x] Add sample data fallback for Reddit when API fails

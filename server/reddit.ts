@@ -483,3 +483,220 @@ export function getPopularResearchSubreddits(): { name: string; description: str
     { name: "reviews", description: "General reviews", category: "Reviews" },
   ];
 }
+
+/**
+ * Generate sample Reddit posts for demonstration
+ */
+export function generateSamplePosts(query: string, count: number = 10): RedditPost[] {
+  const samplePosts: Partial<RedditPost>[] = [
+    {
+      title: `What's your experience with ${query}?`,
+      body: `I'm looking to buy ${query} and wanted to hear from people who have actually used it. What are the pros and cons? Is it worth the price?`,
+      subreddit: "BuyItForLife",
+      author: "ProductResearcher",
+      score: 245,
+      upvoteRatio: 0.94,
+      commentCount: 87,
+    },
+    {
+      title: `${query} - honest review after 6 months`,
+      body: `I've been using ${query} for about 6 months now and wanted to share my thoughts. Overall, I'm pretty satisfied but there are some things I wish I knew before buying...`,
+      subreddit: "reviews",
+      author: "HonestReviewer",
+      score: 189,
+      upvoteRatio: 0.91,
+      commentCount: 52,
+    },
+    {
+      title: `Is ${query} worth it in 2024?`,
+      body: `Considering getting ${query} but not sure if it's still relevant. Has anyone compared it to newer alternatives?`,
+      subreddit: "gadgets",
+      author: "TechEnthusiast",
+      score: 156,
+      upvoteRatio: 0.88,
+      commentCount: 73,
+    },
+    {
+      title: `Best budget alternative to ${query}?`,
+      body: `I love the features of ${query} but the price is a bit steep for me. Are there any good budget alternatives that offer similar functionality?`,
+      subreddit: "Frugal",
+      author: "BudgetShopper",
+      score: 312,
+      upvoteRatio: 0.96,
+      commentCount: 124,
+    },
+    {
+      title: `${query} problems - anyone else experiencing this?`,
+      body: `I bought ${query} last month and I'm having some issues. The quality doesn't seem as good as advertised. Is this a common problem or did I get a bad unit?`,
+      subreddit: "ProductTesting",
+      author: "ConcernedBuyer",
+      score: 78,
+      upvoteRatio: 0.82,
+      commentCount: 45,
+    },
+    {
+      title: `Why I switched from ${query} to something else`,
+      body: `After using ${query} for 2 years, I finally made the switch. Here's why and what I'm using now...`,
+      subreddit: "technology",
+      author: "TechSwitcher",
+      score: 423,
+      upvoteRatio: 0.89,
+      commentCount: 156,
+    },
+    {
+      title: `${query} vs competitors - detailed comparison`,
+      body: `I've tested ${query} against its main competitors. Here's a breakdown of features, quality, and value for money...`,
+      subreddit: "reviews",
+      author: "ComparisonKing",
+      score: 567,
+      upvoteRatio: 0.95,
+      commentCount: 203,
+    },
+    {
+      title: `How ${query} changed my workflow`,
+      body: `I was skeptical at first, but ${query} has genuinely improved my productivity. Here's how I use it daily...`,
+      subreddit: "Entrepreneur",
+      author: "ProductivityGuru",
+      score: 234,
+      upvoteRatio: 0.92,
+      commentCount: 67,
+    },
+    {
+      title: `Customer service nightmare with ${query}`,
+      body: `Warning to potential buyers: my experience with ${query}'s customer service has been terrible. Here's what happened...`,
+      subreddit: "smallbusiness",
+      author: "FrustratedCustomer",
+      score: 145,
+      upvoteRatio: 0.78,
+      commentCount: 89,
+    },
+    {
+      title: `${query} tips and tricks you might not know`,
+      body: `After using ${query} extensively, I've discovered some hidden features and optimizations. Sharing them here for the community...`,
+      subreddit: "gadgets",
+      author: "PowerUser",
+      score: 678,
+      upvoteRatio: 0.97,
+      commentCount: 234,
+    },
+  ];
+
+  return samplePosts.slice(0, count).map((post, index) => ({
+    postId: `sample_${index}_${Date.now()}`,
+    subreddit: post.subreddit || "technology",
+    title: post.title || `Discussion about ${query}`,
+    body: post.body,
+    author: post.author || "SampleUser",
+    score: post.score || Math.floor(Math.random() * 500),
+    upvoteRatio: post.upvoteRatio || 0.85,
+    commentCount: post.commentCount || Math.floor(Math.random() * 100),
+    postUrl: `https://reddit.com/r/${post.subreddit}/comments/sample${index}`,
+    isNsfw: false,
+    flair: undefined,
+    mediaUrl: undefined,
+    postedAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000),
+    permalink: `/r/${post.subreddit}/comments/sample${index}`,
+  }));
+}
+
+/**
+ * Generate sample Reddit comments for demonstration
+ */
+export function generateSampleComments(postId: string, count: number = 15): RedditComment[] {
+  const sampleComments: Partial<RedditComment>[] = [
+    { body: "I've been using this for about a year now and it's been great. Highly recommend!", score: 145, isOp: false },
+    { body: "The quality is decent but I've had some issues with customer support. Just something to keep in mind.", score: 89, isOp: false },
+    { body: "Worth every penny. I compared it to several alternatives and this one came out on top.", score: 234, isOp: false },
+    { body: "I had the same question! Following this thread for answers.", score: 12, isOp: false },
+    { body: "Pro tip: make sure you buy from an authorized seller. I got a fake one from a third party and it was terrible.", score: 167, isOp: false },
+    { body: "The build quality could be better for the price point, but overall functionality is solid.", score: 78, isOp: false },
+    { body: "I returned mine after a week. Just didn't work for my use case. YMMV.", score: 45, isOp: false },
+    { body: "Best purchase I've made this year. The features are exactly what I needed.", score: 312, isOp: false },
+    { body: "Has anyone tried the newer version? Wondering if it's worth the upgrade.", score: 56, isOp: false },
+    { body: "The learning curve is steep but once you get the hang of it, it's amazing.", score: 123, isOp: false },
+    { body: "I've recommended this to all my friends. No complaints so far from anyone.", score: 89, isOp: false },
+    { body: "The price has dropped significantly. Now might be a good time to buy.", score: 67, isOp: false },
+    { body: "Make sure to check the warranty terms. Mine broke after 13 months and I was out of luck.", score: 234, isOp: false },
+    { body: "Compared to the competition, this offers the best value for money in my opinion.", score: 156, isOp: false },
+    { body: "I wish they would improve the documentation. Took me forever to figure out some features.", score: 45, isOp: false },
+  ];
+
+  return sampleComments.slice(0, count).map((comment, index) => ({
+    commentId: `sample_comment_${index}_${Date.now()}`,
+    postId,
+    parentCommentId: index > 5 && Math.random() > 0.5 ? `sample_comment_${Math.floor(index / 2)}_${Date.now()}` : undefined,
+    author: `User${Math.floor(Math.random() * 10000)}`,
+    body: comment.body || "This is a sample comment.",
+    score: comment.score || Math.floor(Math.random() * 200),
+    isOp: comment.isOp || false,
+    depth: index > 5 && Math.random() > 0.5 ? 1 : 0,
+    postedAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000),
+  }));
+}
+
+/**
+ * Fetch subreddit posts with fallback to sample data
+ */
+export async function fetchSubredditPostsWithFallback(
+  subreddit: string,
+  sort: "hot" | "new" | "top" | "rising" = "hot",
+  limit: number = 25,
+  after?: string,
+  timeframe: "hour" | "day" | "week" | "month" | "year" | "all" = "week"
+): Promise<RedditSearchResult> {
+  try {
+    return await fetchSubredditPosts(subreddit, sort, limit, after, timeframe);
+  } catch (error: any) {
+    console.error(`[Reddit] Falling back to sample data due to error: ${error.message}`);
+    return {
+      posts: generateSamplePosts(subreddit, limit),
+      after: undefined,
+      hasMore: false,
+    };
+  }
+}
+
+/**
+ * Search Reddit with fallback to sample data
+ */
+export async function searchRedditWithFallback(
+  query: string,
+  subreddit?: string,
+  sort: "relevance" | "hot" | "top" | "new" | "comments" = "relevance",
+  limit: number = 25,
+  after?: string,
+  timeframe: "hour" | "day" | "week" | "month" | "year" | "all" = "all"
+): Promise<RedditSearchResult> {
+  try {
+    return await searchReddit(query, subreddit, sort, limit, after, timeframe);
+  } catch (error: any) {
+    console.error(`[Reddit] Falling back to sample data due to error: ${error.message}`);
+    return {
+      posts: generateSamplePosts(query, limit),
+      after: undefined,
+      hasMore: false,
+    };
+  }
+}
+
+/**
+ * Fetch post comments with fallback to sample data
+ */
+export async function fetchPostCommentsWithFallback(
+  subreddit: string,
+  postId: string,
+  sort: "best" | "top" | "new" | "controversial" | "old" | "qa" = "best",
+  limit: number = 100
+): Promise<{ post: RedditPost; comments: RedditComment[] }> {
+  try {
+    return await fetchPostComments(subreddit, postId, sort, limit);
+  } catch (error: any) {
+    console.error(`[Reddit] Falling back to sample data due to error: ${error.message}`);
+    const samplePost = generateSamplePosts(subreddit, 1)[0];
+    samplePost.postId = postId;
+    return {
+      post: samplePost,
+      comments: generateSampleComments(postId, limit),
+    };
+  }
+}

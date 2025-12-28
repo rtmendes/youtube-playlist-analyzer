@@ -451,7 +451,12 @@ export const savedPlaylists = mysqlTable("savedPlaylists", {
   lastRunAt: timestamp("lastRunAt"),
   lastVideoCount: int("lastVideoCount").default(0),
   lastCommentCount: int("lastCommentCount").default(0),
-  // Auto-refresh settings
+  // Scheduled refresh settings
+  refreshSchedule: mysqlEnum("refreshSchedule", ["none", "daily", "weekly"]).default("none").notNull(),
+  nextRefreshAt: timestamp("nextRefreshAt"),
+  refreshHour: int("refreshHour").default(9), // Hour of day to run refresh (0-23)
+  refreshDayOfWeek: int("refreshDayOfWeek").default(1), // Day of week for weekly (0=Sun, 1=Mon, etc.)
+  // Legacy auto-refresh settings (kept for compatibility)
   autoRefresh: int("autoRefresh").default(0),
   refreshInterval: int("refreshInterval").default(24), // hours
   // Status

@@ -48,7 +48,18 @@ import {
   BarChart3,
   TrendingUp,
   Users,
+  Settings,
+  Bell,
+  CalendarClock,
 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { motion } from "framer-motion";
 
 export default function SavedPlaylist() {
@@ -58,6 +69,10 @@ export default function SavedPlaylist() {
   const { isAuthenticated } = useAuth();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [refreshSchedule, setRefreshSchedule] = useState<"none" | "daily" | "weekly">("none");
+  const [refreshHour, setRefreshHour] = useState(9);
+  const [refreshDayOfWeek, setRefreshDayOfWeek] = useState(1);
 
   // Fetch saved playlist
   const { data: playlist, isLoading, refetch } = trpc.savedPlaylists.getById.useQuery(
@@ -79,6 +94,18 @@ export default function SavedPlaylist() {
 
   // Delete mutation
   const deleteMutation = trpc.savedPlaylists.delete.useMutation();
+
+  // Schedule mutation
+  const updateScheduleMutation = trpc.savedPlaylists.updateSchedule.useMutation();
+
+  // Load current schedule settings when playlist loads
+  useEffect(() => {
+    if (playlist) {
+      setRefreshSchedule((playlist.refreshSchedule as "none" | "daily" | "weekly") || "none");
+      setRefreshHour(playlist.refreshHour ?? 9);
+      setRefreshDayOfWeek(playlist.refreshDayOfWeek ?? 1);
+    }
+  }, [playlist]);
 
   // Calculate stats
   const stats = useMemo(() => {
@@ -151,6 +178,42 @@ export default function SavedPlaylist() {
     }
   };
 
+  const handleSaveSchedule = async () => {
+    try {
+      const result = await updateScheduleMutation.mutateAsync({
+        id: playlistId,
+        refreshSchedule,
+        refreshHour,
+        refreshDayOfWeek,
+      });
+      await refetch();
+      setScheduleOpen(false);
+      if (refreshSchedule === "none") {
+        toast.success("Scheduled refresh disabled");
+      } else {
+        const nextRun = result.nextRefreshAt ? new Date(result.nextRefreshAt).toLocaleString() : "soon";
+        toast.success(`Scheduled ${refreshSchedule} refresh. Next run: ${nextRun}`);
+      }
+    } catch (error) {
+      toast.error("Failed to update schedule");
+    }
+  };
+
+  const getDayName = (day: number) => {
+    const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    return days[day];
+  };
+
+  const getScheduleDescription = () => {
+    if (!playlist || playlist.refreshSchedule === "none") return null;
+    const hour = playlist.refreshHour ?? 9;
+    const hourStr = hour === 0 ? "12:00 AM" : hour < 12 ? `${hour}:00 AM` : hour === 12 ? "12:00 PM" : `${hour - 12}:00 PM`;
+    if (playlist.refreshSchedule === "daily") {
+      return `Daily at ${hourStr}`;
+    }
+    return `Every ${getDayName(playlist.refreshDayOfWeek ?? 1)} at ${hourStr}`;
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -209,11 +272,98 @@ export default function SavedPlaylist() {
           <div className="flex items-center gap-2">
             <div className="text-right mr-4">
               <div className="text-xs text-muted-foreground">Last analyzed</div>
-              <div className="text-sm font-medium">{getRelativeTime(playlist.lastRunAt)}</div>
+              <div className="text-sm font-medium" title={formatDate(playlist.lastRunAt)}>
+                {getRelativeTime(playlist.lastRunAt)}
+              </div>
+              {getScheduleDescription() && (
+                <div className="text-xs text-primary flex items-center gap-1 mt-0.5">
+                  <CalendarClock className="h-3 w-3" />
+                  {getScheduleDescription()}
+                </div>
+              )}
+              {playlist.nextRefreshAt && playlist.refreshSchedule !== "none" && (
+                <div className="text-xs text-muted-foreground">
+                  Next: {getRelativeTime(playlist.nextRefreshAt)}
+                </div>
+              )}
             </div>
+            <AlertDialog open={scheduleOpen} onOpenChange={setScheduleOpen}>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" size="icon" title="Schedule automatic refresh">
+                  <CalendarClock className={`h-4 w-4 ${playlist.refreshSchedule !== "none" ? "text-primary" : ""}`} />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Schedule Automatic Refresh</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Set up automatic re-analysis of this playlist to track new comments and videos over time.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label>Refresh Frequency</Label>
+                    <Select value={refreshSchedule} onValueChange={(v) => setRefreshSchedule(v as "none" | "daily" | "weekly")}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select frequency" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No automatic refresh</SelectItem>
+                        <SelectItem value="daily">Daily</SelectItem>
+                        <SelectItem value="weekly">Weekly</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {refreshSchedule !== "none" && (
+                    <>
+                      <div className="space-y-2">
+                        <Label>Time of Day</Label>
+                        <Select value={refreshHour.toString()} onValueChange={(v) => setRefreshHour(parseInt(v))}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select hour" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 24 }, (_, i) => (
+                              <SelectItem key={i} value={i.toString()}>
+                                {i === 0 ? "12:00 AM" : i < 12 ? `${i}:00 AM` : i === 12 ? "12:00 PM" : `${i - 12}:00 PM`}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {refreshSchedule === "weekly" && (
+                        <div className="space-y-2">
+                          <Label>Day of Week</Label>
+                          <Select value={refreshDayOfWeek.toString()} onValueChange={(v) => setRefreshDayOfWeek(parseInt(v))}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select day" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="0">Sunday</SelectItem>
+                              <SelectItem value="1">Monday</SelectItem>
+                              <SelectItem value="2">Tuesday</SelectItem>
+                              <SelectItem value="3">Wednesday</SelectItem>
+                              <SelectItem value="4">Thursday</SelectItem>
+                              <SelectItem value="5">Friday</SelectItem>
+                              <SelectItem value="6">Saturday</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleSaveSchedule}>
+                    {updateScheduleMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Schedule"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             <Button onClick={handleRefresh} disabled={isRefreshing}>
               <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
-              Refresh Analysis
+              Refresh Now
             </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
