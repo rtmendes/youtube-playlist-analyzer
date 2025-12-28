@@ -143,22 +143,31 @@ export default function BulkAnalyze() {
     const decoded = decodeURIComponent(url.trim());
     const patterns = {
       video_id: [
-        /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\/watch\?v=([\w_-]+)(?:[\/&].*)?/i,
-        /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\/(?:v|embed|shorts|video|watch|live)\/([\w_-]+)(?:[\/&].*)?/i,
-        /(?:http[s]?:\/\/)?youtu\.be\/([\w_-]+)(?:\?.*)?/i,
+        /(?:http[s]?:\/\/)?(?:www\.|m\.|music\.)?youtube\.com\/watch\?(?:.*&)?v=([\w_-]{11})(?:[&\/].*)?/i,
+        /(?:http[s]?:\/\/)?(?:www\.)?youtube(?:-nocookie)?\.com\/embed\/([\w_-]{11})(?:[\/?].*)?/i,
+        /(?:http[s]?:\/\/)?(?:www\.|m\.)?youtube\.com\/shorts\/([\w_-]{11})(?:[\/?].*)?/i,
+        /(?:http[s]?:\/\/)?(?:www\.|m\.)?youtube\.com\/live\/([\w_-]{11})(?:[\/?].*)?/i,
+        /(?:http[s]?:\/\/)?(?:www\.)?youtube\.com\/v\/([\w_-]{11})(?:[\/?].*)?/i,
+        /(?:http[s]?:\/\/)?youtu\.be\/([\w_-]{11})(?:[\/?].*)?/i,
+        /(?:http[s]?:\/\/)?music\.youtube\.com\/watch\?(?:.*&)?v=([\w_-]{11})(?:[&\/].*)?/i,
         /^([\w-]{11})$/i,
       ],
       playlist_id: [
-        /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\/playlist\?list=([\w_-]+)(?:&.*)?/i,
-        /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\/watch\?.*list=([\w_-]+)(?:&.*)?/i,
-        /^((UU|UUSH|PL|FL|SP|OLAK)[A-Za-z0-9_-]+)$/i,
+        /(?:http[s]?:\/\/)?(?:www\.|m\.|music\.)?youtube\.com\/playlist\?(?:.*&)?list=([\w_-]+)(?:&.*)?/i,
+        /(?:http[s]?:\/\/)?(?:www\.|m\.|music\.)?youtube\.com\/watch\?(?:.*&)?list=([\w_-]+)(?:&.*)?/i,
+        /(?:http[s]?:\/\/)?(?:www\.|m\.)?youtube\.com\/\?list=([\w_-]+)(?:&.*)?/i,
+        /(?:http[s]?:\/\/)?(?:www\.|m\.)?youtube\.com\?list=([\w_-]+)(?:&.*)?/i,
+        /(?:http[s]?:\/\/)?music\.youtube\.com\/playlist\?(?:.*&)?list=([\w_-]+)(?:&.*)?/i,
+        /^((UU|UUSH|PL|FL|SP|OLAK|RD|RDMM|RDCLAK|RDGMEM)[A-Za-z0-9_-]+)$/i,
       ],
       channel_id: [
-        /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\/channel\/([\w_-]+)(?:\?.*)?/i,
+        /(?:http[s]?:\/\/)?(?:www\.|m\.)?youtube\.com\/channel\/([\w_-]+)(?:[\/?].*)?/i,
+        /(?:http[s]?:\/\/)?(?:www\.|m\.)?youtube\.com\/user\/([\w_-]+)(?:[\/?].*)?/i,
+        /(?:http[s]?:\/\/)?(?:www\.|m\.)?youtube\.com\/c\/([\w_-]+)(?:[\/?].*)?/i,
         /^((UC|SC)[\w-]{22})$/i,
       ],
       channel_handle: [
-        /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\/@([^\/?]+)(?:\?.*)?/i,
+        /(?:http[s]?:\/\/)?(?:www\.|m\.)?youtube\.com\/@([^\/?]+)(?:[\/?].*)?/i,
       ],
     };
 

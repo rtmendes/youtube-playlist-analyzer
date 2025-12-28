@@ -440,3 +440,7 @@
 ### Reddit Research Bug Fix
 - [x] Fix Reddit 403 error - API requires authentication
 - [x] Add sample data fallback for Reddit when API fails
+
+### YouTube URL Parser Bug (Recurring)
+- [x] Fix youtube.com/?list= format still not working - fixed client-side parser in BulkAnalyze.tsx
+- [x] Debug parseYouTubeInput function - server-side was working, client-side needed update
