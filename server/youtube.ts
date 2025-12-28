@@ -17,6 +17,8 @@ const patterns = {
   playlist_id: [
     /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\/playlist\?list=([\w_-]+)(?:&.*)?/i,
     /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\/watch\?.*list=([\w_-]+)(?:&.*)?/i,
+    /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\/\?list=([\w_-]+)(?:&.*)?/i,
+    /(?:http[s]?:\/\/)?(?:\w+\.)?youtube\.com\?list=([\w_-]+)(?:&.*)?/i,
     /^((UU|UUSH|PL|FL|SP|OLAK)[A-Za-z0-9_-]+)$/i,
   ],
   channel_id: [

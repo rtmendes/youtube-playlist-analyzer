@@ -399,3 +399,9 @@
 - [x] Show notification when playlist is saved
 - [x] Display relative timestamps (e.g., "Last run 2 hours ago")
 - [ ] Allow renaming saved playlists
+
+## Bug Fixes
+
+### YouTube URL Parser
+- [x] Fix parser to handle youtube.com/?list=PLAYLIST_ID format
+- [x] Support playlist URLs without /playlist path

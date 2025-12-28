@@ -22,6 +22,24 @@ describe("YouTube URL Parser", () => {
       expect(result.value).toBe("PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf");
     });
 
+    it("should parse playlist URLs with /?list= format", () => {
+      const result = parseYouTubeInput("https://www.youtube.com/?list=PLHXW2PL9wgyd8CFzjh3CadBA6rIzK9eNN");
+      expect(result.type).toBe("playlist_id");
+      expect(result.value).toBe("PLHXW2PL9wgyd8CFzjh3CadBA6rIzK9eNN");
+    });
+
+    it("should parse playlist URLs with ?list= format (no slash)", () => {
+      const result = parseYouTubeInput("https://www.youtube.com?list=PLHXW2PL9wgyd8CFzjh3CadBA6rIzK9eNN");
+      expect(result.type).toBe("playlist_id");
+      expect(result.value).toBe("PLHXW2PL9wgyd8CFzjh3CadBA6rIzK9eNN");
+    });
+
+    it("should parse playlist URLs from YouTube homepage with list param", () => {
+      const result = parseYouTubeInput("https://youtube.com/?list=PLtest123");
+      expect(result.type).toBe("playlist_id");
+      expect(result.value).toBe("PLtest123");
+    });
+
     it("should parse standard video URLs", () => {
       const result = parseYouTubeInput("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
       expect(result.type).toBe("video_id");
