@@ -1902,6 +1902,60 @@ export const appRouter = router({
 
   // Saved Comments Router (for quick copy/highlight/save feature)
   savedComments: router({
+    getAll: protectedProcedure
+      .query(async ({ ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        const results = await db.select().from(savedComments)
+          .where(eq(savedComments.userId, ctx.user.id))
+          .orderBy(desc(savedComments.savedAt));
+        
+        return results;
+      }),
+
+    updateNotes: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        notes: z.string(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.update(savedComments).set({ notes: input.notes }).where(
+          and(
+            eq(savedComments.id, input.id),
+            eq(savedComments.userId, ctx.user.id)
+          )
+        );
+
+        return { success: true };
+      }),
+
+    bulkDelete: protectedProcedure
+      .input(z.object({
+        ids: z.array(z.number()),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        for (const id of input.ids) {
+          await db.delete(savedComments).where(
+            and(
+              eq(savedComments.id, id),
+              eq(savedComments.userId, ctx.user.id)
+            )
+          );
+        }
+
+        return { success: true, deleted: input.ids.length };
+      }),
+
     save: protectedProcedure
       .input(z.object({
         sourceType: z.enum(['youtube', 'amazon', 'reddit', 'tiktok']),

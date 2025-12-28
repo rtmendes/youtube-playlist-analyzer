@@ -482,3 +482,29 @@
 - [x] Enable multi-select for bulk copy/export
 - [x] Add export selected comments to CSV/clipboard
 - [x] Show copy confirmation toast
+
+## Split View Enhancements & Saved Comments
+
+### Keyword/Sentiment Filtering in Split View
+- [x] Add keyword filter input to search within comments
+- [x] Implement sentiment filter dropdown (positive, negative, neutral, all)
+- [x] Add sentiment analysis to comments using AI
+- [x] Display sentiment badge on each comment row
+- [x] Allow combining keyword and sentiment filters
+
+### Saved Comments Page
+- [ ] Create SavedComments page component
+- [ ] Add route and sidebar navigation link
+- [ ] Display all saved/bookmarked comments across videos
+- [ ] Group comments by source video
+- [ ] Add bulk delete and export options
+- [ ] Enable editing notes on saved comments
+- [ ] Add filter by source (YouTube, Amazon, Reddit, TikTok)
+
+### AI Topic/Theme Summarization
+- [ ] Add "Generate Summary" button to Split View
+- [ ] Create AI prompt to extract key topics and themes
+- [ ] Display summary in a collapsible panel
+- [ ] Show top themes with comment counts
+- [ ] Extract common pain points and suggestions
+- [ ] Allow regenerating summary with different focus

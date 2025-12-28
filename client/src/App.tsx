@@ -24,6 +24,7 @@ import RedditResearch from "./pages/RedditResearch";
 import CompetitorAnalysis from "./pages/CompetitorAnalysis";
 import SavedPlaylist from "./pages/SavedPlaylist";
 import TikTokIntelligence from "./pages/TikTokIntelligence";
+import SavedComments from "./pages/SavedComments";
 
 function Router() {
   return (
@@ -46,6 +47,7 @@ function Router() {
      <Route path={"/competitor-analysis"} component={CompetitorAnalysis} />
       <Route path={"/tiktok"} component={TikTokIntelligence} />
       <Route path={"/playlist/:id"} component={SavedPlaylist} />
+      <Route path={"/saved-comments"} component={SavedComments} />
       <Route path={"/playlists"} component={NotFound} />
       <Route path={"/trash"} component={NotFound} />
       <Route path={"/404"} component={NotFound} />

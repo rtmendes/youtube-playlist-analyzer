@@ -33,7 +33,15 @@ import {
   ChevronsRight,
   Filter,
   X,
+  Smile,
+  Frown,
+  Meh,
+  Sparkles,
+  Loader2,
+  FileText,
+  Save,
 } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface Video {
   id: string;
@@ -65,6 +73,31 @@ interface Comment {
   likeCount: number;
   replyCount: number;
   publishedAt: string;
+  sentiment?: "positive" | "negative" | "neutral";
+}
+
+type SentimentFilter = "all" | "positive" | "negative" | "neutral";
+
+// Simple sentiment analysis based on keywords
+function analyzeSentiment(text: string): "positive" | "negative" | "neutral" {
+  const positiveWords = ["love", "great", "amazing", "awesome", "excellent", "fantastic", "wonderful", "best", "perfect", "helpful", "thank", "thanks", "good", "nice", "beautiful", "brilliant", "incredible", "outstanding", "superb", "recommend"];
+  const negativeWords = ["hate", "bad", "terrible", "awful", "worst", "horrible", "poor", "disappointing", "waste", "boring", "annoying", "useless", "trash", "garbage", "sucks", "stupid", "dumb", "scam", "fake", "wrong"];
+  
+  const lowerText = text.toLowerCase();
+  let positiveScore = 0;
+  let negativeScore = 0;
+  
+  positiveWords.forEach(word => {
+    if (lowerText.includes(word)) positiveScore++;
+  });
+  
+  negativeWords.forEach(word => {
+    if (lowerText.includes(word)) negativeScore++;
+  });
+  
+  if (positiveScore > negativeScore) return "positive";
+  if (negativeScore > positiveScore) return "negative";
+  return "neutral";
 }
 
 interface SplitPaneCommentsProps {
@@ -77,19 +110,33 @@ interface SplitPaneCommentsProps {
 export function SplitPaneComments({ videos, comments, selectedVideo, onVideoSelect }: SplitPaneCommentsProps) {
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
+  const [keywordFilter, setKeywordFilter] = useState("");
+  const [sentimentFilter, setSentimentFilter] = useState<SentimentFilter>("all");
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "most-liked" | "most-replies">("newest");
   const [selectedComments, setSelectedComments] = useState<Set<string>>(new Set());
   const [highlightedComments, setHighlightedComments] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [showSummary, setShowSummary] = useState(false);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summary, setSummary] = useState<{ topics: string[]; themes: string[]; painPoints: string[]; suggestions: string[] } | null>(null);
   const commentsPerPage = 50;
 
   const saveCommentMutation = trpc.savedComments.save.useMutation();
 
+  // Analyze sentiment for all comments
+  const commentsWithSentiment = useMemo(() => {
+    return comments.map(c => ({
+      ...c,
+      sentiment: c.sentiment || analyzeSentiment(c.textOriginal)
+    }));
+  }, [comments]);
+
   // Filter and sort comments
   const filteredComments = useMemo(() => {
-    let filtered = comments;
+    let filtered = commentsWithSentiment;
     
+    // Search query filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(
@@ -97,6 +144,19 @@ export function SplitPaneComments({ videos, comments, selectedVideo, onVideoSele
           c.textOriginal.toLowerCase().includes(query) ||
           c.authorDisplayName.toLowerCase().includes(query)
       );
+    }
+    
+    // Keyword filter (separate from search)
+    if (keywordFilter) {
+      const keywords = keywordFilter.toLowerCase().split(",").map(k => k.trim()).filter(Boolean);
+      filtered = filtered.filter((c) =>
+        keywords.some(keyword => c.textOriginal.toLowerCase().includes(keyword))
+      );
+    }
+    
+    // Sentiment filter
+    if (sentimentFilter !== "all") {
+      filtered = filtered.filter((c) => c.sentiment === sentimentFilter);
     }
     
     const sorted = [...filtered].sort((a, b) => {
@@ -115,7 +175,83 @@ export function SplitPaneComments({ videos, comments, selectedVideo, onVideoSele
     });
     
     return sorted;
-  }, [comments, searchQuery, sortBy]);
+  }, [commentsWithSentiment, searchQuery, keywordFilter, sentimentFilter, sortBy]);
+
+  // Sentiment counts for display
+  const sentimentCounts = useMemo(() => {
+    const counts = { positive: 0, negative: 0, neutral: 0 };
+    commentsWithSentiment.forEach(c => {
+      if (c.sentiment) counts[c.sentiment]++;
+    });
+    return counts;
+  }, [commentsWithSentiment]);
+
+  // Generate AI summary of topics and themes
+  const generateSummary = useCallback(async () => {
+    setSummaryLoading(true);
+    try {
+      // Extract topics from comments using simple keyword extraction
+      const allText = filteredComments.map(c => c.textOriginal).join(" ");
+      const words = allText.toLowerCase().split(/\W+/).filter(w => w.length > 4);
+      const wordFreq: Record<string, number> = {};
+      words.forEach(w => { wordFreq[w] = (wordFreq[w] || 0) + 1; });
+      
+      // Get top topics
+      const sortedWords = Object.entries(wordFreq)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([word]) => word);
+      
+      // Extract themes based on patterns
+      const themes: string[] = [];
+      const painPoints: string[] = [];
+      const suggestions: string[] = [];
+      
+      const positiveComments = filteredComments.filter(c => c.sentiment === "positive");
+      const negativeComments = filteredComments.filter(c => c.sentiment === "negative");
+      
+      if (positiveComments.length > filteredComments.length * 0.6) {
+        themes.push("Overall positive reception");
+      }
+      if (negativeComments.length > filteredComments.length * 0.3) {
+        themes.push("Significant negative feedback");
+      }
+      
+      // Look for question patterns
+      const questions = filteredComments.filter(c => c.textOriginal.includes("?"));
+      if (questions.length > 5) {
+        themes.push(`${questions.length} questions from viewers`);
+      }
+      
+      // Look for common pain points in negative comments
+      negativeComments.slice(0, 5).forEach(c => {
+        const text = c.textOriginal.substring(0, 100);
+        if (text.length > 20) painPoints.push(text + "...");
+      });
+      
+      // Look for suggestions
+      const suggestionPatterns = ["should", "could", "would be nice", "please", "wish"];
+      filteredComments.forEach(c => {
+        const lower = c.textOriginal.toLowerCase();
+        if (suggestionPatterns.some(p => lower.includes(p)) && suggestions.length < 5) {
+          suggestions.push(c.textOriginal.substring(0, 100) + "...");
+        }
+      });
+      
+      setSummary({
+        topics: sortedWords,
+        themes: themes.length > 0 ? themes : ["General discussion"],
+        painPoints: painPoints.length > 0 ? painPoints : ["No major pain points identified"],
+        suggestions: suggestions.length > 0 ? suggestions : ["No specific suggestions found"]
+      });
+      setShowSummary(true);
+      toast.success("Summary generated!");
+    } catch (error) {
+      toast.error("Failed to generate summary");
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, [filteredComments]);
 
   // Pagination
   const totalPages = Math.ceil(filteredComments.length / commentsPerPage);
@@ -374,34 +510,78 @@ export function SplitPaneComments({ videos, comments, selectedVideo, onVideoSele
       {/* Right Pane - Comments CSV View */}
       <div className="flex-1 border rounded-lg overflow-hidden flex flex-col">
         {/* Toolbar */}
-        <div className="p-3 border-b bg-muted/50 flex items-center gap-3 flex-wrap">
-          <div className="relative flex-1 max-w-xs">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search comments..."
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="pl-8 h-8 text-sm"
-            />
-          </div>
+        <div className="p-3 border-b bg-muted/50 space-y-2">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search comments..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="pl-8 h-8 text-sm"
+              />
+            </div>
 
-          <Select value={sortBy} onValueChange={(v: any) => setSortBy(v)}>
-            <SelectTrigger className="w-[140px] h-8 text-sm">
-              <ArrowUpDown className="h-3 w-3 mr-1" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="newest">Newest</SelectItem>
-              <SelectItem value="oldest">Oldest</SelectItem>
-              <SelectItem value="most-liked">Most Liked</SelectItem>
-              <SelectItem value="most-replies">Most Replies</SelectItem>
-            </SelectContent>
-          </Select>
+            <div className="relative max-w-[200px]">
+              <Filter className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Keywords (comma-separated)"
+                value={keywordFilter}
+                onChange={(e) => {
+                  setKeywordFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="pl-8 h-8 text-sm"
+              />
+            </div>
 
-          <div className="flex items-center gap-1 ml-auto">
+            <Select value={sentimentFilter} onValueChange={(v: SentimentFilter) => { setSentimentFilter(v); setCurrentPage(1); }}>
+              <SelectTrigger className="w-[150px] h-8 text-sm">
+                {sentimentFilter === "all" && <Meh className="h-3 w-3 mr-1" />}
+                {sentimentFilter === "positive" && <Smile className="h-3 w-3 mr-1 text-green-500" />}
+                {sentimentFilter === "negative" && <Frown className="h-3 w-3 mr-1 text-red-500" />}
+                {sentimentFilter === "neutral" && <Meh className="h-3 w-3 mr-1 text-gray-500" />}
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">
+                  <span className="flex items-center gap-2">All Sentiments</span>
+                </SelectItem>
+                <SelectItem value="positive">
+                  <span className="flex items-center gap-2">
+                    <Smile className="h-3 w-3 text-green-500" /> Positive ({sentimentCounts.positive})
+                  </span>
+                </SelectItem>
+                <SelectItem value="negative">
+                  <span className="flex items-center gap-2">
+                    <Frown className="h-3 w-3 text-red-500" /> Negative ({sentimentCounts.negative})
+                  </span>
+                </SelectItem>
+                <SelectItem value="neutral">
+                  <span className="flex items-center gap-2">
+                    <Meh className="h-3 w-3 text-gray-500" /> Neutral ({sentimentCounts.neutral})
+                  </span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={sortBy} onValueChange={(v: any) => setSortBy(v)}>
+              <SelectTrigger className="w-[140px] h-8 text-sm">
+                <ArrowUpDown className="h-3 w-3 mr-1" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="newest">Newest</SelectItem>
+                <SelectItem value="oldest">Oldest</SelectItem>
+                <SelectItem value="most-liked">Most Liked</SelectItem>
+                <SelectItem value="most-replies">Most Replies</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <div className="flex items-center gap-1 ml-auto">
             {selectedComments.size > 0 && (
               <>
                 <Badge variant="secondary" className="text-xs">
@@ -419,7 +599,73 @@ export function SplitPaneComments({ videos, comments, selectedVideo, onVideoSele
               <Download className="h-4 w-4 mr-1" />
               CSV
             </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={generateSummary}
+              disabled={summaryLoading || filteredComments.length === 0}
+            >
+              {summaryLoading ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4 mr-1" />
+              )}
+              Summary
+            </Button>
+            </div>
           </div>
+
+          {/* Summary Panel */}
+          {showSummary && summary && (
+            <Collapsible open={showSummary} onOpenChange={setShowSummary}>
+              <CollapsibleContent className="border rounded-lg p-3 bg-background space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold text-sm flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    Comment Summary
+                  </h4>
+                  <Button variant="ghost" size="sm" onClick={() => setShowSummary(false)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">Top Topics</p>
+                    <div className="flex flex-wrap gap-1">
+                      {summary.topics.map((topic, i) => (
+                        <Badge key={i} variant="secondary" className="text-xs">{topic}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">Themes</p>
+                    <ul className="space-y-1">
+                      {summary.themes.map((theme, i) => (
+                        <li key={i} className="text-muted-foreground">• {theme}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">Pain Points</p>
+                    <ul className="space-y-1">
+                      {summary.painPoints.slice(0, 3).map((point, i) => (
+                        <li key={i} className="text-red-600 dark:text-red-400 line-clamp-1">• {point}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="font-medium text-muted-foreground mb-1">Suggestions</p>
+                    <ul className="space-y-1">
+                      {summary.suggestions.slice(0, 3).map((suggestion, i) => (
+                        <li key={i} className="text-blue-600 dark:text-blue-400 line-clamp-1">• {suggestion}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          )}
         </div>
 
         {/* Table Header */}
@@ -456,6 +702,30 @@ export function SplitPaneComments({ videos, comments, selectedVideo, onVideoSele
               <div className="min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="font-medium text-xs truncate">{comment.authorDisplayName}</span>
+                  {comment.sentiment === "positive" && (
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <Smile className="h-3 w-3 text-green-500" />
+                      </TooltipTrigger>
+                      <TooltipContent>Positive sentiment</TooltipContent>
+                    </Tooltip>
+                  )}
+                  {comment.sentiment === "negative" && (
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <Frown className="h-3 w-3 text-red-500" />
+                      </TooltipTrigger>
+                      <TooltipContent>Negative sentiment</TooltipContent>
+                    </Tooltip>
+                  )}
+                  {comment.sentiment === "neutral" && (
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <Meh className="h-3 w-3 text-gray-400" />
+                      </TooltipTrigger>
+                      <TooltipContent>Neutral sentiment</TooltipContent>
+                    </Tooltip>
+                  )}
                   {comment.videoTitle && (
                     <Badge variant="outline" className="text-xs truncate max-w-[200px]">
                       {comment.videoTitle}
