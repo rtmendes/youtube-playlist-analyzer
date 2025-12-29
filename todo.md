@@ -508,3 +508,24 @@
 - [ ] Show top themes with comment counts
 - [ ] Extract common pain points and suggestions
 - [ ] Allow regenerating summary with different focus
+
+## Comment Collections & Advanced NLP
+
+### Comment Collections Feature
+- [x] Create collections database table (id, userId, name, description, color, createdAt)
+- [x] Add collectionId foreign key to savedComments table
+- [x] Create API routes for collection CRUD operations
+- [x] Build collection management UI (create, rename, delete, change color)
+- [x] Add collection selector when saving comments
+- [x] Display comments grouped by collection in Saved Comments page
+- [ ] Enable drag-and-drop to move comments between collections
+- [x] Add collection filtering in Saved Comments page
+
+### Advanced NLP Integration
+- [x] Integrate with Forge API for advanced text analysis
+- [x] Implement advanced sentiment analysis with confidence scores
+- [x] Add topic modeling using keyword extraction and clustering
+- [x] Generate AI-powered summaries of comment themes
+- [x] Extract named entities (products, features, competitors)
+- [x] Identify common questions and pain points automatically
+- [ ] Add sentiment trend visualization over time

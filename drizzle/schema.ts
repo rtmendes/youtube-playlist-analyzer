@@ -619,3 +619,50 @@ export const savedComments = mysqlTable("savedComments", {
 
 export type SavedComment = typeof savedComments.$inferSelect;
 export type InsertSavedComment = typeof savedComments.$inferInsert;
+
+
+/**
+ * Comment Collections - user-created folders for organizing saved comments
+ */
+export const commentCollections = mysqlTable("commentCollections", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  name: varchar("name", { length: 128 }).notNull(),
+  description: text("description"),
+  color: varchar("color", { length: 7 }).default("#6366f1"), // hex color
+  icon: varchar("icon", { length: 32 }).default("folder"), // lucide icon name
+  // Stats (denormalized for performance)
+  commentCount: int("commentCount").default(0),
+  // Timestamps
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+export type CommentCollection = typeof commentCollections.$inferSelect;
+export type InsertCommentCollection = typeof commentCollections.$inferInsert;
+
+/**
+ * NLP Analysis Results - cached AI analysis for comments
+ */
+export const nlpAnalysisResults = mysqlTable("nlpAnalysisResults", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  // Analysis scope
+  sourceType: mysqlEnum("sourceType", ["youtube", "amazon", "reddit", "tiktok", "mixed"]).notNull(),
+  sourceId: varchar("sourceId", { length: 128 }), // specific video/product/post or null for mixed
+  // Analysis results
+  topics: json("topics").$type<{ topic: string; score: number; keywords: string[] }[]>(),
+  sentimentBreakdown: json("sentimentBreakdown").$type<{ positive: number; negative: number; neutral: number; mixed: number }>(),
+  keyThemes: json("keyThemes").$type<string[]>(),
+  painPoints: json("painPoints").$type<{ text: string; frequency: number }[]>(),
+  suggestions: json("suggestions").$type<{ text: string; frequency: number }[]>(),
+  questions: json("questions").$type<string[]>(),
+  namedEntities: json("namedEntities").$type<{ entity: string; type: string; count: number }[]>(),
+  summary: text("summary"),
+  // Metadata
+  commentCount: int("commentCount").default(0),
+  analyzedAt: timestamp("analyzedAt").defaultNow().notNull(),
+});
+
+export type NlpAnalysisResult = typeof nlpAnalysisResults.$inferSelect;
+export type InsertNlpAnalysisResult = typeof nlpAnalysisResults.$inferInsert;

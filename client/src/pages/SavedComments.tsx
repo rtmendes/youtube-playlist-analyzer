@@ -31,7 +31,18 @@ import {
   Calendar,
   ThumbsUp,
   Loader2,
+  FolderPlus,
+  Folder,
+  FolderOpen,
+  Palette,
+  MoreVertical,
+  Plus,
+  ChevronRight,
+  Brain,
+  Sparkles,
 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type SourceType = "all" | "youtube" | "amazon" | "reddit" | "tiktok";
 
@@ -46,7 +57,31 @@ interface SavedComment {
   notes: string | null;
   highlighted: boolean;
   savedAt: string;
+  collectionName?: string | null;
 }
+
+interface Collection {
+  id: number;
+  name: string;
+  description: string | null;
+  color: string;
+  icon: string;
+  commentCount: number;
+  createdAt: string;
+}
+
+const COLLECTION_COLORS = [
+  "#6366f1", // indigo
+  "#ef4444", // red
+  "#f97316", // orange
+  "#eab308", // yellow
+  "#22c55e", // green
+  "#06b6d4", // cyan
+  "#3b82f6", // blue
+  "#a855f7", // purple
+  "#ec4899", // pink
+  "#64748b", // slate
+];
 
 const SOURCE_ICONS = {
   youtube: Youtube,
@@ -70,6 +105,25 @@ export default function SavedComments() {
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [editingComment, setEditingComment] = useState<{ id: number; notes: string } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+  
+  // Collections state
+  const [activeTab, setActiveTab] = useState<"all" | "collections" | "analysis">("all");
+  const [selectedCollection, setSelectedCollection] = useState<string | null>(null);
+  const [createCollectionOpen, setCreateCollectionOpen] = useState(false);
+  const [editCollectionOpen, setEditCollectionOpen] = useState<Collection | null>(null);
+  const [newCollectionName, setNewCollectionName] = useState("");
+  const [newCollectionDesc, setNewCollectionDesc] = useState("");
+  const [newCollectionColor, setNewCollectionColor] = useState(COLLECTION_COLORS[0]);
+  const [nlpAnalysisOpen, setNlpAnalysisOpen] = useState(false);
+  const [nlpResult, setNlpResult] = useState<{
+    topics: { topic: string; score: number }[];
+    sentimentBreakdown: { positive: number; negative: number; neutral: number; mixed: number };
+    keyThemes: string[];
+    painPoints: { text: string }[];
+    suggestions: { text: string }[];
+    questions: string[];
+    summary: string;
+  } | null>(null);
 
   const { data: savedComments, isLoading, refetch } = trpc.savedComments.getAll.useQuery(
     undefined,
@@ -103,6 +157,70 @@ export default function SavedComments() {
     onError: () => toast.error("Failed to delete comments"),
   });
 
+  // Collections queries and mutations
+  const { data: collections, refetch: refetchCollections } = trpc.collections.getAll.useQuery(
+    undefined,
+    { enabled: !!user }
+  ) as { data: Collection[] | undefined; refetch: () => void };
+
+  const createCollectionMutation = trpc.collections.create.useMutation({
+    onSuccess: () => {
+      toast.success("Collection created!");
+      refetchCollections();
+      setCreateCollectionOpen(false);
+      setNewCollectionName("");
+      setNewCollectionDesc("");
+      setNewCollectionColor(COLLECTION_COLORS[0]);
+    },
+    onError: () => toast.error("Failed to create collection"),
+  });
+
+  const updateCollectionMutation = trpc.collections.update.useMutation({
+    onSuccess: () => {
+      toast.success("Collection updated!");
+      refetchCollections();
+      setEditCollectionOpen(null);
+    },
+    onError: () => toast.error("Failed to update collection"),
+  });
+
+  const deleteCollectionMutation = trpc.collections.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Collection deleted!");
+      refetchCollections();
+      refetch();
+      setSelectedCollection(null);
+    },
+    onError: () => toast.error("Failed to delete collection"),
+  });
+
+  const addToCollectionMutation = trpc.collections.addComment.useMutation({
+    onSuccess: () => {
+      toast.success("Added to collection!");
+      refetch();
+      refetchCollections();
+    },
+    onError: () => toast.error("Failed to add to collection"),
+  });
+
+  const removeFromCollectionMutation = trpc.collections.removeComment.useMutation({
+    onSuccess: () => {
+      toast.success("Removed from collection!");
+      refetch();
+      refetchCollections();
+    },
+    onError: () => toast.error("Failed to remove from collection"),
+  });
+
+  const nlpAnalysisMutation = trpc.nlpAnalysis.analyzeComments.useMutation({
+    onSuccess: (data) => {
+      setNlpResult(data);
+      setNlpAnalysisOpen(true);
+      toast.success("Analysis complete!");
+    },
+    onError: () => toast.error("Failed to analyze comments"),
+  });
+
   // Filter comments
   const filteredComments = useMemo(() => {
     if (!savedComments) return [];
@@ -122,9 +240,47 @@ export default function SavedComments() {
     if (sourceFilter !== "all") {
       filtered = filtered.filter((c) => c.sourceType === sourceFilter);
     }
+
+    // Collection filter
+    if (selectedCollection) {
+      filtered = filtered.filter((c) => c.collectionName === selectedCollection);
+    }
     
     return filtered;
-  }, [savedComments, searchQuery, sourceFilter]);
+  }, [savedComments, searchQuery, sourceFilter, selectedCollection]);
+
+  // Group by collection
+  const commentsByCollection = useMemo(() => {
+    if (!savedComments) return {};
+    const groups: Record<string, SavedComment[]> = { uncategorized: [] };
+    savedComments.forEach((comment) => {
+      const key = comment.collectionName || "uncategorized";
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(comment);
+    });
+    return groups;
+  }, [savedComments]);
+
+  // Run NLP analysis
+  const runNlpAnalysis = useCallback(() => {
+    const commentsToAnalyze = selectedComments.size > 0
+      ? filteredComments.filter((c) => selectedComments.has(c.id))
+      : filteredComments;
+    
+    if (commentsToAnalyze.length === 0) {
+      toast.error("No comments to analyze");
+      return;
+    }
+
+    nlpAnalysisMutation.mutate({
+      comments: commentsToAnalyze.map((c) => ({
+        id: String(c.id),
+        text: c.text,
+        authorName: c.authorName || undefined,
+      })),
+      sourceType: sourceFilter === "all" ? "mixed" : sourceFilter,
+    });
+  }, [filteredComments, selectedComments, sourceFilter, nlpAnalysisMutation]);
 
   // Group by source
   const groupedComments = useMemo(() => {
@@ -295,10 +451,63 @@ export default function SavedComments() {
               </SelectContent>
             </Select>
 
+            {/* Collection filter */}
+            {collections && collections.length > 0 && (
+              <Select 
+                value={selectedCollection || "all"} 
+                onValueChange={(v) => setSelectedCollection(v === "all" ? null : v)}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <Folder className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="All Collections" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Collections</SelectItem>
+                  <SelectItem value="uncategorized">Uncategorized</SelectItem>
+                  {collections.map((col) => (
+                    <SelectItem key={col.id} value={col.name}>
+                      <span className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: col.color }} />
+                        {col.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
             <div className="flex items-center gap-2 ml-auto">
               {selectedComments.size > 0 && (
                 <>
                   <Badge variant="secondary">{selectedComments.size} selected</Badge>
+                  
+                  {/* Add to collection dropdown */}
+                  {collections && collections.length > 0 && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm">
+                          <FolderPlus className="h-4 w-4 mr-1" />
+                          Add to Collection
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent>
+                        {collections.map((col) => (
+                          <DropdownMenuItem
+                            key={col.id}
+                            onClick={() => {
+                              selectedComments.forEach((commentId) => {
+                                addToCollectionMutation.mutate({ collectionId: col.id, commentId });
+                              });
+                            }}
+                          >
+                            <span className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: col.color }} />
+                            {col.name}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                  
                   <Button
                     variant="destructive"
                     size="sm"
@@ -312,14 +521,81 @@ export default function SavedComments() {
                   </Button>
                 </>
               )}
+              
+              {/* NLP Analysis button */}
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={runNlpAnalysis}
+                disabled={nlpAnalysisMutation.isPending}
+              >
+                {nlpAnalysisMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <Brain className="h-4 w-4 mr-1" />
+                )}
+                Analyze
+              </Button>
+              
               <Button variant="outline" size="sm" onClick={exportCSV}>
                 <Download className="h-4 w-4 mr-1" />
                 Export CSV
+              </Button>
+              
+              <Button variant="outline" size="sm" onClick={() => setCreateCollectionOpen(true)}>
+                <Plus className="h-4 w-4 mr-1" />
+                New Collection
               </Button>
             </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* Collections Grid */}
+      {collections && collections.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          {collections.map((col) => (
+            <Card
+              key={col.id}
+              className={`cursor-pointer transition-all hover:shadow-md ${
+                selectedCollection === col.name ? "ring-2 ring-primary" : ""
+              }`}
+              onClick={() => setSelectedCollection(selectedCollection === col.name ? null : col.name)}
+            >
+              <CardContent className="p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded" style={{ backgroundColor: col.color }} />
+                    <span className="font-medium text-sm truncate">{col.name}</span>
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                        <MoreVertical className="h-3 w-3" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setEditCollectionOpen(col); }}>
+                        <Edit className="h-4 w-4 mr-2" /> Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem 
+                        className="text-destructive"
+                        onClick={(e) => { e.stopPropagation(); deleteCollectionMutation.mutate({ id: col.id }); }}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" /> Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {commentsByCollection[col.name]?.length || 0} comments
+                </p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Comments List */}
       {isLoading ? (
@@ -522,6 +798,256 @@ export default function SavedComments() {
                 <Loader2 className="h-4 w-4 animate-spin mr-1" />
               ) : null}
               Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Collection Dialog */}
+      <Dialog open={createCollectionOpen} onOpenChange={setCreateCollectionOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Collection</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Name</label>
+              <Input
+                placeholder="e.g., Product Ideas, Pain Points..."
+                value={newCollectionName}
+                onChange={(e) => setNewCollectionName(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Description (optional)</label>
+              <Textarea
+                placeholder="What is this collection for?"
+                value={newCollectionDesc}
+                onChange={(e) => setNewCollectionDesc(e.target.value)}
+                rows={2}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Color</label>
+              <div className="flex gap-2 mt-2">
+                {COLLECTION_COLORS.map((color) => (
+                  <button
+                    key={color}
+                    className={`w-8 h-8 rounded-full transition-all ${
+                      newCollectionColor === color ? "ring-2 ring-offset-2 ring-primary" : ""
+                    }`}
+                    style={{ backgroundColor: color }}
+                    onClick={() => setNewCollectionColor(color)}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateCollectionOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => createCollectionMutation.mutate({
+                name: newCollectionName,
+                description: newCollectionDesc || undefined,
+                color: newCollectionColor,
+              })}
+              disabled={!newCollectionName || createCollectionMutation.isPending}
+            >
+              {createCollectionMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+              ) : (
+                <Plus className="h-4 w-4 mr-1" />
+              )}
+              Create Collection
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Collection Dialog */}
+      <Dialog open={!!editCollectionOpen} onOpenChange={() => setEditCollectionOpen(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Collection</DialogTitle>
+          </DialogHeader>
+          {editCollectionOpen && (
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">Name</label>
+                <Input
+                  value={editCollectionOpen.name}
+                  onChange={(e) => setEditCollectionOpen({ ...editCollectionOpen, name: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Description</label>
+                <Textarea
+                  value={editCollectionOpen.description || ""}
+                  onChange={(e) => setEditCollectionOpen({ ...editCollectionOpen, description: e.target.value })}
+                  rows={2}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Color</label>
+                <div className="flex gap-2 mt-2">
+                  {COLLECTION_COLORS.map((color) => (
+                    <button
+                      key={color}
+                      className={`w-8 h-8 rounded-full transition-all ${
+                        editCollectionOpen.color === color ? "ring-2 ring-offset-2 ring-primary" : ""
+                      }`}
+                      style={{ backgroundColor: color }}
+                      onClick={() => setEditCollectionOpen({ ...editCollectionOpen, color })}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditCollectionOpen(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (editCollectionOpen) {
+                  updateCollectionMutation.mutate({
+                    id: editCollectionOpen.id,
+                    name: editCollectionOpen.name,
+                    description: editCollectionOpen.description || undefined,
+                    color: editCollectionOpen.color,
+                  });
+                }
+              }}
+              disabled={updateCollectionMutation.isPending}
+            >
+              {updateCollectionMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+              ) : null}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* NLP Analysis Results Dialog */}
+      <Dialog open={nlpAnalysisOpen} onOpenChange={setNlpAnalysisOpen}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              Comment Analysis Results
+            </DialogTitle>
+          </DialogHeader>
+          {nlpResult && (
+            <div className="space-y-6">
+              {/* Summary */}
+              <div className="p-4 bg-muted rounded-lg">
+                <h4 className="font-semibold mb-2">Summary</h4>
+                <p className="text-sm text-muted-foreground">{nlpResult.summary}</p>
+              </div>
+
+              {/* Sentiment Breakdown */}
+              <div>
+                <h4 className="font-semibold mb-3">Sentiment Breakdown</h4>
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="p-3 bg-green-50 dark:bg-green-950 rounded-lg text-center">
+                    <p className="text-2xl font-bold text-green-600">{nlpResult.sentimentBreakdown.positive}</p>
+                    <p className="text-xs text-green-600">Positive</p>
+                  </div>
+                  <div className="p-3 bg-red-50 dark:bg-red-950 rounded-lg text-center">
+                    <p className="text-2xl font-bold text-red-600">{nlpResult.sentimentBreakdown.negative}</p>
+                    <p className="text-xs text-red-600">Negative</p>
+                  </div>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-900 rounded-lg text-center">
+                    <p className="text-2xl font-bold text-gray-600">{nlpResult.sentimentBreakdown.neutral}</p>
+                    <p className="text-xs text-gray-600">Neutral</p>
+                  </div>
+                  <div className="p-3 bg-yellow-50 dark:bg-yellow-950 rounded-lg text-center">
+                    <p className="text-2xl font-bold text-yellow-600">{nlpResult.sentimentBreakdown.mixed}</p>
+                    <p className="text-xs text-yellow-600">Mixed</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Top Topics */}
+              <div>
+                <h4 className="font-semibold mb-3">Top Topics</h4>
+                <div className="flex flex-wrap gap-2">
+                  {nlpResult.topics.slice(0, 10).map((topic, i) => (
+                    <Badge key={i} variant="secondary" className="text-sm">
+                      {topic.topic}
+                      <span className="ml-1 text-xs text-muted-foreground">
+                        ({Math.round(topic.score * 100)}%)
+                      </span>
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              {/* Key Themes */}
+              {nlpResult.keyThemes.length > 0 && (
+                <div>
+                  <h4 className="font-semibold mb-3">Key Themes</h4>
+                  <ul className="space-y-1">
+                    {nlpResult.keyThemes.map((theme, i) => (
+                      <li key={i} className="flex items-center gap-2 text-sm">
+                        <ChevronRight className="h-4 w-4 text-primary" />
+                        {theme}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Pain Points */}
+              {nlpResult.painPoints.length > 0 && (
+                <div>
+                  <h4 className="font-semibold mb-3 text-red-600">Pain Points</h4>
+                  <div className="space-y-2">
+                    {nlpResult.painPoints.slice(0, 5).map((point, i) => (
+                      <div key={i} className="p-2 bg-red-50 dark:bg-red-950 rounded text-sm">
+                        {point.text}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Suggestions */}
+              {nlpResult.suggestions.length > 0 && (
+                <div>
+                  <h4 className="font-semibold mb-3 text-blue-600">Suggestions from Audience</h4>
+                  <div className="space-y-2">
+                    {nlpResult.suggestions.slice(0, 5).map((suggestion, i) => (
+                      <div key={i} className="p-2 bg-blue-50 dark:bg-blue-950 rounded text-sm">
+                        {suggestion.text}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Questions */}
+              {nlpResult.questions.length > 0 && (
+                <div>
+                  <h4 className="font-semibold mb-3 text-purple-600">Common Questions</h4>
+                  <div className="space-y-2">
+                    {nlpResult.questions.slice(0, 5).map((question, i) => (
+                      <div key={i} className="p-2 bg-purple-50 dark:bg-purple-950 rounded text-sm">
+                        {question}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNlpAnalysisOpen(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

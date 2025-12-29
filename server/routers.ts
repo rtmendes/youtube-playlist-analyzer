@@ -10,7 +10,7 @@ import {
   formatCount,
 } from "./youtube";
 import { getDb } from "./db";
-import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets, amazonProducts, amazonReviews, redditPosts, redditComments, researchSessions, multiSourceInsights, savedPlaylists, playlistRuns, playlistVideos, videos, comments, tiktokCreators, tiktokVideos, tiktokComments, savedComments } from "../drizzle/schema";
+import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets, amazonProducts, amazonReviews, redditPosts, redditComments, researchSessions, multiSourceInsights, savedPlaylists, playlistRuns, playlistVideos, videos, comments, tiktokCreators, tiktokVideos, tiktokComments, savedComments, commentCollections, nlpAnalysisResults } from "../drizzle/schema";
 import { eq, desc, and, like, or, sql } from "drizzle-orm";
 import { parseAmazonUrl, generateSampleProduct, generateSampleReviews, calculateReviewStats, analyzeReviewSentiment, fetchAmazonProduct, fetchAmazonReviews, searchAmazonProducts, compareProducts, AmazonApiConfig } from "./amazon";
 import { parseRedditUrl, fetchSubredditPosts, searchReddit, fetchPostComments, analyzeRedditComment, calculateRedditStats, getPopularResearchSubreddits, fetchSubredditPostsWithFallback, searchRedditWithFallback, fetchPostCommentsWithFallback, generateSamplePosts, generateSampleComments as generateSampleRedditComments } from "./reddit";
@@ -2073,6 +2073,359 @@ export const appRouter = router({
         const collectionSet = new Set(results.map(r => r.collectionName).filter(Boolean));
         const collections = Array.from(collectionSet);
         return collections as string[];
+      }),
+  }),
+
+  // Comment Collections Router
+  collections: router({
+    getAll: protectedProcedure
+      .query(async ({ ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        const results = await db.select().from(commentCollections)
+          .where(eq(commentCollections.userId, ctx.user.id))
+          .orderBy(desc(commentCollections.createdAt));
+        
+        return results;
+      }),
+
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(128),
+        description: z.string().optional(),
+        color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+        icon: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const result = await db.insert(commentCollections).values({
+          userId: ctx.user.id,
+          name: input.name,
+          description: input.description,
+          color: input.color || "#6366f1",
+          icon: input.icon || "folder",
+        });
+
+        return { success: true, id: Number(result[0].insertId) };
+      }),
+
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).max(128).optional(),
+        description: z.string().optional(),
+        color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+        icon: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const updateData: Record<string, unknown> = { updatedAt: new Date() };
+        if (input.name !== undefined) updateData.name = input.name;
+        if (input.description !== undefined) updateData.description = input.description;
+        if (input.color !== undefined) updateData.color = input.color;
+        if (input.icon !== undefined) updateData.icon = input.icon;
+
+        await db.update(commentCollections).set(updateData).where(
+          and(
+            eq(commentCollections.id, input.id),
+            eq(commentCollections.userId, ctx.user.id)
+          )
+        );
+
+        return { success: true };
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // First, get the collection name
+        const collection = await db.select().from(commentCollections)
+          .where(and(
+            eq(commentCollections.id, input.id),
+            eq(commentCollections.userId, ctx.user.id)
+          ));
+
+        if (collection.length > 0) {
+          // Remove collection reference from saved comments
+          await db.update(savedComments)
+            .set({ collectionName: null })
+            .where(and(
+              eq(savedComments.userId, ctx.user.id),
+              eq(savedComments.collectionName, collection[0].name)
+            ));
+
+          // Delete the collection
+          await db.delete(commentCollections).where(
+            and(
+              eq(commentCollections.id, input.id),
+              eq(commentCollections.userId, ctx.user.id)
+            )
+          );
+        }
+
+        return { success: true };
+      }),
+
+    addComment: protectedProcedure
+      .input(z.object({
+        collectionId: z.number(),
+        commentId: z.number(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Get collection name
+        const collection = await db.select().from(commentCollections)
+          .where(and(
+            eq(commentCollections.id, input.collectionId),
+            eq(commentCollections.userId, ctx.user.id)
+          ));
+
+        if (collection.length === 0) throw new Error("Collection not found");
+
+        // Update comment with collection name
+        await db.update(savedComments)
+          .set({ collectionName: collection[0].name })
+          .where(and(
+            eq(savedComments.id, input.commentId),
+            eq(savedComments.userId, ctx.user.id)
+          ));
+
+        // Update collection comment count
+        await db.update(commentCollections)
+          .set({ 
+            commentCount: sql`${commentCollections.commentCount} + 1`,
+            updatedAt: new Date()
+          })
+          .where(eq(commentCollections.id, input.collectionId));
+
+        return { success: true };
+      }),
+
+    removeComment: protectedProcedure
+      .input(z.object({
+        collectionId: z.number(),
+        commentId: z.number(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Remove collection reference from comment
+        await db.update(savedComments)
+          .set({ collectionName: null })
+          .where(and(
+            eq(savedComments.id, input.commentId),
+            eq(savedComments.userId, ctx.user.id)
+          ));
+
+        // Update collection comment count
+        await db.update(commentCollections)
+          .set({ 
+            commentCount: sql`GREATEST(${commentCollections.commentCount} - 1, 0)`,
+            updatedAt: new Date()
+          })
+          .where(eq(commentCollections.id, input.collectionId));
+
+        return { success: true };
+      }),
+  }),
+
+  // NLP Analysis Router
+  nlpAnalysis: router({
+    analyzeComments: protectedProcedure
+      .input(z.object({
+        comments: z.array(z.object({
+          id: z.string(),
+          text: z.string(),
+          authorName: z.string().optional(),
+        })),
+        sourceType: z.enum(["youtube", "amazon", "reddit", "tiktok", "mixed"]),
+        sourceId: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Advanced sentiment analysis
+        const positiveWords = ["love", "great", "amazing", "awesome", "excellent", "fantastic", "wonderful", "best", "perfect", "helpful", "thank", "thanks", "good", "nice", "beautiful", "brilliant", "incredible", "outstanding", "superb", "recommend", "impressed", "enjoy", "favorite", "useful", "valuable"];
+        const negativeWords = ["hate", "bad", "terrible", "awful", "worst", "horrible", "poor", "disappointing", "waste", "boring", "annoying", "useless", "trash", "garbage", "sucks", "stupid", "dumb", "scam", "fake", "wrong", "broken", "frustrating", "confusing", "overpriced", "misleading"];
+        const mixedIndicators = ["but", "however", "although", "though", "except", "despite"];
+
+        let positiveCount = 0;
+        let negativeCount = 0;
+        let neutralCount = 0;
+        let mixedCount = 0;
+
+        // Analyze each comment
+        input.comments.forEach(comment => {
+          const lower = comment.text.toLowerCase();
+          let posScore = 0;
+          let negScore = 0;
+          let hasMixed = mixedIndicators.some(w => lower.includes(w));
+
+          positiveWords.forEach(w => { if (lower.includes(w)) posScore++; });
+          negativeWords.forEach(w => { if (lower.includes(w)) negScore++; });
+
+          if (hasMixed && posScore > 0 && negScore > 0) {
+            mixedCount++;
+          } else if (posScore > negScore) {
+            positiveCount++;
+          } else if (negScore > posScore) {
+            negativeCount++;
+          } else {
+            neutralCount++;
+          }
+        });
+
+        // Extract topics using TF-IDF-like approach
+        const allText = input.comments.map(c => c.text).join(" ");
+        const words = allText.toLowerCase().split(/\W+/).filter(w => w.length > 4);
+        const stopWords = new Set(["about", "after", "again", "being", "could", "every", "first", "found", "going", "great", "having", "their", "there", "these", "thing", "think", "those", "video", "watch", "where", "which", "while", "would", "really", "should", "still", "thank", "thanks", "through", "using", "youre", "yours"]);
+        const wordFreq: Record<string, number> = {};
+        words.forEach(w => {
+          if (!stopWords.has(w)) {
+            wordFreq[w] = (wordFreq[w] || 0) + 1;
+          }
+        });
+
+        const topTopics = Object.entries(wordFreq)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 15)
+          .map(([word, count]) => ({
+            topic: word,
+            score: count / words.length,
+            keywords: [word]
+          }));
+
+        // Extract key themes
+        const themes: string[] = [];
+        const total = input.comments.length;
+        if (positiveCount > total * 0.6) themes.push("Overwhelmingly positive reception");
+        else if (positiveCount > total * 0.4) themes.push("Generally positive feedback");
+        if (negativeCount > total * 0.3) themes.push("Significant criticism present");
+        if (mixedCount > total * 0.2) themes.push("Mixed opinions common");
+
+        const questions = input.comments.filter(c => c.text.includes("?"));
+        if (questions.length > 5) themes.push(`${questions.length} questions from audience`);
+
+        // Extract pain points from negative comments
+        const painPoints: { text: string; frequency: number }[] = [];
+        input.comments
+          .filter(c => {
+            const lower = c.text.toLowerCase();
+            return negativeWords.some(w => lower.includes(w));
+          })
+          .slice(0, 10)
+          .forEach(c => {
+            painPoints.push({ text: c.text.substring(0, 150), frequency: 1 });
+          });
+
+        // Extract suggestions
+        const suggestionPatterns = ["should", "could", "would be nice", "please", "wish", "hope", "suggest", "recommend"];
+        const suggestions: { text: string; frequency: number }[] = [];
+        input.comments.forEach(c => {
+          const lower = c.text.toLowerCase();
+          if (suggestionPatterns.some(p => lower.includes(p)) && suggestions.length < 10) {
+            suggestions.push({ text: c.text.substring(0, 150), frequency: 1 });
+          }
+        });
+
+        // Extract questions
+        const extractedQuestions = questions.slice(0, 10).map(q => q.text.substring(0, 150));
+
+        // Extract named entities (simple pattern matching)
+        const namedEntities: { entity: string; type: string; count: number }[] = [];
+        const productPatterns = /\b(iphone|android|samsung|apple|google|amazon|microsoft|netflix|spotify|youtube|instagram|tiktok|facebook|twitter)\b/gi;
+        const entityCounts: Record<string, number> = {};
+        input.comments.forEach(c => {
+          const matches = c.text.match(productPatterns);
+          if (matches) {
+            matches.forEach(m => {
+              const normalized = m.toLowerCase();
+              entityCounts[normalized] = (entityCounts[normalized] || 0) + 1;
+            });
+          }
+        });
+        Object.entries(entityCounts).forEach(([entity, count]) => {
+          namedEntities.push({ entity, type: "brand", count });
+        });
+
+        // Generate summary
+        const summary = `Analysis of ${input.comments.length} comments shows ${Math.round(positiveCount/total*100)}% positive, ${Math.round(negativeCount/total*100)}% negative, and ${Math.round(neutralCount/total*100)}% neutral sentiment. Top topics include: ${topTopics.slice(0, 5).map(t => t.topic).join(", ")}. ${themes.join(". ")}.`;
+
+        // Save to database if available
+        if (db) {
+          await db.insert(nlpAnalysisResults).values({
+            userId: ctx.user.id,
+            sourceType: input.sourceType,
+            sourceId: input.sourceId,
+            topics: topTopics,
+            sentimentBreakdown: { positive: positiveCount, negative: negativeCount, neutral: neutralCount, mixed: mixedCount },
+            keyThemes: themes,
+            painPoints,
+            suggestions,
+            questions: extractedQuestions,
+            namedEntities,
+            summary,
+            commentCount: input.comments.length,
+          });
+        }
+
+        return {
+          topics: topTopics,
+          sentimentBreakdown: { positive: positiveCount, negative: negativeCount, neutral: neutralCount, mixed: mixedCount },
+          keyThemes: themes,
+          painPoints,
+          suggestions,
+          questions: extractedQuestions,
+          namedEntities,
+          summary,
+          commentCount: input.comments.length,
+        };
+      }),
+
+    getHistory: protectedProcedure
+      .input(z.object({
+        sourceType: z.enum(["youtube", "amazon", "reddit", "tiktok", "mixed"]).optional(),
+        limit: z.number().min(1).max(50).default(10),
+      }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        let query = db.select().from(nlpAnalysisResults)
+          .where(eq(nlpAnalysisResults.userId, ctx.user.id));
+
+        if (input.sourceType) {
+          query = db.select().from(nlpAnalysisResults)
+            .where(and(
+              eq(nlpAnalysisResults.userId, ctx.user.id),
+              eq(nlpAnalysisResults.sourceType, input.sourceType)
+            ));
+        }
+
+        const results = await query
+          .orderBy(desc(nlpAnalysisResults.analyzedAt))
+          .limit(input.limit);
+
+        return results;
       }),
   }),
 });
