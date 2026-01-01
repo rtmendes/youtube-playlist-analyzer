@@ -529,3 +529,22 @@
 - [x] Extract named entities (products, features, competitors)
 - [x] Identify common questions and pain points automatically
 - [ ] Add sentiment trend visualization over time
+
+## Drag-and-Drop & Collection Sharing
+
+### Drag-and-Drop Comment Reordering
+- [x] Add sortOrder column to savedComments table
+- [x] Install and configure dnd-kit library for drag-and-drop
+- [x] Create draggable comment rows in Saved Comments page
+- [x] Implement reorder logic to update sortOrder on drop
+- [x] Add visual drag handle and drop indicators
+- [x] Persist sort order to database on reorder
+
+### Shareable Collection Links
+- [x] Add shareToken column to commentCollections table
+- [x] Add isPublic boolean column to commentCollections table
+- [x] Create API route to generate unique share token
+- [x] Create public collection view page (no auth required)
+- [x] Add "Share Collection" button with copy link functionality
+- [x] Show share status indicator on collection cards
+- [x] Allow revoking share access

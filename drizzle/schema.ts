@@ -613,6 +613,8 @@ export const savedComments = mysqlTable("savedComments", {
   tags: json("tags").$type<string[]>(),
   // Collection/folder
   collectionName: varchar("collectionName", { length: 128 }),
+  // Sort order within collection
+  sortOrder: int("sortOrder").default(0),
   // Timestamps
   savedAt: timestamp("savedAt").defaultNow().notNull(),
 });
@@ -633,6 +635,9 @@ export const commentCollections = mysqlTable("commentCollections", {
   icon: varchar("icon", { length: 32 }).default("folder"), // lucide icon name
   // Stats (denormalized for performance)
   commentCount: int("commentCount").default(0),
+  // Sharing
+  isPublic: boolean("isPublic").default(false),
+  shareToken: varchar("shareToken", { length: 64 }),
   // Timestamps
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),

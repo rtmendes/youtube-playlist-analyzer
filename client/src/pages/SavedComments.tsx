@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,7 +40,28 @@ import {
   ChevronRight,
   Brain,
   Sparkles,
+  GripVertical,
+  Share2,
+  Link,
+  Link2Off,
 } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -58,6 +79,7 @@ interface SavedComment {
   highlighted: boolean;
   savedAt: string;
   collectionName?: string | null;
+  sortOrder?: number;
 }
 
 interface Collection {
@@ -68,6 +90,137 @@ interface Collection {
   icon: string;
   commentCount: number;
   createdAt: string;
+  isPublic?: boolean;
+  shareToken?: string | null;
+}
+
+// Sortable comment row component
+function SortableCommentRow({ 
+  comment, 
+  isSelected, 
+  onSelect, 
+  onCopy, 
+  onEdit, 
+  onDelete,
+  formatDate 
+}: {
+  comment: SavedComment;
+  isSelected: boolean;
+  onSelect: (id: number) => void;
+  onCopy: (text: string) => void;
+  onEdit: (comment: SavedComment) => void;
+  onDelete: (id: number) => void;
+  formatDate: (date: string) => string;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: comment.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const SourceIcon = SOURCE_ICONS[comment.sourceType as keyof typeof SOURCE_ICONS] || MessageCircle;
+  const sourceColor = SOURCE_COLORS[comment.sourceType as keyof typeof SOURCE_COLORS] || "text-gray-500";
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-start gap-3 p-3 rounded-lg border transition-colors ${
+        isDragging ? "bg-muted border-primary" : "bg-card hover:bg-muted/50"
+      } ${isSelected ? "border-primary" : "border-border"}`}
+    >
+      {/* Drag handle */}
+      <button
+        {...attributes}
+        {...listeners}
+        className="mt-1 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+
+      <Checkbox
+        checked={isSelected}
+        onCheckedChange={() => onSelect(comment.id)}
+        className="mt-1"
+      />
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <SourceIcon className={`h-4 w-4 ${sourceColor}`} />
+          <span className="font-medium text-sm truncate">
+            {comment.authorName || "Anonymous"}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {formatDate(comment.savedAt)}
+          </span>
+          {comment.highlighted && (
+            <Badge variant="outline" className="text-xs bg-yellow-500/10 text-yellow-600 border-yellow-500/20">
+              Highlighted
+            </Badge>
+          )}
+        </div>
+        <p className="text-sm text-foreground/90 line-clamp-2">
+          {comment.text}
+        </p>
+        {comment.notes && (
+          <p className="text-xs text-muted-foreground mt-1 italic">
+            Note: {comment.notes}
+          </p>
+        )}
+      </div>
+
+      <div className="flex items-center gap-1">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => onCopy(comment.text)}
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Copy comment</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => onEdit(comment)}
+            >
+              <Edit className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Edit notes</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-destructive hover:text-destructive"
+              onClick={() => onDelete(comment.id)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Delete</TooltipContent>
+        </Tooltip>
+      </div>
+    </div>
+  );
 }
 
 const COLLECTION_COLORS = [
@@ -124,6 +277,20 @@ export default function SavedComments() {
     questions: string[];
     summary: string;
   } | null>(null);
+  const [shareDialogOpen, setShareDialogOpen] = useState<Collection | null>(null);
+  const [localComments, setLocalComments] = useState<SavedComment[]>([]);
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const { data: savedComments, isLoading, refetch } = trpc.savedComments.getAll.useQuery(
     undefined,
@@ -221,6 +388,34 @@ export default function SavedComments() {
     onError: () => toast.error("Failed to analyze comments"),
   });
 
+  // Reorder mutation
+  const reorderMutation = trpc.collections.reorderComments.useMutation({
+    onSuccess: () => {
+      toast.success("Order saved!");
+    },
+    onError: () => toast.error("Failed to save order"),
+  });
+
+  // Share mutations
+  const generateShareLinkMutation = trpc.collections.generateShareLink.useMutation({
+    onSuccess: (data) => {
+      const shareUrl = `${window.location.origin}/shared-collection/${data.shareToken}`;
+      navigator.clipboard.writeText(shareUrl);
+      toast.success("Share link copied to clipboard!");
+      refetchCollections();
+      setShareDialogOpen(null);
+    },
+    onError: () => toast.error("Failed to generate share link"),
+  });
+
+  const revokeShareMutation = trpc.collections.revokeShare.useMutation({
+    onSuccess: () => {
+      toast.success("Share access revoked!");
+      refetchCollections();
+    },
+    onError: () => toast.error("Failed to revoke share"),
+  });
+
   // Filter comments
   const filteredComments = useMemo(() => {
     if (!savedComments) return [];
@@ -248,6 +443,36 @@ export default function SavedComments() {
     
     return filtered;
   }, [savedComments, searchQuery, sourceFilter, selectedCollection]);
+
+  // Sync local comments with filtered comments for drag and drop
+  useEffect(() => {
+    if (filteredComments) {
+      setLocalComments([...filteredComments].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)));
+    }
+  }, [filteredComments]);
+
+  // Handle drag end
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      setLocalComments((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id);
+        const newIndex = items.findIndex((item) => item.id === over.id);
+        const newItems = arrayMove(items, oldIndex, newIndex);
+        
+        // Save new order to database if in a collection
+        if (selectedCollection) {
+          reorderMutation.mutate({
+            collectionName: selectedCollection,
+            commentIds: newItems.map((item) => item.id),
+          });
+        }
+        
+        return newItems;
+      });
+    }
+  };
 
   // Group by collection
   const commentsByCollection = useMemo(() => {
@@ -577,6 +802,9 @@ export default function SavedComments() {
                     <DropdownMenuContent>
                       <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setEditCollectionOpen(col); }}>
                         <Edit className="h-4 w-4 mr-2" /> Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setShareDialogOpen(col); }}>
+                        <Share2 className="h-4 w-4 mr-2" /> Share
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem 
@@ -1047,6 +1275,99 @@ export default function SavedComments() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setNlpAnalysisOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Share Collection Dialog */}
+      <Dialog open={!!shareDialogOpen} onOpenChange={() => setShareDialogOpen(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Share2 className="h-5 w-5" />
+              Share Collection
+            </DialogTitle>
+          </DialogHeader>
+          {shareDialogOpen && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 p-4 bg-muted rounded-lg">
+                <div
+                  className="w-10 h-10 rounded-lg flex items-center justify-center"
+                  style={{ backgroundColor: shareDialogOpen.color + "20" }}
+                >
+                  <Folder className="h-5 w-5" style={{ color: shareDialogOpen.color }} />
+                </div>
+                <div>
+                  <p className="font-medium">{shareDialogOpen.name}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {commentsByCollection[shareDialogOpen.name]?.length || 0} comments
+                  </p>
+                </div>
+              </div>
+
+              {shareDialogOpen.shareToken ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-950 rounded-lg">
+                    <Link className="h-4 w-4 text-green-600" />
+                    <span className="text-sm text-green-600">This collection is publicly shared</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      readOnly
+                      value={`${window.location.origin}/shared-collection/${shareDialogOpen.shareToken}`}
+                      className="flex-1"
+                    />
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        navigator.clipboard.writeText(
+                          `${window.location.origin}/shared-collection/${shareDialogOpen.shareToken}`
+                        );
+                        toast.success("Link copied!");
+                      }}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <Button
+                    variant="destructive"
+                    className="w-full"
+                    onClick={() => revokeShareMutation.mutate({ id: shareDialogOpen.id })}
+                    disabled={revokeShareMutation.isPending}
+                  >
+                    {revokeShareMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Link2Off className="h-4 w-4 mr-2" />
+                    )}
+                    Revoke Share Access
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Generate a shareable link that allows anyone with the link to view this collection's comments.
+                  </p>
+                  <Button
+                    className="w-full"
+                    onClick={() => generateShareLinkMutation.mutate({ id: shareDialogOpen.id })}
+                    disabled={generateShareLinkMutation.isPending}
+                  >
+                    {generateShareLinkMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Link className="h-4 w-4 mr-2" />
+                    )}
+                    Generate Share Link
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShareDialogOpen(null)}>
               Close
             </Button>
           </DialogFooter>

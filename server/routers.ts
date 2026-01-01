@@ -2244,6 +2244,119 @@ export const appRouter = router({
 
         return { success: true };
       }),
+
+    // Reorder comments within collection
+    reorderComments: protectedProcedure
+      .input(z.object({
+        collectionName: z.string(),
+        commentIds: z.array(z.number()),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Update sort order for each comment
+        for (let i = 0; i < input.commentIds.length; i++) {
+          await db.update(savedComments)
+            .set({ sortOrder: i })
+            .where(and(
+              eq(savedComments.id, input.commentIds[i]),
+              eq(savedComments.userId, ctx.user.id)
+            ));
+        }
+
+        return { success: true };
+      }),
+
+    // Generate share link for collection
+    generateShareLink: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Generate unique token
+        const shareToken = `col_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 10)}`;
+
+        await db.update(commentCollections)
+          .set({ 
+            isPublic: true, 
+            shareToken,
+            updatedAt: new Date()
+          })
+          .where(and(
+            eq(commentCollections.id, input.id),
+            eq(commentCollections.userId, ctx.user.id)
+          ));
+
+        return { shareToken };
+      }),
+
+    // Revoke share access
+    revokeShare: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.update(commentCollections)
+          .set({ 
+            isPublic: false, 
+            shareToken: null,
+            updatedAt: new Date()
+          })
+          .where(and(
+            eq(commentCollections.id, input.id),
+            eq(commentCollections.userId, ctx.user.id)
+          ));
+
+        return { success: true };
+      }),
+
+    // Get public collection by share token (no auth required)
+    getPublicCollection: publicProcedure
+      .input(z.object({ shareToken: z.string() }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) return null;
+
+        const collections = await db.select().from(commentCollections)
+          .where(and(
+            eq(commentCollections.shareToken, input.shareToken),
+            eq(commentCollections.isPublic, true)
+          ));
+
+        if (collections.length === 0) return null;
+
+        const collection = collections[0];
+
+        // Get comments in this collection
+        const comments = await db.select().from(savedComments)
+          .where(and(
+            eq(savedComments.userId, collection.userId),
+            eq(savedComments.collectionName, collection.name)
+          ))
+          .orderBy(savedComments.sortOrder);
+
+        return {
+          collection: {
+            name: collection.name,
+            description: collection.description,
+            color: collection.color,
+            commentCount: collection.commentCount,
+          },
+          comments: comments.map(c => ({
+            id: c.id,
+            sourceType: c.sourceType,
+            authorName: c.authorName,
+            text: c.text,
+            savedAt: c.savedAt,
+          })),
+        };
+      }),
   }),
 
   // NLP Analysis Router
