@@ -548,3 +548,13 @@
 - [x] Add "Share Collection" button with copy link functionality
 - [x] Show share status indicator on collection cards
 - [x] Allow revoking share access
+
+## Embedded YouTube Browser/Player Feature
+- [x] Create YouTubeBrowser component with iframe embedding
+- [x] Add search bar for YouTube video search within the app
+- [x] Implement video selection and playback in embedded player
+- [x] Add toggle button to show/hide YouTube browser panel
+- [x] Create side-by-side layout for browser + analysis workspace
+- [x] Add "Analyze This Video" quick action button
+- [x] Preserve YouTube login session in embedded browser
+- [x] Add video URL extraction from embedded player for analysis

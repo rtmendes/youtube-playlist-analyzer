@@ -1,0 +1,30 @@
+{
+  "query": "SELECT 'savedComments' as tableName, COUNT(*) as count FROM savedComments UNION ALL SELECT 'commentCollections' as tableName, COUNT(*) as count FROM commentCollections UNION ALL SELECT 'savedPlaylists' as tableName, COUNT(*) as count FROM savedPlaylists UNION ALL SELECT 'folders' as tableName, COUNT(*) as count FROM folders UNION ALL SELECT 'analysisSessions' as tableName, COUNT(*) as count FROM analysisSessions;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2zbJbZa5Pd5vefs.a30e957dacba --database VCsH2FrtatLYXCMPCQ53xU --execute SELECT 'savedComments' as tableName, COUNT(*) as count FROM savedComments UNION ALL SELECT 'commentCollections' as tableName, COUNT(*) as count FROM commentCollections UNION ALL SELECT 'savedPlaylists' as tableName, COUNT(*) as count FROM savedPlaylists UNION ALL SELECT 'folders' as tableName, COUNT(*) as count FROM folders UNION ALL SELECT 'analysisSessions' as tableName, COUNT(*) as count FROM analysisSessions;",
+  "rows": [
+    {
+      "tableName": "folders",
+      "count": "8"
+    },
+    {
+      "tableName": "savedPlaylists",
+      "count": "0"
+    },
+    {
+      "tableName": "analysisSessions",
+      "count": "0"
+    },
+    {
+      "tableName": "savedComments",
+      "count": "0"
+    },
+    {
+      "tableName": "commentCollections",
+      "count": "0"
+    }
+  ],
+  "messages": [],
+  "stdout": "tableName\tcount\nfolders\t8\nsavedPlaylists\t0\nanalysisSessions\t0\nsavedComments\t0\ncommentCollections\t0\n",
+  "stderr": "",
+  "execution_time_ms": 122
+}

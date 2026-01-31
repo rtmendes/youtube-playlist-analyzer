@@ -97,6 +97,9 @@ import {
   RefreshCw,
   Calendar,
   Bookmark,
+  Youtube,
+  PanelRightOpen,
+  PanelRightClose,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
@@ -113,9 +116,11 @@ interface SidebarProps {
   isCollapsed: boolean;
   onToggle: () => void;
   onOpenSearch?: () => void;
+  onToggleYouTube?: () => void;
+  isYouTubeOpen?: boolean;
 }
 
-export function Sidebar({ isCollapsed, onToggle, onOpenSearch }: SidebarProps) {
+export function Sidebar({ isCollapsed, onToggle, onOpenSearch, onToggleYouTube, isYouTubeOpen }: SidebarProps) {
   const [location] = useLocation();
   const { user, loading: authLoading } = useAuth();
   
@@ -462,7 +467,7 @@ export function Sidebar({ isCollapsed, onToggle, onOpenSearch }: SidebarProps) {
         </div>
 
         {/* Search - Opens Global Search Dialog */}
-        <div className="p-3">
+        <div className="p-3 space-y-2">
           <button
             onClick={() => onOpenSearch?.()}
             className="w-full flex items-center gap-2 px-2.5 h-8 bg-muted/50 rounded-md text-sm text-muted-foreground hover:bg-muted transition-colors"
@@ -472,6 +477,25 @@ export function Sidebar({ isCollapsed, onToggle, onOpenSearch }: SidebarProps) {
             <kbd className="ml-auto pointer-events-none hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
               ⌘K
             </kbd>
+          </button>
+          
+          {/* YouTube Browser Toggle */}
+          <button
+            onClick={() => onToggleYouTube?.()}
+            className={cn(
+              "w-full flex items-center gap-2 px-2.5 h-8 rounded-md text-sm transition-colors",
+              isYouTubeOpen 
+                ? "bg-red-500/10 text-red-500 hover:bg-red-500/20" 
+                : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            <Youtube className="h-4 w-4" />
+            <span>YouTube Browser</span>
+            {isYouTubeOpen ? (
+              <PanelRightClose className="h-4 w-4 ml-auto" />
+            ) : (
+              <PanelRightOpen className="h-4 w-4 ml-auto" />
+            )}
           </button>
         </div>
 

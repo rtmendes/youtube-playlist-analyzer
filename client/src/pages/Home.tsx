@@ -26,8 +26,21 @@ export default function Home() {
   const [inputMode, setInputMode] = useState<"single" | "bulk">("bulk");
   const [rememberApiKey, setRememberApiKey] = useState(false);
   const [videoLimit, setVideoLimit] = useState<string>("all");
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { user, isAuthenticated } = useAuth();
+
+  // Check for URL parameter from YouTube browser
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlParam = params.get("url");
+    if (urlParam) {
+      // Set to single URL mode and populate the URL
+      setInputMode("single");
+      setUrl(urlParam);
+      // Clear the URL parameter from browser history
+      window.history.replaceState({}, "", location.split("?")[0]);
+    }
+  }, [location]);
 
   // Load saved API key from localStorage on mount
   useEffect(() => {
