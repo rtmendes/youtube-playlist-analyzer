@@ -671,3 +671,167 @@ export const nlpAnalysisResults = mysqlTable("nlpAnalysisResults", {
 
 export type NlpAnalysisResult = typeof nlpAnalysisResults.$inferSelect;
 export type InsertNlpAnalysisResult = typeof nlpAnalysisResults.$inferInsert;
+
+
+/**
+ * Content Templates - stores generated marketing content
+ */
+export const contentTemplates = mysqlTable("contentTemplates", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  // Content type
+  contentType: mysqlEnum("contentType", [
+    "advertorial",
+    "vsl_script",
+    "ugc_scenario",
+    "course_outline",
+    "ad_copy",
+    "sales_page",
+    "email_sequence",
+    "product_idea"
+  ]).notNull(),
+  // Content details
+  title: varchar("title", { length: 255 }).notNull(),
+  content: text("content").notNull(),
+  // Source data used
+  sourceComments: json("sourceComments").$type<{
+    id: string;
+    text: string;
+    source: string;
+    category?: string;
+  }[]>(),
+  sourceInsights: json("sourceInsights").$type<{
+    painPoints: string[];
+    desires: string[];
+    objections: string[];
+    testimonials: string[];
+  }>(),
+  // Generation settings
+  promptUsed: text("promptUsed"),
+  frameworkUsed: varchar("frameworkUsed", { length: 64 }), // AIDA, PAS, BAB, etc.
+  tone: varchar("tone", { length: 64 }), // professional, casual, urgent, etc.
+  targetAudience: text("targetAudience"),
+  // Metadata
+  wordCount: int("wordCount").default(0),
+  version: int("version").default(1),
+  parentTemplateId: int("parentTemplateId"), // for revisions
+  isFavorite: boolean("isFavorite").default(false),
+  // Timestamps
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ContentTemplate = typeof contentTemplates.$inferSelect;
+export type InsertContentTemplate = typeof contentTemplates.$inferInsert;
+
+/**
+ * AI Prompts Knowledge Base - expert prompts for content generation
+ */
+export const aiPromptsKnowledgeBase = mysqlTable("aiPromptsKnowledgeBase", {
+  id: int("id").autoincrement().primaryKey(),
+  // Prompt categorization
+  contentType: mysqlEnum("contentType", [
+    "advertorial",
+    "vsl_script",
+    "ugc_scenario",
+    "course_outline",
+    "ad_copy",
+    "sales_page",
+    "email_sequence",
+    "product_idea"
+  ]).notNull(),
+  category: varchar("category", { length: 64 }).notNull(), // e.g., "hook", "story", "cta", "objection_handling"
+  // Prompt content
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  promptTemplate: text("promptTemplate").notNull(),
+  // Variables that can be injected
+  variables: json("variables").$type<{
+    name: string;
+    description: string;
+    required: boolean;
+    defaultValue?: string;
+  }[]>(),
+  // Best practices and tips
+  bestPractices: json("bestPractices").$type<string[]>(),
+  examples: json("examples").$type<{
+    input: string;
+    output: string;
+  }[]>(),
+  // Performance metrics
+  useCount: int("useCount").default(0),
+  avgRating: decimal("avgRating", { precision: 3, scale: 2 }),
+  // Metadata
+  isSystem: boolean("isSystem").default(true), // system vs user-created
+  isActive: boolean("isActive").default(true),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type AiPromptKnowledgeBase = typeof aiPromptsKnowledgeBase.$inferSelect;
+export type InsertAiPromptKnowledgeBase = typeof aiPromptsKnowledgeBase.$inferInsert;
+
+/**
+ * CRO Best Practices - conversion optimization guidelines
+ */
+export const croBestPractices = mysqlTable("croBestPractices", {
+  id: int("id").autoincrement().primaryKey(),
+  // Categorization
+  contentType: varchar("contentType", { length: 64 }).notNull(),
+  section: varchar("section", { length: 64 }).notNull(), // e.g., "headline", "cta", "social_proof"
+  // Practice details
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description").notNull(),
+  // Implementation guidance
+  doList: json("doList").$type<string[]>(),
+  dontList: json("dontList").$type<string[]>(),
+  examples: json("examples").$type<{
+    good: string;
+    bad: string;
+    explanation: string;
+  }[]>(),
+  // Metrics and benchmarks
+  benchmarks: json("benchmarks").$type<{
+    metric: string;
+    target: string;
+    industry: string;
+  }[]>(),
+  // Priority and impact
+  priority: mysqlEnum("priority", ["critical", "high", "medium", "low"]).default("medium"),
+  impactScore: int("impactScore").default(50), // 0-100
+  // Metadata
+  isActive: boolean("isActive").default(true),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type CroBestPractice = typeof croBestPractices.$inferSelect;
+export type InsertCroBestPractice = typeof croBestPractices.$inferInsert;
+
+/**
+ * Copywriting Frameworks - structured frameworks for content creation
+ */
+export const copywritingFrameworks = mysqlTable("copywritingFrameworks", {
+  id: int("id").autoincrement().primaryKey(),
+  // Framework identification
+  acronym: varchar("acronym", { length: 20 }).notNull().unique(), // AIDA, PAS, BAB, etc.
+  name: varchar("name", { length: 128 }).notNull(),
+  description: text("description").notNull(),
+  // Framework structure
+  steps: json("steps").$type<{
+    letter: string;
+    name: string;
+    description: string;
+    promptGuidance: string;
+    examples: string[];
+  }[]>(),
+  // Best use cases
+  bestFor: json("bestFor").$type<string[]>(), // ["sales_pages", "email", "ads"]
+  // Template
+  templateStructure: text("templateStructure"),
+  // Metadata
+  isActive: boolean("isActive").default(true),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type CopywritingFramework = typeof copywritingFrameworks.$inferSelect;
+export type InsertCopywritingFramework = typeof copywritingFrameworks.$inferInsert;

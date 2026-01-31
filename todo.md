@@ -558,3 +558,74 @@
 - [x] Add "Analyze This Video" quick action button
 - [x] Preserve YouTube login session in embedded browser
 - [x] Add video URL extraction from embedded player for analysis
+
+## AI Content Creation Tools (Functional Generators)
+
+### Core Infrastructure
+- [x] Create content templates database table for storing generated content
+- [x] Create AI prompts knowledge base table with expert prompts
+- [x] Build content generator base component with saved content selection
+- [x] Add content type router and navigation
+
+### Advertorial Generator
+- [x] Create Advertorial generator page with story selection
+- [x] Add expert AI prompts for top 1% advertorials
+- [x] Implement AIDA/PAS framework options
+- [x] Add testimonial and pain point integration
+- [x] Include CRO best practices checklist
+
+### VSL Script Generator
+- [x] Create VSL Script generator page
+- [x] Add expert prompts for high-converting VSL scripts
+- [x] Implement hook, story, offer structure
+- [x] Add emotional trigger integration from comments
+- [x] Include timing and pacing guidelines
+
+### UGC Scenario Generator
+- [x] Create UGC Scenario generator page
+- [x] Add prompts for authentic UGC scripts
+- [x] Implement problem-solution-result format
+- [x] Add real comment integration for authenticity
+- [x] Include platform-specific variations (TikTok, IG, YouTube)
+
+### Course Outline Generator
+- [x] Create Course Outline generator page
+- [x] Add prompts for comprehensive course structures
+- [x] Implement module and lesson breakdown
+- [x] Extract learning objectives from pain points
+- [x] Include bonus and upsell suggestions
+
+### Ad Copy Generator
+- [x] Create Ad Copy generator page
+- [x] Add prompts for high-CTR ad copy
+- [x] Implement headline, body, CTA variations
+- [x] Add platform-specific formats (FB, Google, YouTube)
+- [x] Include A/B testing variations
+
+### Sales Page Generator
+- [x] Create Sales Page generator page
+- [x] Add prompts for high-converting sales pages
+- [x] Implement full page structure (hero, benefits, proof, offer, FAQ)
+- [x] Add testimonial and objection handling sections
+- [x] Include CRO optimization checklist
+
+### Email Sequence Generator
+- [x] Create Email Sequence generator page
+- [x] Add prompts for nurture and sales sequences
+- [x] Implement welcome, value, pitch, urgency structure
+- [x] Add subject line variations
+- [x] Include open rate optimization tips
+
+### Product Ideas Generator
+- [x] Create Product Ideas generator page
+- [x] Add prompts for product ideation from "I wish" comments
+- [x] Implement market validation framework
+- [x] Add pricing and positioning suggestions
+- [x] Include MVP feature recommendations
+
+### Knowledge Base & SOPs
+- [x] Create CRO best practices knowledge base
+- [x] Add conversion optimization checklist
+- [x] Include copywriting frameworks (AIDA, PAS, BAB, 4Ps)
+- [x] Add industry benchmarks and targets
+- [x] Create SOP templates for each content type

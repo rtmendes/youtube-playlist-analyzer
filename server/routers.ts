@@ -10,7 +10,9 @@ import {
   formatCount,
 } from "./youtube";
 import { getDb } from "./db";
-import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets, amazonProducts, amazonReviews, redditPosts, redditComments, researchSessions, multiSourceInsights, savedPlaylists, playlistRuns, playlistVideos, videos, comments, tiktokCreators, tiktokVideos, tiktokComments, savedComments, commentCollections, nlpAnalysisResults } from "../drizzle/schema";
+import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets, amazonProducts, amazonReviews, redditPosts, redditComments, researchSessions, multiSourceInsights, savedPlaylists, playlistRuns, playlistVideos, videos, comments, tiktokCreators, tiktokVideos, tiktokComments, savedComments, commentCollections, nlpAnalysisResults, contentTemplates, aiPromptsKnowledgeBase, croBestPractices, copywritingFrameworks } from "../drizzle/schema";
+import { allPrompts, getPromptsForType, getPromptById, copywritingFrameworks as frameworksData, croBestPractices as croPracticesData, ContentPrompt } from "./content-prompts";
+import { invokeLLM } from "./_core/llm";
 import { eq, desc, and, like, or, sql } from "drizzle-orm";
 import { parseAmazonUrl, generateSampleProduct, generateSampleReviews, calculateReviewStats, analyzeReviewSentiment, fetchAmazonProduct, fetchAmazonReviews, searchAmazonProducts, compareProducts, AmazonApiConfig } from "./amazon";
 import { parseRedditUrl, fetchSubredditPosts, searchReddit, fetchPostComments, analyzeRedditComment, calculateRedditStats, getPopularResearchSubreddits, fetchSubredditPostsWithFallback, searchRedditWithFallback, fetchPostCommentsWithFallback, generateSamplePosts, generateSampleComments as generateSampleRedditComments } from "./reddit";
@@ -2539,6 +2541,426 @@ export const appRouter = router({
           .limit(input.limit);
 
         return results;
+      }),
+  }),
+
+  // Content Generator Router - AI-powered content creation tools
+  contentGenerator: router({
+    // Get all available content types
+    getContentTypes: publicProcedure
+      .query(() => {
+        return [
+          { id: "advertorial", name: "Advertorial", description: "Story-driven native ads that convert", icon: "FileText" },
+          { id: "vsl_script", name: "VSL Script", description: "Video sales letter scripts", icon: "Video" },
+          { id: "ugc_scenario", name: "UGC Scenario", description: "Authentic user-generated content scripts", icon: "Users" },
+          { id: "course_outline", name: "Course Outline", description: "Comprehensive course structures", icon: "BookOpen" },
+          { id: "ad_copy", name: "Ad Copy", description: "High-converting ad variations", icon: "Megaphone" },
+          { id: "sales_page", name: "Sales Page", description: "Long-form sales page copy", icon: "ShoppingCart" },
+          { id: "email_sequence", name: "Email Sequence", description: "Nurture and sales email sequences", icon: "Mail" },
+          { id: "product_idea", name: "Product Ideas", description: "Product ideation from research", icon: "Lightbulb" },
+        ];
+      }),
+
+    // Get prompts for a specific content type
+    getPrompts: publicProcedure
+      .input(z.object({ contentType: z.string() }))
+      .query(({ input }) => {
+        return getPromptsForType(input.contentType);
+      }),
+
+    // Get a specific prompt by ID
+    getPromptById: publicProcedure
+      .input(z.object({ promptId: z.string() }))
+      .query(({ input }) => {
+        return getPromptById(input.promptId);
+      }),
+
+    // Get copywriting frameworks
+    getFrameworks: publicProcedure
+      .query(() => {
+        return frameworksData;
+      }),
+
+    // Get CRO best practices
+    getCroPractices: publicProcedure
+      .input(z.object({ contentType: z.string().optional() }))
+      .query(({ input }) => {
+        if (input.contentType) {
+          return croPracticesData.filter(p => p.contentType === input.contentType || p.contentType === "all");
+        }
+        return croPracticesData;
+      }),
+
+    // Generate content using AI
+    generate: protectedProcedure
+      .input(z.object({
+        contentType: z.enum(["advertorial", "vsl_script", "ugc_scenario", "course_outline", "ad_copy", "sales_page", "email_sequence", "product_idea"]),
+        promptId: z.string(),
+        variables: z.record(z.string(), z.string()),
+        sourceComments: z.array(z.object({
+          id: z.string(),
+          text: z.string(),
+          source: z.string(),
+          category: z.string().optional(),
+        })).optional(),
+        framework: z.string().optional(),
+        tone: z.string().optional(),
+        targetAudience: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Get the prompt template
+        const prompt = getPromptById(input.promptId);
+        if (!prompt) throw new Error("Prompt not found");
+
+        // Build the prompt with variables
+        let finalPrompt = prompt.promptTemplate;
+        for (const [key, value] of Object.entries(input.variables)) {
+          finalPrompt = finalPrompt.replace(new RegExp(`{{${key}}}`, 'g'), value);
+        }
+
+        // Add source comments if provided
+        if (input.sourceComments && input.sourceComments.length > 0) {
+          const commentsText = input.sourceComments.map(c => 
+            `- "${c.text}" (Source: ${c.source}${c.category ? `, Category: ${c.category}` : ''})`
+          ).join('\n');
+          finalPrompt = finalPrompt.replace(/{{pain_points}}/g, commentsText);
+          finalPrompt = finalPrompt.replace(/{{testimonials}}/g, commentsText);
+          finalPrompt = finalPrompt.replace(/{{customer_comments}}/g, commentsText);
+          finalPrompt = finalPrompt.replace(/{{wish_comments}}/g, commentsText);
+          finalPrompt = finalPrompt.replace(/{{product_requests}}/g, commentsText);
+        }
+
+        // Call LLM to generate content
+        const response = await invokeLLM({
+          messages: [
+            { role: "system", content: "You are an expert copywriter and content strategist. Generate high-quality, conversion-focused content based on the provided prompt and research data." },
+            { role: "user", content: finalPrompt },
+          ],
+        });
+
+        const rawGeneratedContent = response.choices[0]?.message?.content;
+        const generatedContent = typeof rawGeneratedContent === 'string' ? rawGeneratedContent : '';
+        const wordCount = generatedContent.split(/\s+/).length;
+
+        // Save to database
+        let savedId: number | null = null;
+        if (db) {
+          const result = await db.insert(contentTemplates).values({
+            userId: ctx.user.id,
+            contentType: input.contentType,
+            title: `${prompt.name} - ${new Date().toLocaleDateString()}`,
+            content: generatedContent,
+            sourceComments: input.sourceComments,
+            sourceInsights: {
+              painPoints: [],
+              desires: [],
+              objections: [],
+              testimonials: [],
+            },
+            promptUsed: finalPrompt,
+            frameworkUsed: input.framework || prompt.framework,
+            tone: input.tone,
+            targetAudience: input.targetAudience,
+            wordCount,
+          });
+          savedId = Number(result[0].insertId);
+        }
+
+        return {
+          id: savedId,
+          content: generatedContent,
+          wordCount,
+          promptUsed: prompt.name,
+          framework: input.framework || prompt.framework,
+        };
+      }),
+
+    // Get user's generated content history
+    getHistory: protectedProcedure
+      .input(z.object({
+        contentType: z.enum(["advertorial", "vsl_script", "ugc_scenario", "course_outline", "ad_copy", "sales_page", "email_sequence", "product_idea"]).optional(),
+        limit: z.number().min(1).max(50).default(20),
+      }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        let query = db.select().from(contentTemplates)
+          .where(eq(contentTemplates.userId, ctx.user.id));
+
+        if (input.contentType) {
+          query = db.select().from(contentTemplates)
+            .where(and(
+              eq(contentTemplates.userId, ctx.user.id),
+              eq(contentTemplates.contentType, input.contentType)
+            ));
+        }
+
+        const results = await query
+          .orderBy(desc(contentTemplates.createdAt))
+          .limit(input.limit);
+
+        return results;
+      }),
+
+    // Get a specific generated content
+    getById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return null;
+        if (!ctx.user) return null;
+
+        const results = await db.select().from(contentTemplates)
+          .where(and(
+            eq(contentTemplates.id, input.id),
+            eq(contentTemplates.userId, ctx.user.id)
+          ));
+
+        return results[0] || null;
+      }),
+
+    // Update generated content
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        title: z.string().optional(),
+        content: z.string().optional(),
+        isFavorite: z.boolean().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const updateData: Record<string, unknown> = {};
+        if (input.title !== undefined) updateData.title = input.title;
+        if (input.content !== undefined) {
+          updateData.content = input.content;
+          updateData.wordCount = input.content.split(/\s+/).length;
+        }
+        if (input.isFavorite !== undefined) updateData.isFavorite = input.isFavorite;
+
+        await db.update(contentTemplates).set(updateData).where(
+          and(
+            eq(contentTemplates.id, input.id),
+            eq(contentTemplates.userId, ctx.user.id)
+          )
+        );
+
+        return { success: true };
+      }),
+
+    // Delete generated content
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.delete(contentTemplates).where(
+          and(
+            eq(contentTemplates.id, input.id),
+            eq(contentTemplates.userId, ctx.user.id)
+          )
+        );
+
+        return { success: true };
+      }),
+
+    // Get saved comments for content generation
+    getSavedCommentsForGeneration: protectedProcedure
+      .input(z.object({
+        sourceType: z.enum(["youtube", "amazon", "reddit", "tiktok"]).optional(),
+        collectionName: z.string().optional(),
+        limit: z.number().min(1).max(100).default(50),
+      }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        const results = await db.select().from(savedComments)
+          .where(eq(savedComments.userId, ctx.user.id))
+          .orderBy(desc(savedComments.savedAt))
+          .limit(input.limit);
+
+        return results.filter(c => {
+          if (input.sourceType && c.sourceType !== input.sourceType) return false;
+          if (input.collectionName && c.collectionName !== input.collectionName) return false;
+          return true;
+        }).map(c => ({
+          id: String(c.id),
+          text: c.text,
+          source: c.sourceType,
+          authorName: c.authorName,
+          category: (c.tags as string[] | null)?.[0] || undefined,
+        }));
+      }),
+
+    // Categorize comments for content generation
+    categorizeComments: protectedProcedure
+      .input(z.object({
+        comments: z.array(z.object({
+          id: z.string(),
+          text: z.string(),
+          source: z.string(),
+        })),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Use LLM to categorize comments
+        const commentsText = input.comments.map((c, i) => `${i + 1}. "${c.text}"`).join('\n');
+        
+        const response = await invokeLLM({
+          messages: [
+            { 
+              role: "system", 
+              content: `You are a marketing research analyst. Categorize each comment into one of these categories:
+- pain_point: Expresses frustration, problem, or struggle
+- testimonial: Shares positive experience or result
+- product_request: Asks for or suggests a product/feature
+- question: Asks a question about the topic
+- objection: Expresses doubt, concern, or resistance
+- desire: Expresses a want, wish, or aspiration
+- other: Doesn't fit other categories
+
+Respond with JSON array of objects with "id" and "category" fields.` 
+            },
+            { role: "user", content: `Categorize these comments:\n${commentsText}` },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "categorized_comments",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  categories: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        id: { type: "string" },
+                        category: { type: "string" },
+                      },
+                      required: ["id", "category"],
+                      additionalProperties: false,
+                    },
+                  },
+                },
+                required: ["categories"],
+                additionalProperties: false,
+              },
+            },
+          },
+        });
+
+        const rawContent = response.choices[0]?.message?.content;
+        const content = typeof rawContent === 'string' ? rawContent : '{"categories":[]}';
+        const parsed = JSON.parse(content);
+        
+        // Map back to original comments
+        return input.comments.map((comment, index) => {
+          const categorized = parsed.categories?.find((c: any) => c.id === String(index + 1));
+          return {
+            ...comment,
+            category: categorized?.category || "other",
+          };
+        });
+      }),
+
+    // Extract insights from comments for content generation
+    extractInsights: protectedProcedure
+      .input(z.object({
+        comments: z.array(z.object({
+          id: z.string(),
+          text: z.string(),
+          source: z.string(),
+          category: z.string().optional(),
+        })),
+        targetProduct: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const commentsText = input.comments.map(c => 
+          `[${c.category || 'uncategorized'}] "${c.text}"`
+        ).join('\n');
+
+        const response = await invokeLLM({
+          messages: [
+            { 
+              role: "system", 
+              content: `You are a marketing research analyst. Extract actionable insights from customer comments for content creation. Focus on:
+1. Pain points - specific problems and frustrations
+2. Desires - what they want to achieve
+3. Objections - concerns about solutions
+4. Testimonial themes - what success looks like
+5. Language patterns - exact phrases they use
+
+Provide insights that can be directly used in marketing copy.` 
+            },
+            { 
+              role: "user", 
+              content: `Extract marketing insights from these ${input.comments.length} comments${input.targetProduct ? ` for ${input.targetProduct}` : ''}:\n\n${commentsText}` 
+            },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "extracted_insights",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  painPoints: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Specific pain points and problems",
+                  },
+                  desires: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "What they want to achieve",
+                  },
+                  objections: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Concerns and objections",
+                  },
+                  testimonialThemes: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Success themes from positive comments",
+                  },
+                  keyPhrases: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Exact phrases to use in copy",
+                  },
+                  targetAudienceProfile: {
+                    type: "string",
+                    description: "Summary of who these people are",
+                  },
+                },
+                required: ["painPoints", "desires", "objections", "testimonialThemes", "keyPhrases", "targetAudienceProfile"],
+                additionalProperties: false,
+              },
+            },
+          },
+        });
+
+        const rawContent2 = response.choices[0]?.message?.content;
+        const content2 = typeof rawContent2 === 'string' ? rawContent2 : '{}';
+        return JSON.parse(content2);
       }),
   }),
 });

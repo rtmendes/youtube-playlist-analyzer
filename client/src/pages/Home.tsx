@@ -484,24 +484,33 @@ https://youtube.com/channel/UCxxxxx`}
       {/* Use Cases Section */}
       <section className="py-8 border-t border-border/50 bg-muted/30">
         <div className="container">
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold flex items-center gap-2">
-              <Target className="h-6 w-6 text-primary" />
-              What You Can Create
-            </h2>
-            <p className="text-muted-foreground">Turn comment insights into marketing assets</p>
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-2xl font-bold flex items-center gap-2">
+                <Target className="h-6 w-6 text-primary" />
+                What You Can Create
+              </h2>
+              <p className="text-muted-foreground">Turn comment insights into marketing assets with AI-powered tools</p>
+            </div>
+            <Link href="/content-generator">
+              <Button variant="outline" className="gap-2">
+                <Zap className="h-4 w-4" />
+                Open Content Generator
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
           </div>
           
           <div className="grid md:grid-cols-4 gap-4">
             {[
-              { title: "Advertorials", desc: "Story-driven ads from personal experiences", icon: FileText },
-              { title: "VSL Scripts", desc: "Video sales letters using audience language", icon: Play },
-              { title: "UGC Scenarios", desc: "Authentic user-generated content scripts", icon: Video },
-              { title: "Course Outlines", desc: "Educational content from questions asked", icon: BookOpen },
-              { title: "Ad Copy", desc: "Headlines and hooks from viral comments", icon: Sparkles },
-              { title: "Sales Pages", desc: "Conversion copy with real testimonials", icon: TrendingUp },
-              { title: "Email Sequences", desc: "Nurture campaigns from pain points", icon: MessageSquare },
-              { title: "Product Ideas", desc: "New offerings from 'I wish' comments", icon: Lightbulb },
+              { id: "advertorial", title: "Advertorials", desc: "Story-driven native ads that convert", icon: FileText, color: "bg-blue-500/10 text-blue-600" },
+              { id: "vsl_script", title: "VSL Scripts", desc: "Video sales letters using audience language", icon: Play, color: "bg-purple-500/10 text-purple-600" },
+              { id: "ugc_scenario", title: "UGC Scenarios", desc: "Authentic user-generated content scripts", icon: Video, color: "bg-pink-500/10 text-pink-600" },
+              { id: "course_outline", title: "Course Outlines", desc: "Educational content from questions asked", icon: BookOpen, color: "bg-green-500/10 text-green-600" },
+              { id: "ad_copy", title: "Ad Copy", desc: "Headlines and hooks from viral comments", icon: Sparkles, color: "bg-orange-500/10 text-orange-600" },
+              { id: "sales_page", title: "Sales Pages", desc: "Conversion copy with real testimonials", icon: TrendingUp, color: "bg-red-500/10 text-red-600" },
+              { id: "email_sequence", title: "Email Sequences", desc: "Nurture campaigns from pain points", icon: MessageSquare, color: "bg-cyan-500/10 text-cyan-600" },
+              { id: "product_idea", title: "Product Ideas", desc: "New offerings from 'I wish' comments", icon: Lightbulb, color: "bg-yellow-500/10 text-yellow-600" },
             ].map((item, index) => (
               <motion.div
                 key={item.title}
@@ -509,17 +518,20 @@ https://youtube.com/channel/UCxxxxx`}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.3, delay: 0.03 * index }}
               >
-                <Card className="border-0 bg-background hover:shadow-md transition-shadow">
-                  <CardContent className="p-4 flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-primary/10">
-                      <item.icon className="h-4 w-4 text-primary" />
-                    </div>
-                    <div>
-                      <h4 className="font-medium text-sm">{item.title}</h4>
-                      <p className="text-xs text-muted-foreground">{item.desc}</p>
-                    </div>
-                  </CardContent>
-                </Card>
+                <Link href={`/content-generator?type=${item.id}`}>
+                  <Card className="border-0 bg-background hover:shadow-md transition-all cursor-pointer group hover:border-primary/20 hover:bg-primary/5">
+                    <CardContent className="p-4 flex items-center gap-3">
+                      <div className={`p-2 rounded-lg ${item.color}`}>
+                        <item.icon className="h-4 w-4" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-medium text-sm group-hover:text-primary transition-colors">{item.title}</h4>
+                        <p className="text-xs text-muted-foreground">{item.desc}</p>
+                      </div>
+                      <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </CardContent>
+                  </Card>
+                </Link>
               </motion.div>
             ))}
           </div>

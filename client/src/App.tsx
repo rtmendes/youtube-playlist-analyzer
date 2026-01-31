@@ -26,6 +26,7 @@ import SavedPlaylist from "./pages/SavedPlaylist";
 import TikTokIntelligence from "./pages/TikTokIntelligence";
 import SavedComments from "./pages/SavedComments";
 import SharedCollection from "./pages/SharedCollection";
+import ContentGenerator from "./pages/ContentGenerator";
 
 function Router() {
   return (
@@ -50,6 +51,7 @@ function Router() {
       <Route path={"/playlist/:id"} component={SavedPlaylist} />
       <Route path={"/saved-comments"} component={SavedComments} />
       <Route path={"/shared-collection/:shareToken"} component={SharedCollection} />
+      <Route path={"/content-generator"} component={ContentGenerator} />
       <Route path={"/playlists"} component={NotFound} />
       <Route path={"/trash"} component={NotFound} />
       <Route path={"/404"} component={NotFound} />

@@ -274,6 +274,7 @@ export function Sidebar({ isCollapsed, onToggle, onOpenSearch, onToggleYouTube, 
     { icon: BarChart3, label: "Competitor Analysis", href: "/competitor-analysis", section: "tools" },
     { icon: Palette, label: "Canvas", href: "/canvas", section: "tools" },
     { icon: History, label: "History", href: "/history", section: "tools" },
+    { icon: Zap, label: "Content Generator", href: "/content-generator", section: "tools" },
     { icon: Trash2, label: "Trash", href: "/trash", section: "other" },
   ];
 
