@@ -114,6 +114,14 @@ export default function ContentGenerator() {
   const [exportFormat, setExportFormat] = useState<"markdown" | "plain_text" | "rich_text">("markdown");
   const [exportDestination, setExportDestination] = useState<"google_docs" | "notion" | "file">("file");
 
+  // Batch export states
+  const [showBatchExportDialog, setShowBatchExportDialog] = useState(false);
+  const [selectedForBatchExport, setSelectedForBatchExport] = useState<number[]>([]);
+  const [batchExportFormat, setBatchExportFormat] = useState<"markdown" | "txt" | "html" | "json">("markdown");
+  const [batchExportType, setBatchExportType] = useState<"combined" | "individual">("combined");
+  const [batchExportSearch, setBatchExportSearch] = useState("");
+  const [batchExportContentType, setBatchExportContentType] = useState<string | undefined>(undefined);
+
   // Queries
   const contentTypesQuery = trpc.contentGenerator.getContentTypes.useQuery();
   const promptsQuery = trpc.contentGenerator.getPrompts.useQuery(
@@ -148,6 +156,10 @@ export default function ContentGenerator() {
   const exportHistoryQuery = trpc.contentGenerator.getExportHistory.useQuery(
     { limit: 10 },
     { enabled: isAuthenticated && activeTab === "history" }
+  );
+  const batchExportContentQuery = trpc.contentGenerator.getAllGeneratedContent.useQuery(
+    { contentType: batchExportContentType, limit: 50, search: batchExportSearch },
+    { enabled: isAuthenticated && showBatchExportDialog }
   );
 
   // Mutations
@@ -288,6 +300,39 @@ export default function ContentGenerator() {
 
   const categorizeCommentsMutation = trpc.contentGenerator.categorizeComments.useMutation();
   const extractInsightsMutation = trpc.contentGenerator.extractInsights.useMutation();
+
+  const batchExportMutation = trpc.contentGenerator.batchExport.useMutation({
+    onSuccess: (data) => {
+      if (data.exportType === "combined" && data.content && data.filename && data.mimeType) {
+        const blob = new Blob([data.content], { type: data.mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = data.filename;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.success(`Exported ${data.itemCount} items (${data.totalWords} words)`);
+      } else {
+        // For individual files, create a simple combined download
+        // In production, this could create a ZIP file
+        data.files?.forEach((file: { filename: string; content: string; mimeType: string }) => {
+          const blob = new Blob([file.content], { type: file.mimeType });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = file.filename;
+          a.click();
+          URL.revokeObjectURL(url);
+        });
+        toast.success(`Downloaded ${data.itemCount} files`);
+      }
+      setShowBatchExportDialog(false);
+      setSelectedForBatchExport([]);
+    },
+    onError: (error) => {
+      toast.error(`Batch export failed: ${error.message}`);
+    },
+  });
 
   // Get selected prompt details
   const selectedPromptDetails = promptsQuery.data?.find(p => p.id === selectedPrompt);
@@ -980,6 +1025,19 @@ export default function ContentGenerator() {
 
         {/* History Tab */}
         <TabsContent value="history" className="space-y-6">
+          {/* Batch Export Button */}
+          {historyQuery.data && historyQuery.data.length > 0 && (
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                onClick={() => setShowBatchExportDialog(true)}
+                className="gap-2"
+              >
+                <Layers className="h-4 w-4" />
+                Batch Export
+              </Button>
+            </div>
+          )}
           {historyQuery.isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin" />
@@ -1653,6 +1711,190 @@ export default function ContentGenerator() {
             <Button onClick={handleExport}>
               <ExternalLink className="h-4 w-4 mr-2" />
               {exportDestination === "file" ? "Download" : "Copy & Export"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Batch Export Dialog */}
+      <Dialog open={showBatchExportDialog} onOpenChange={setShowBatchExportDialog}>
+        <DialogContent className="max-w-4xl max-h-[85vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Layers className="h-5 w-5" />
+              Batch Export Content
+            </DialogTitle>
+            <DialogDescription>
+              Select multiple pieces of content to export at once
+            </DialogDescription>
+          </DialogHeader>
+          
+          {/* Filters */}
+          <div className="flex gap-4 mb-4">
+            <div className="flex-1">
+              <Input
+                placeholder="Search content..."
+                value={batchExportSearch}
+                onChange={(e) => setBatchExportSearch(e.target.value)}
+              />
+            </div>
+            <Select
+              value={batchExportContentType || "all"}
+              onValueChange={(v) => setBatchExportContentType(v === "all" ? undefined : v)}
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="All types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="advertorial">Advertorial</SelectItem>
+                <SelectItem value="vsl_script">VSL Script</SelectItem>
+                <SelectItem value="ugc_scenario">UGC Scenario</SelectItem>
+                <SelectItem value="course_outline">Course Outline</SelectItem>
+                <SelectItem value="ad_copy">Ad Copy</SelectItem>
+                <SelectItem value="sales_page">Sales Page</SelectItem>
+                <SelectItem value="email_sequence">Email Sequence</SelectItem>
+                <SelectItem value="product_idea">Product Idea</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Content Selection */}
+          <ScrollArea className="h-[300px] border rounded-lg p-4">
+            {batchExportContentQuery.isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin" />
+              </div>
+            ) : batchExportContentQuery.data && batchExportContentQuery.data.length > 0 ? (
+              <div className="space-y-2">
+                {/* Select All */}
+                <div className="flex items-center gap-2 pb-2 border-b mb-2">
+                  <Checkbox
+                    checked={selectedForBatchExport.length === batchExportContentQuery.data.length}
+                    onCheckedChange={(checked) => {
+                      if (checked) {
+                        setSelectedForBatchExport(batchExportContentQuery.data?.map(item => item.id) || []);
+                      } else {
+                        setSelectedForBatchExport([]);
+                      }
+                    }}
+                  />
+                  <span className="text-sm font-medium">
+                    Select All ({batchExportContentQuery.data.length} items)
+                  </span>
+                </div>
+                {/* Content Items */}
+                {batchExportContentQuery.data.map((item) => (
+                  <div
+                    key={item.id}
+                    className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
+                      selectedForBatchExport.includes(item.id)
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:bg-muted/50"
+                    }`}
+                  >
+                    <Checkbox
+                      checked={selectedForBatchExport.includes(item.id)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setSelectedForBatchExport(prev => [...prev, item.id]);
+                        } else {
+                          setSelectedForBatchExport(prev => prev.filter(id => id !== item.id));
+                        }
+                      }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Badge variant="outline" className={contentTypeColors[item.contentType]}>
+                          {item.contentType.replace(/_/g, " ")}
+                        </Badge>
+                        {item.isFavorite && <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />}
+                      </div>
+                      <p className="font-medium text-sm truncate">{item.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(item.createdAt).toLocaleDateString()} • {item.wordCount} words
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                <FileText className="h-8 w-8 mb-2" />
+                <p>No content found</p>
+              </div>
+            )}
+          </ScrollArea>
+
+          {/* Export Options */}
+          <div className="grid grid-cols-2 gap-4 mt-4">
+            <div className="space-y-2">
+              <Label>Export Type</Label>
+              <Select value={batchExportType} onValueChange={(v) => setBatchExportType(v as "combined" | "individual")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="combined">Combined (Single File)</SelectItem>
+                  <SelectItem value="individual">Individual Files</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Format</Label>
+              <Select value={batchExportFormat} onValueChange={(v) => setBatchExportFormat(v as any)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="markdown">Markdown (.md)</SelectItem>
+                  <SelectItem value="txt">Plain Text (.txt)</SelectItem>
+                  <SelectItem value="html">HTML (.html)</SelectItem>
+                  <SelectItem value="json">JSON (.json)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Selection Summary */}
+          {selectedForBatchExport.length > 0 && (
+            <div className="bg-muted/50 rounded-lg p-3 mt-4">
+              <p className="text-sm">
+                <span className="font-medium">{selectedForBatchExport.length}</span> items selected
+                {batchExportContentQuery.data && (
+                  <span className="text-muted-foreground">
+                    {" "}• ~{batchExportContentQuery.data
+                      .filter(item => selectedForBatchExport.includes(item.id))
+                      .reduce((sum, item) => sum + (item.wordCount || 0), 0)} words total
+                  </span>
+                )}
+              </p>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setShowBatchExportDialog(false);
+              setSelectedForBatchExport([]);
+            }}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                batchExportMutation.mutate({
+                  contentIds: selectedForBatchExport,
+                  format: batchExportFormat,
+                  exportType: batchExportType,
+                });
+              }}
+              disabled={selectedForBatchExport.length === 0 || batchExportMutation.isPending}
+            >
+              {batchExportMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              Export {selectedForBatchExport.length} Items
             </Button>
           </DialogFooter>
         </DialogContent>

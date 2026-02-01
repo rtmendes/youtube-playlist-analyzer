@@ -3629,6 +3629,189 @@ Provide insights that can be directly used in marketing copy.`
           mimeType,
         };
       }),
+
+    // Batch export multiple content items
+    batchExport: protectedProcedure
+      .input(z.object({
+        contentIds: z.array(z.number()).min(1).max(50),
+        format: z.enum(["markdown", "txt", "html", "json"]).default("markdown"),
+        exportType: z.enum(["combined", "individual"]).default("combined"),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Fetch all content items
+        const contentItems = await db.select().from(contentTemplates)
+          .where(and(
+            eq(contentTemplates.userId, ctx.user.id),
+            sql`${contentTemplates.id} IN (${sql.join(input.contentIds.map(id => sql`${id}`), sql`, `)})`
+          ));
+
+        if (contentItems.length === 0) {
+          throw new Error("No content items found");
+        }
+
+        // Format each item
+        const formattedItems = contentItems.map(item => {
+          let content = item.content || '';
+          
+          if (input.format === "txt") {
+            content = content.replace(/[#*_`]/g, '');
+          } else if (input.format === "html") {
+            content = content
+              .replace(/^### (.*$)/gm, '<h3>$1</h3>')
+              .replace(/^## (.*$)/gm, '<h2>$1</h2>')
+              .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+              .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+              .replace(/\*(.*?)\*/g, '<em>$1</em>')
+              .replace(/^- (.*$)/gm, '<li>$1</li>')
+              .replace(/\n\n/g, '</p><p>');
+          }
+          
+          return {
+            id: item.id,
+            title: item.title || `Content ${item.id}`,
+            contentType: item.contentType,
+            content,
+            wordCount: content.split(/\s+/).length,
+            createdAt: item.createdAt,
+          };
+        });
+
+        // Track the batch export
+        await db.insert(exportHistory).values({
+          userId: ctx.user.id,
+          destination: "markdown_file",
+          exportFormat: input.format,
+          title: `Batch Export (${formattedItems.length} items)`,
+          contentPreview: `Exported ${formattedItems.length} content items`,
+          wordCount: formattedItems.reduce((sum, item) => sum + item.wordCount, 0),
+          status: "success",
+        });
+
+        if (input.exportType === "combined") {
+          // Combine all content into a single document
+          let combinedContent = '';
+          const extension = input.format === "html" ? "html" : input.format === "txt" ? "txt" : "md";
+          
+          if (input.format === "html") {
+            combinedContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Batch Export - ${formattedItems.length} Items</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.6; }
+    .content-item { border-bottom: 2px solid #eee; padding: 20px 0; margin-bottom: 20px; }
+    .content-item:last-child { border-bottom: none; }
+    h1, h2, h3 { margin-top: 1.5em; }
+    .item-meta { color: #666; font-size: 0.9em; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Batch Export - ${formattedItems.length} Items</h1>
+  <p>Exported on ${new Date().toLocaleDateString()}</p>
+  <hr>
+`;
+            formattedItems.forEach((item, index) => {
+              combinedContent += `
+  <div class="content-item">
+    <h2>${index + 1}. ${item.title}</h2>
+    <div class="item-meta">Type: ${item.contentType} | Words: ${item.wordCount}</div>
+    <div class="content">${item.content}</div>
+  </div>`;
+            });
+            combinedContent += `
+</body>
+</html>`;
+          } else if (input.format === "json") {
+            combinedContent = JSON.stringify({
+              exportDate: new Date().toISOString(),
+              itemCount: formattedItems.length,
+              totalWords: formattedItems.reduce((sum, item) => sum + item.wordCount, 0),
+              items: formattedItems,
+            }, null, 2);
+          } else {
+            // Markdown or plain text
+            combinedContent = `# Batch Export - ${formattedItems.length} Items\n\nExported on ${new Date().toLocaleDateString()}\n\n---\n\n`;
+            formattedItems.forEach((item, index) => {
+              combinedContent += `## ${index + 1}. ${item.title}\n\n`;
+              combinedContent += `**Type:** ${item.contentType} | **Words:** ${item.wordCount}\n\n`;
+              combinedContent += `${item.content}\n\n---\n\n`;
+            });
+          }
+
+          return {
+            success: true,
+            exportType: "combined",
+            itemCount: formattedItems.length,
+            totalWords: formattedItems.reduce((sum, item) => sum + item.wordCount, 0),
+            content: combinedContent,
+            filename: `batch-export-${formattedItems.length}-items.${extension}`,
+            mimeType: input.format === "html" ? "text/html" : input.format === "json" ? "application/json" : "text/plain",
+          };
+        } else {
+          // Return individual files (for ZIP download on frontend)
+          const extension = input.format === "html" ? "html" : input.format === "txt" ? "txt" : "md";
+          
+          return {
+            success: true,
+            exportType: "individual",
+            itemCount: formattedItems.length,
+            totalWords: formattedItems.reduce((sum, item) => sum + item.wordCount, 0),
+            files: formattedItems.map(item => ({
+              filename: `${item.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.${extension}`,
+              content: item.content,
+              mimeType: input.format === "html" ? "text/html" : "text/plain",
+            })),
+          };
+        }
+      }),
+
+    // Get all generated content for batch selection
+    getAllGeneratedContent: protectedProcedure
+      .input(z.object({
+        contentType: z.string().optional(),
+        limit: z.number().min(1).max(100).default(50),
+        search: z.string().optional(),
+      }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        let conditions = [eq(contentTemplates.userId, ctx.user.id)];
+        
+        if (input.contentType) {
+          conditions.push(eq(contentTemplates.contentType, input.contentType as any));
+        }
+        
+        if (input.search) {
+          conditions.push(
+            or(
+              like(contentTemplates.title, `%${input.search}%`),
+              like(contentTemplates.content, `%${input.search}%`)
+            ) || sql`1=1`
+          );
+        }
+
+        const results = await db.select({
+          id: contentTemplates.id,
+          title: contentTemplates.title,
+          contentType: contentTemplates.contentType,
+          promptUsed: contentTemplates.promptUsed,
+          wordCount: sql<number>`LENGTH(${contentTemplates.content}) - LENGTH(REPLACE(${contentTemplates.content}, ' ', '')) + 1`,
+          createdAt: contentTemplates.createdAt,
+          isFavorite: contentTemplates.isFavorite,
+        }).from(contentTemplates)
+          .where(and(...conditions))
+          .orderBy(desc(contentTemplates.createdAt))
+          .limit(input.limit);
+
+        return results;
+      }),
   }),
 });
 

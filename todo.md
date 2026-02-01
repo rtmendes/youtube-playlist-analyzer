@@ -653,4 +653,13 @@
 - [x] Implement Notion export via MCP integration
 - [x] Add export format options (plain text, markdown, rich text)
 - [x] Create export history tracking
-- [ ] Add batch export functionality
+- [x] Add batch export functionality
+
+## Batch Export Feature
+- [x] Add batch export API endpoint to handle multiple content items
+- [x] Create batch export UI with multi-select checkboxes
+- [x] Support export formats: Markdown, TXT, HTML, JSON
+- [x] Add select all / deselect all functionality
+- [x] Show selection summary with word count
+- [x] Generate combined document or individual files
+- [x] Track batch exports in export history
