@@ -121,6 +121,7 @@ export default function ContentGenerator() {
   const [batchExportType, setBatchExportType] = useState<"combined" | "individual">("combined");
   const [batchExportSearch, setBatchExportSearch] = useState("");
   const [batchExportContentType, setBatchExportContentType] = useState<string | undefined>(undefined);
+  const [batchExportDestination, setBatchExportDestination] = useState<"file" | "google_docs" | "notion">("file");
 
   // Queries
   const contentTypesQuery = trpc.contentGenerator.getContentTypes.useQuery();
@@ -303,7 +304,25 @@ export default function ContentGenerator() {
 
   const batchExportMutation = trpc.contentGenerator.batchExport.useMutation({
     onSuccess: (data) => {
-      if (data.exportType === "combined" && data.content && data.filename && data.mimeType) {
+      // Handle Google Docs destination
+      if (data.destination === "google_docs" && data.content) {
+        navigator.clipboard.writeText(data.content).then(() => {
+          window.open("https://docs.google.com/document/create", "_blank");
+          toast.success(`${data.itemCount} items copied! Paste into the new Google Doc (Ctrl/Cmd+V)`);
+        }).catch(() => {
+          toast.error("Failed to copy to clipboard");
+        });
+      }
+      // Handle Notion destination
+      else if (data.destination === "notion" && data.content) {
+        navigator.clipboard.writeText(data.content).then(() => {
+          toast.success(`${data.itemCount} items copied in Notion format! Open Notion and paste (Ctrl/Cmd+V)`);
+        }).catch(() => {
+          toast.error("Failed to copy to clipboard");
+        });
+      }
+      // Handle file download - combined
+      else if (data.exportType === "combined" && data.content && data.filename && data.mimeType) {
         const blob = new Blob([data.content], { type: data.mimeType });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -312,10 +331,10 @@ export default function ContentGenerator() {
         a.click();
         URL.revokeObjectURL(url);
         toast.success(`Exported ${data.itemCount} items (${data.totalWords} words)`);
-      } else {
-        // For individual files, create a simple combined download
-        // In production, this could create a ZIP file
-        data.files?.forEach((file: { filename: string; content: string; mimeType: string }) => {
+      }
+      // Handle file download - individual files
+      else if (data.files) {
+        data.files.forEach((file: { filename: string; content: string; mimeType: string }) => {
           const blob = new Blob([file.content], { type: file.mimeType });
           const url = URL.createObjectURL(blob);
           const a = document.createElement("a");
@@ -328,6 +347,7 @@ export default function ContentGenerator() {
       }
       setShowBatchExportDialog(false);
       setSelectedForBatchExport([]);
+      setBatchExportDestination("file");
     },
     onError: (error) => {
       toast.error(`Batch export failed: ${error.message}`);
@@ -1827,10 +1847,42 @@ export default function ContentGenerator() {
           </ScrollArea>
 
           {/* Export Options */}
-          <div className="grid grid-cols-2 gap-4 mt-4">
+          <div className="grid grid-cols-3 gap-4 mt-4">
+            <div className="space-y-2">
+              <Label>Destination</Label>
+              <Select value={batchExportDestination} onValueChange={(v) => setBatchExportDestination(v as "file" | "google_docs" | "notion")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="file">
+                    <div className="flex items-center gap-2">
+                      <Download className="h-4 w-4" />
+                      Download File
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="google_docs">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Google Docs
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="notion">
+                    <div className="flex items-center gap-2">
+                      <BookOpen className="h-4 w-4" />
+                      Notion
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-2">
               <Label>Export Type</Label>
-              <Select value={batchExportType} onValueChange={(v) => setBatchExportType(v as "combined" | "individual")}>
+              <Select 
+                value={batchExportType} 
+                onValueChange={(v) => setBatchExportType(v as "combined" | "individual")}
+                disabled={batchExportDestination !== "file"}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -1842,7 +1894,11 @@ export default function ContentGenerator() {
             </div>
             <div className="space-y-2">
               <Label>Format</Label>
-              <Select value={batchExportFormat} onValueChange={(v) => setBatchExportFormat(v as any)}>
+              <Select 
+                value={batchExportFormat} 
+                onValueChange={(v) => setBatchExportFormat(v as any)}
+                disabled={batchExportDestination !== "file"}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -1855,6 +1911,22 @@ export default function ContentGenerator() {
               </Select>
             </div>
           </div>
+
+          {/* Destination Info */}
+          {batchExportDestination === "google_docs" && (
+            <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 mt-4">
+              <p className="text-sm text-blue-600">
+                <strong>Google Docs:</strong> Content will be copied to clipboard and a new Google Doc will open. Paste (Ctrl/Cmd+V) to import your content.
+              </p>
+            </div>
+          )}
+          {batchExportDestination === "notion" && (
+            <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg p-3 mt-4">
+              <p className="text-sm text-purple-600">
+                <strong>Notion:</strong> Content will be copied to clipboard in Notion-compatible markdown format. Open Notion and paste (Ctrl/Cmd+V) to import.
+              </p>
+            </div>
+          )}
 
           {/* Selection Summary */}
           {selectedForBatchExport.length > 0 && (
@@ -1876,6 +1948,7 @@ export default function ContentGenerator() {
             <Button variant="outline" onClick={() => {
               setShowBatchExportDialog(false);
               setSelectedForBatchExport([]);
+              setBatchExportDestination("file");
             }}>
               Cancel
             </Button>
@@ -1885,16 +1958,26 @@ export default function ContentGenerator() {
                   contentIds: selectedForBatchExport,
                   format: batchExportFormat,
                   exportType: batchExportType,
+                  destination: batchExportDestination,
                 });
               }}
               disabled={selectedForBatchExport.length === 0 || batchExportMutation.isPending}
+              className={batchExportDestination === "google_docs" ? "bg-blue-600 hover:bg-blue-700" : batchExportDestination === "notion" ? "bg-purple-600 hover:bg-purple-700" : ""}
             >
               {batchExportMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : batchExportDestination === "google_docs" ? (
+                <FileText className="h-4 w-4 mr-2" />
+              ) : batchExportDestination === "notion" ? (
+                <BookOpen className="h-4 w-4 mr-2" />
               ) : (
                 <Download className="h-4 w-4 mr-2" />
               )}
-              Export {selectedForBatchExport.length} Items
+              {batchExportDestination === "google_docs" 
+                ? `Export to Google Docs (${selectedForBatchExport.length})` 
+                : batchExportDestination === "notion" 
+                  ? `Export to Notion (${selectedForBatchExport.length})`
+                  : `Download ${selectedForBatchExport.length} Items`}
             </Button>
           </DialogFooter>
         </DialogContent>

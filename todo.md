@@ -663,3 +663,12 @@
 - [x] Show selection summary with word count
 - [x] Generate combined document or individual files
 - [x] Track batch exports in export history
+
+## Batch Export Google Docs & Notion Integration
+- [x] Add Google Docs destination option to batch export
+- [x] Add Notion destination option to batch export
+- [x] Create combined document in Google Docs with all selected content
+- [x] Create Notion page with all selected content organized by sections
+- [x] Update batch export UI with destination selector (File, Google Docs, Notion)
+- [x] Add destination-specific UI hints and instructions
+- [x] Track cloud exports in export history

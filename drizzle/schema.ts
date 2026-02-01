@@ -949,7 +949,11 @@ export const exportHistory = mysqlTable("exportHistory", {
     "clipboard",
     "markdown_file",
     "pdf",
-    "word"
+    "word",
+    "file",
+    "batch_file",
+    "batch_google_docs",
+    "batch_notion"
   ]).notNull(),
   // Export details
   exportFormat: varchar("exportFormat", { length: 32 }), // "plain_text", "markdown", "rich_text", "html"

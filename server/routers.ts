@@ -3636,6 +3636,7 @@ Provide insights that can be directly used in marketing copy.`
         contentIds: z.array(z.number()).min(1).max(50),
         format: z.enum(["markdown", "txt", "html", "json"]).default("markdown"),
         exportType: z.enum(["combined", "individual"]).default("combined"),
+        destination: z.enum(["file", "google_docs", "notion"]).default("file"),
       }))
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
@@ -3680,17 +3681,70 @@ Provide insights that can be directly used in marketing copy.`
           };
         });
 
+        // Build combined content for all destinations
+        let combinedMarkdown = `# Batch Export - ${formattedItems.length} Items\n\nExported on ${new Date().toLocaleDateString()}\n\n---\n\n`;
+        formattedItems.forEach((item, index) => {
+          combinedMarkdown += `## ${index + 1}. ${item.title}\n\n`;
+          combinedMarkdown += `**Type:** ${item.contentType} | **Words:** ${item.wordCount}\n\n`;
+          combinedMarkdown += `${item.content}\n\n---\n\n`;
+        });
+
         // Track the batch export
         await db.insert(exportHistory).values({
           userId: ctx.user.id,
-          destination: "markdown_file",
+          destination: input.destination === "google_docs" ? "batch_google_docs" : input.destination === "notion" ? "batch_notion" : "batch_file",
           exportFormat: input.format,
           title: `Batch Export (${formattedItems.length} items)`,
-          contentPreview: `Exported ${formattedItems.length} content items`,
+          contentPreview: `Exported ${formattedItems.length} content items to ${input.destination}`,
           wordCount: formattedItems.reduce((sum, item) => sum + item.wordCount, 0),
           status: "success",
         });
 
+        // Handle Google Docs destination
+        if (input.destination === "google_docs") {
+          // For Google Docs, we return the content formatted for Google Docs
+          // The frontend will open a new Google Doc with this content
+          const googleDocsContent = formattedItems.map((item, index) => {
+            return `${index + 1}. ${item.title}\n\nType: ${item.contentType} | Words: ${item.wordCount}\n\n${item.content}\n\n${'─'.repeat(50)}\n\n`;
+          }).join('');
+
+          return {
+            success: true,
+            destination: "google_docs",
+            exportType: "combined",
+            itemCount: formattedItems.length,
+            totalWords: formattedItems.reduce((sum, item) => sum + item.wordCount, 0),
+            content: googleDocsContent,
+            googleDocsUrl: `https://docs.google.com/document/create`,
+            message: `Ready to export ${formattedItems.length} items to Google Docs`,
+          };
+        }
+
+        // Handle Notion destination
+        if (input.destination === "notion") {
+          // For Notion, we return Notion-flavored markdown
+          // The frontend will copy this to clipboard for pasting into Notion
+          const notionContent = formattedItems.map((item, index) => {
+            // Convert to Notion-compatible format
+            let content = item.content;
+            // Notion uses different heading syntax and supports callouts
+            return `## ${index + 1}. ${item.title}\n\n> **Type:** ${item.contentType} | **Words:** ${item.wordCount}\n\n${content}\n\n---\n\n`;
+          }).join('');
+
+          const fullNotionContent = `# Batch Export - ${formattedItems.length} Items\n\n> Exported on ${new Date().toLocaleDateString()}\n\n---\n\n${notionContent}`;
+
+          return {
+            success: true,
+            destination: "notion",
+            exportType: "combined",
+            itemCount: formattedItems.length,
+            totalWords: formattedItems.reduce((sum, item) => sum + item.wordCount, 0),
+            content: fullNotionContent,
+            message: `Ready to export ${formattedItems.length} items to Notion`,
+          };
+        }
+
+        // Handle file destination (default)
         if (input.exportType === "combined") {
           // Combine all content into a single document
           let combinedContent = '';
