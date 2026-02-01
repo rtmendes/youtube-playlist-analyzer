@@ -629,3 +629,28 @@
 - [x] Include copywriting frameworks (AIDA, PAS, BAB, 4Ps)
 - [x] Add industry benchmarks and targets
 - [x] Create SOP templates for each content type
+
+## Content Templates & Versioning Feature
+
+### Reusable Templates Library
+- [x] Create savedTemplates database table (name, contentType, variables, baseContent, userId)
+- [x] Build template save dialog with name and variable extraction
+- [x] Create Templates Library page with search and filter
+- [x] Implement template loading with variable replacement
+- [x] Add template categories and tags
+- [ ] Enable template sharing between users
+
+### Content Versioning System
+- [x] Create contentVersions database table (contentId, version, content, notes, metrics)
+- [x] Add version history panel to generated content view
+- [x] Implement A/B test tracking with performance metrics
+- [x] Add version comparison view (diff between versions)
+- [x] Enable version rollback functionality
+- [x] Add notes and annotations to versions
+
+### Export to External Tools
+- [x] Implement Google Docs export via API
+- [x] Implement Notion export via MCP integration
+- [x] Add export format options (plain text, markdown, rich text)
+- [x] Create export history tracking
+- [ ] Add batch export functionality

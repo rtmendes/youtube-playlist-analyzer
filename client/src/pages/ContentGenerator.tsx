@@ -13,12 +13,14 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { 
   FileText, Video, Users, BookOpen, Megaphone, ShoppingCart, Mail, Lightbulb,
   Sparkles, ArrowRight, Loader2, Copy, Download, History, Star, Check,
-  ChevronRight, Info, Wand2, MessageSquare, Target, Zap, BookMarked
+  ChevronRight, Info, Wand2, MessageSquare, Target, Zap, BookMarked,
+  Save, FolderOpen, GitBranch, ExternalLink, FileDown, Layers, Plus,
+  BarChart3, ArrowLeftRight, Trash2, Edit2, Clock, TrendingUp
 } from "lucide-react";
 import { toast } from "sonner";
 import { Streamdown } from "streamdown";
@@ -60,10 +62,10 @@ export default function ContentGenerator() {
     const typeParam = params.get("type");
     if (typeParam && ["advertorial", "vsl_script", "ugc_scenario", "course_outline", "ad_copy", "sales_page", "email_sequence", "product_idea"].includes(typeParam)) {
       setSelectedType(typeParam);
-      // Clear the URL parameter from browser history
       window.history.replaceState({}, "", location.split("?")[0]);
     }
   }, [location]);
+
   const [selectedPrompt, setSelectedPrompt] = useState<string | null>(null);
   const [variables, setVariables] = useState<Record<string, string>>({});
   const [selectedComments, setSelectedComments] = useState<Array<{
@@ -73,9 +75,44 @@ export default function ContentGenerator() {
     category?: string;
   }>>([]);
   const [generatedContent, setGeneratedContent] = useState<string | null>(null);
+  const [generatedContentId, setGeneratedContentId] = useState<number | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [activeTab, setActiveTab] = useState("generator");
+
+  // Template states
+  const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+  const [templateDescription, setTemplateDescription] = useState("");
+  const [templateCategory, setTemplateCategory] = useState("");
+  const [showTemplatesDialog, setShowTemplatesDialog] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
+  const [templateVariableValues, setTemplateVariableValues] = useState<Record<string, string>>({});
+
+  // Version states
+  const [showVersionsDialog, setShowVersionsDialog] = useState(false);
+  const [showCreateVersionDialog, setShowCreateVersionDialog] = useState(false);
+  const [versionName, setVersionName] = useState("");
+  const [versionNotes, setVersionNotes] = useState("");
+  const [isAbTest, setIsAbTest] = useState(false);
+  const [abTestName, setAbTestName] = useState("");
+  const [abTestVariant, setAbTestVariant] = useState("");
+  const [showMetricsDialog, setShowMetricsDialog] = useState(false);
+  const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
+  const [metricsInput, setMetricsInput] = useState({
+    impressions: "",
+    clicks: "",
+    conversions: "",
+    revenue: "",
+  });
+  const [showCompareDialog, setShowCompareDialog] = useState(false);
+  const [compareVersionA, setCompareVersionA] = useState<number | null>(null);
+  const [compareVersionB, setCompareVersionB] = useState<number | null>(null);
+
+  // Export states
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [exportFormat, setExportFormat] = useState<"markdown" | "plain_text" | "rich_text">("markdown");
+  const [exportDestination, setExportDestination] = useState<"google_docs" | "notion" | "file">("file");
 
   // Queries
   const contentTypesQuery = trpc.contentGenerator.getContentTypes.useQuery();
@@ -96,17 +133,156 @@ export default function ContentGenerator() {
     { contentType: selectedType || undefined },
     { enabled: !!selectedType }
   );
+  const templatesQuery = trpc.contentGenerator.getTemplates.useQuery(
+    { contentType: selectedType || undefined, limit: 50 },
+    { enabled: isAuthenticated && showTemplatesDialog }
+  );
+  const versionsQuery = trpc.contentGenerator.getVersions.useQuery(
+    { contentTemplateId: generatedContentId || 0 },
+    { enabled: isAuthenticated && showVersionsDialog && !!generatedContentId }
+  );
+  const compareQuery = trpc.contentGenerator.compareVersions.useQuery(
+    { versionAId: compareVersionA || 0, versionBId: compareVersionB || 0 },
+    { enabled: isAuthenticated && showCompareDialog && !!compareVersionA && !!compareVersionB }
+  );
+  const exportHistoryQuery = trpc.contentGenerator.getExportHistory.useQuery(
+    { limit: 10 },
+    { enabled: isAuthenticated && activeTab === "history" }
+  );
 
   // Mutations
   const generateMutation = trpc.contentGenerator.generate.useMutation({
     onSuccess: (data) => {
       setGeneratedContent(data.content);
+      setGeneratedContentId(data.id);
       setIsGenerating(false);
       toast.success("Content generated successfully!");
     },
     onError: (error) => {
       setIsGenerating(false);
       toast.error(`Generation failed: ${error.message}`);
+    },
+  });
+
+  const saveTemplateMutation = trpc.contentGenerator.saveAsTemplate.useMutation({
+    onSuccess: () => {
+      toast.success("Template saved successfully!");
+      setShowSaveTemplateDialog(false);
+      setTemplateName("");
+      setTemplateDescription("");
+      setTemplateCategory("");
+    },
+    onError: (error) => {
+      toast.error(`Failed to save template: ${error.message}`);
+    },
+  });
+
+  const useTemplateMutation = trpc.contentGenerator.useTemplate.useMutation({
+    onSuccess: (data) => {
+      setGeneratedContent(data.processedContent);
+      toast.success("Template loaded!");
+      setShowTemplatesDialog(false);
+    },
+    onError: (error) => {
+      toast.error(`Failed to load template: ${error.message}`);
+    },
+  });
+
+  const deleteTemplateMutation = trpc.contentGenerator.deleteTemplate.useMutation({
+    onSuccess: () => {
+      toast.success("Template deleted!");
+      templatesQuery.refetch();
+    },
+    onError: (error) => {
+      toast.error(`Failed to delete template: ${error.message}`);
+    },
+  });
+
+  const createVersionMutation = trpc.contentGenerator.createVersion.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Version ${data.versionNumber} created!`);
+      setShowCreateVersionDialog(false);
+      setVersionName("");
+      setVersionNotes("");
+      setIsAbTest(false);
+      setAbTestName("");
+      setAbTestVariant("");
+      versionsQuery.refetch();
+    },
+    onError: (error) => {
+      toast.error(`Failed to create version: ${error.message}`);
+    },
+  });
+
+  const updateMetricsMutation = trpc.contentGenerator.updateVersionMetrics.useMutation({
+    onSuccess: (data) => {
+      toast.success("Metrics updated!");
+      setShowMetricsDialog(false);
+      setMetricsInput({ impressions: "", clicks: "", conversions: "", revenue: "" });
+      versionsQuery.refetch();
+    },
+    onError: (error) => {
+      toast.error(`Failed to update metrics: ${error.message}`);
+    },
+  });
+
+  const updateVersionStatusMutation = trpc.contentGenerator.updateVersionStatus.useMutation({
+    onSuccess: () => {
+      toast.success("Status updated!");
+      versionsQuery.refetch();
+    },
+    onError: (error) => {
+      toast.error(`Failed to update status: ${error.message}`);
+    },
+  });
+
+  const rollbackMutation = trpc.contentGenerator.rollbackToVersion.useMutation({
+    onSuccess: (data) => {
+      setGeneratedContent(data.restoredContent);
+      toast.success("Rolled back to selected version!");
+      setShowVersionsDialog(false);
+    },
+    onError: (error) => {
+      toast.error(`Failed to rollback: ${error.message}`);
+    },
+  });
+
+  const exportToGoogleDocsMutation = trpc.contentGenerator.exportToGoogleDocs.useMutation({
+    onSuccess: (data) => {
+      navigator.clipboard.writeText(data.formattedContent);
+      toast.success("Content copied! Paste into Google Docs.");
+      setShowExportDialog(false);
+    },
+    onError: (error) => {
+      toast.error(`Export failed: ${error.message}`);
+    },
+  });
+
+  const exportToNotionMutation = trpc.contentGenerator.exportToNotion.useMutation({
+    onSuccess: (data) => {
+      navigator.clipboard.writeText(data.formattedContent);
+      toast.success("Content copied! Paste into Notion.");
+      setShowExportDialog(false);
+    },
+    onError: (error) => {
+      toast.error(`Export failed: ${error.message}`);
+    },
+  });
+
+  const downloadFileMutation = trpc.contentGenerator.downloadAsFile.useMutation({
+    onSuccess: (data) => {
+      const blob = new Blob([data.content], { type: data.mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = data.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("File downloaded!");
+      setShowExportDialog(false);
+    },
+    onError: (error) => {
+      toast.error(`Download failed: ${error.message}`);
     },
   });
 
@@ -122,6 +298,7 @@ export default function ContentGenerator() {
     setSelectedPrompt(null);
     setVariables({});
     setGeneratedContent(null);
+    setGeneratedContentId(null);
   };
 
   // Handle prompt selection
@@ -129,6 +306,7 @@ export default function ContentGenerator() {
     setSelectedPrompt(promptId);
     setVariables({});
     setGeneratedContent(null);
+    setGeneratedContentId(null);
   };
 
   // Handle variable change
@@ -185,6 +363,102 @@ export default function ContentGenerator() {
     }
   };
 
+  // Save as template
+  const handleSaveAsTemplate = () => {
+    if (!generatedContent || !selectedType) return;
+
+    saveTemplateMutation.mutate({
+      name: templateName,
+      description: templateDescription || undefined,
+      contentType: selectedType as any,
+      templateContent: generatedContent,
+      category: templateCategory || undefined,
+      frameworkUsed: selectedPromptDetails?.framework,
+    });
+  };
+
+  // Use template
+  const handleUseTemplate = (templateId: number) => {
+    setSelectedTemplateId(templateId);
+    const template = templatesQuery.data?.find(t => t.id === templateId);
+    if (template?.variables && Array.isArray(template.variables)) {
+      const initialValues: Record<string, string> = {};
+      template.variables.forEach((v: any) => {
+        initialValues[v.name] = v.defaultValue || "";
+      });
+      setTemplateVariableValues(initialValues);
+    }
+  };
+
+  // Apply template with variables
+  const handleApplyTemplate = () => {
+    if (!selectedTemplateId) return;
+    useTemplateMutation.mutate({
+      id: selectedTemplateId,
+      variableValues: templateVariableValues,
+    });
+  };
+
+  // Create version
+  const handleCreateVersion = () => {
+    if (!generatedContentId || !generatedContent) return;
+
+    createVersionMutation.mutate({
+      contentTemplateId: generatedContentId,
+      versionName: versionName || undefined,
+      content: generatedContent,
+      changeNotes: versionNotes || undefined,
+      isAbTest,
+      abTestName: isAbTest ? abTestName : undefined,
+      abTestVariant: isAbTest ? abTestVariant : undefined,
+    });
+  };
+
+  // Update metrics
+  const handleUpdateMetrics = () => {
+    if (!selectedVersionId) return;
+
+    updateMetricsMutation.mutate({
+      id: selectedVersionId,
+      metrics: {
+        impressions: metricsInput.impressions ? parseInt(metricsInput.impressions) : undefined,
+        clicks: metricsInput.clicks ? parseInt(metricsInput.clicks) : undefined,
+        conversions: metricsInput.conversions ? parseInt(metricsInput.conversions) : undefined,
+        revenue: metricsInput.revenue ? parseFloat(metricsInput.revenue) : undefined,
+      },
+    });
+  };
+
+  // Export content
+  const handleExport = () => {
+    if (!generatedContent) return;
+
+    const title = `${selectedType?.replace(/_/g, " ")} - ${new Date().toLocaleDateString()}`;
+
+    if (exportDestination === "google_docs") {
+      exportToGoogleDocsMutation.mutate({
+        contentTemplateId: generatedContentId || undefined,
+        title,
+        content: generatedContent,
+        format: exportFormat as "plain_text" | "markdown" | "rich_text",
+      });
+    } else if (exportDestination === "notion") {
+      exportToNotionMutation.mutate({
+        contentTemplateId: generatedContentId || undefined,
+        title,
+        content: generatedContent,
+        format: exportFormat === "rich_text" ? "markdown" : exportFormat as "plain_text" | "markdown",
+      });
+    } else {
+      downloadFileMutation.mutate({
+        contentTemplateId: generatedContentId || undefined,
+        title,
+        content: generatedContent,
+        format: exportFormat === "plain_text" ? "txt" : exportFormat === "rich_text" ? "html" : "markdown",
+      });
+    }
+  };
+
   // Auth check
   if (authLoading) {
     return (
@@ -230,10 +504,14 @@ export default function ContentGenerator() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full max-w-md grid-cols-3">
+        <TabsList className="grid w-full max-w-lg grid-cols-4">
           <TabsTrigger value="generator" className="gap-2">
             <Sparkles className="h-4 w-4" />
             Generator
+          </TabsTrigger>
+          <TabsTrigger value="templates" className="gap-2">
+            <FolderOpen className="h-4 w-4" />
+            Templates
           </TabsTrigger>
           <TabsTrigger value="frameworks" className="gap-2">
             <BookMarked className="h-4 w-4" />
@@ -265,8 +543,8 @@ export default function ContentGenerator() {
                       onClick={() => handleTypeSelect(type.id)}
                       className={`p-3 rounded-lg border text-left transition-all ${
                         selectedType === type.id
-                          ? `${contentTypeColors[type.id]} border-2`
-                          : "hover:bg-muted/50 border-border"
+                          ? "border-primary bg-primary/5 ring-1 ring-primary"
+                          : "border-border hover:border-primary/50 hover:bg-muted/50"
                       }`}
                     >
                       <div className="flex items-center gap-2 mb-1">
@@ -286,48 +564,44 @@ export default function ContentGenerator() {
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center gap-2">
-                      <FileText className="h-4 w-4" />
+                      <MessageSquare className="h-4 w-4" />
                       2. Select Prompt Template
                     </CardTitle>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="space-y-2">
                     {promptsQuery.isLoading ? (
-                      <div className="flex items-center justify-center py-8">
+                      <div className="flex justify-center py-4">
                         <Loader2 className="h-6 w-6 animate-spin" />
                       </div>
                     ) : (
-                      <div className="space-y-2">
-                        {promptsQuery.data?.map((prompt) => (
-                          <button
-                            key={prompt.id}
-                            onClick={() => handlePromptSelect(prompt.id)}
-                            className={`w-full p-3 rounded-lg border text-left transition-all ${
-                              selectedPrompt === prompt.id
-                                ? "bg-primary/5 border-primary"
-                                : "hover:bg-muted/50"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="font-medium text-sm">{prompt.name}</span>
-                              {prompt.framework && (
-                                <Badge variant="outline" className="text-xs">
-                                  {prompt.framework}
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="text-xs text-muted-foreground line-clamp-2">
-                              {prompt.description}
-                            </p>
-                          </button>
-                        ))}
-                      </div>
+                      promptsQuery.data?.map((prompt) => (
+                        <button
+                          key={prompt.id}
+                          onClick={() => handlePromptSelect(prompt.id)}
+                          className={`w-full p-3 rounded-lg border text-left transition-all ${
+                            selectedPrompt === prompt.id
+                              ? "border-primary bg-primary/5 ring-1 ring-primary"
+                              : "border-border hover:border-primary/50 hover:bg-muted/50"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-medium text-sm">{prompt.name}</span>
+                            <Badge variant="secondary" className="text-xs">
+                              {prompt.framework}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground line-clamp-2">
+                            {prompt.description}
+                          </p>
+                        </button>
+                      ))
                     )}
                   </CardContent>
                 </Card>
               )}
             </div>
 
-            {/* Middle Column - Variables & Comments */}
+            {/* Middle Column - Variables & Source Comments */}
             <div className="space-y-6">
               {/* Variables Input */}
               {selectedPromptDetails && (
@@ -345,7 +619,7 @@ export default function ContentGenerator() {
                     {selectedPromptDetails.variables.map((variable) => (
                       <div key={variable.name} className="space-y-2">
                         <Label className="text-sm">
-                          {variable.name.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}
+                          {variable.name.replace(/_/g, " ")}
                           {variable.required && <span className="text-red-500 ml-1">*</span>}
                         </Label>
                         {variable.description.length > 50 ? (
@@ -369,74 +643,65 @@ export default function ContentGenerator() {
               )}
 
               {/* Source Comments Selection */}
-              {selectedPromptDetails && (
+              {selectedPromptDetails && savedCommentsQuery.data && savedCommentsQuery.data.length > 0 && (
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center gap-2">
                       <MessageSquare className="h-4 w-4" />
                       4. Select Source Comments
-                      <Badge variant="secondary" className="ml-auto">
-                        {selectedComments.length} selected
-                      </Badge>
                     </CardTitle>
                     <CardDescription>
-                      Choose saved comments to include in your content
+                      Choose saved comments to include in generation
+                      <Badge variant="secondary" className="ml-2">
+                        {selectedComments.length} selected
+                      </Badge>
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <ScrollArea className="h-[300px] pr-4">
-                      {savedCommentsQuery.data && savedCommentsQuery.data.length > 0 ? (
-                        <div className="space-y-2">
-                          {savedCommentsQuery.data.map((comment) => (
-                            <div
-                              key={comment.id}
-                              className={`p-3 rounded-lg border cursor-pointer transition-all ${
-                                selectedComments.find(c => c.id === comment.id)
-                                  ? "bg-primary/5 border-primary"
-                                  : "hover:bg-muted/50"
-                              }`}
-                              onClick={() => handleCommentToggle(comment)}
-                            >
-                              <div className="flex items-start gap-2">
-                                <Checkbox
-                                  checked={!!selectedComments.find(c => c.id === comment.id)}
-                                  className="mt-1"
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <Badge variant="outline" className="text-xs">
-                                      {comment.source}
+                    <ScrollArea className="h-[200px] pr-4">
+                      <div className="space-y-2">
+                        {savedCommentsQuery.data.map((comment) => (
+                          <div
+                            key={comment.id}
+                            className={`p-2 rounded-lg border cursor-pointer transition-all ${
+                              selectedComments.find(c => c.id === comment.id)
+                                ? "border-primary bg-primary/5"
+                                : "border-border hover:border-primary/50"
+                            }`}
+                            onClick={() => handleCommentToggle(comment)}
+                          >
+                            <div className="flex items-start gap-2">
+                              <Checkbox
+                                checked={!!selectedComments.find(c => c.id === comment.id)}
+                                className="mt-1"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm line-clamp-2">{comment.text}</p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <Badge variant="outline" className="text-xs">
+                                    {comment.source}
+                                  </Badge>
+                                  {comment.category && (
+                                    <Badge variant="secondary" className="text-xs">
+                                      {comment.category}
                                     </Badge>
-                                    {comment.authorName && (
-                                      <span className="text-xs text-muted-foreground">
-                                        {comment.authorName}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <p className="text-sm line-clamp-3">{comment.text}</p>
+                                  )}
                                 </div>
                               </div>
                             </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center py-8 text-center">
-                          <MessageSquare className="h-8 w-8 text-muted-foreground mb-2" />
-                          <p className="text-sm text-muted-foreground">
-                            No saved comments yet. Save comments from your research to use them here.
-                          </p>
-                        </div>
-                      )}
+                          </div>
+                        ))}
+                      </div>
                     </ScrollArea>
                   </CardContent>
                 </Card>
               )}
             </div>
 
-            {/* Right Column - Generation & Output */}
+            {/* Right Column - Best Practices, Generate, Output */}
             <div className="space-y-6">
               {/* Best Practices */}
-              {selectedPromptDetails && (
+              {selectedPromptDetails && selectedPromptDetails.bestPractices.length > 0 && (
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center gap-2">
@@ -484,15 +749,21 @@ export default function ContentGenerator() {
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-base">Generated Content</CardTitle>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={handleCopy}>
-                          <Copy className="h-4 w-4 mr-1" />
-                          Copy
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" onClick={handleCopy} title="Copy">
+                          <Copy className="h-4 w-4" />
                         </Button>
-                        <Button variant="outline" size="sm" onClick={handleDownload}>
-                          <Download className="h-4 w-4 mr-1" />
-                          Download
+                        <Button variant="ghost" size="icon" onClick={() => setShowExportDialog(true)} title="Export">
+                          <ExternalLink className="h-4 w-4" />
                         </Button>
+                        <Button variant="ghost" size="icon" onClick={() => setShowSaveTemplateDialog(true)} title="Save as Template">
+                          <Save className="h-4 w-4" />
+                        </Button>
+                        {generatedContentId && (
+                          <Button variant="ghost" size="icon" onClick={() => setShowVersionsDialog(true)} title="Versions">
+                            <GitBranch className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </CardHeader>
@@ -507,6 +778,96 @@ export default function ContentGenerator() {
               )}
             </div>
           </div>
+        </TabsContent>
+
+        {/* Templates Tab */}
+        <TabsContent value="templates" className="space-y-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-semibold">Saved Templates</h2>
+              <p className="text-sm text-muted-foreground">Reusable content templates with variable placeholders</p>
+            </div>
+            <Button variant="outline" onClick={() => setShowTemplatesDialog(true)}>
+              <FolderOpen className="h-4 w-4 mr-2" />
+              Browse All Templates
+            </Button>
+          </div>
+
+          {templatesQuery.isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin" />
+            </div>
+          ) : templatesQuery.data && templatesQuery.data.length > 0 ? (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {templatesQuery.data.map((template) => (
+                <Card key={template.id} className="hover:shadow-md transition-shadow">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <Badge className={contentTypeColors[template.contentType]}>
+                        {contentTypeIcons[template.contentType]}
+                        <span className="ml-1">{template.contentType.replace(/_/g, " ")}</span>
+                      </Badge>
+                      <div className="flex items-center gap-1">
+                        {template.isFavorite && <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />}
+                        <span className="text-xs text-muted-foreground">
+                          Used {template.useCount}x
+                        </span>
+                      </div>
+                    </div>
+                    <CardTitle className="text-base line-clamp-1">{template.name}</CardTitle>
+                    <CardDescription className="line-clamp-2">
+                      {template.description || "No description"}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-1 mb-3">
+                      {template.variables && Array.isArray(template.variables) && template.variables.slice(0, 3).map((v: any, i: number) => (
+                        <Badge key={i} variant="outline" className="text-xs">
+                          {`{{${v.name}}}`}
+                        </Badge>
+                      ))}
+                      {template.variables && Array.isArray(template.variables) && template.variables.length > 3 && (
+                        <Badge variant="outline" className="text-xs">
+                          +{template.variables.length - 3} more
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => handleUseTemplate(template.id)}
+                      >
+                        Use Template
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => deleteTemplateMutation.mutate({ id: template.id })}
+                      >
+                        <Trash2 className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <FolderOpen className="h-12 w-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-medium mb-2">No Templates Yet</h3>
+                <p className="text-muted-foreground text-center max-w-md mb-4">
+                  Generate content and save it as a template to reuse with different products.
+                </p>
+                <Button variant="outline" onClick={() => setActiveTab("generator")}>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Start Generating
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         {/* Frameworks Tab */}
@@ -693,6 +1054,609 @@ export default function ContentGenerator() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Save as Template Dialog */}
+      <Dialog open={showSaveTemplateDialog} onOpenChange={setShowSaveTemplateDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save as Template</DialogTitle>
+            <DialogDescription>
+              Save this content as a reusable template. Use {"{{variable}}"} syntax to mark placeholders.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Template Name *</Label>
+              <Input
+                placeholder="e.g., Product Launch Advertorial"
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea
+                placeholder="Describe when to use this template..."
+                value={templateDescription}
+                onChange={(e) => setTemplateDescription(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Category</Label>
+              <Input
+                placeholder="e.g., Product Launch, Seasonal, Evergreen"
+                value={templateCategory}
+                onChange={(e) => setTemplateCategory(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSaveTemplateDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveAsTemplate} disabled={!templateName || saveTemplateMutation.isPending}>
+              {saveTemplateMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Save className="h-4 w-4 mr-2" />
+              )}
+              Save Template
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Templates Browser Dialog */}
+      <Dialog open={showTemplatesDialog} onOpenChange={setShowTemplatesDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Template Library</DialogTitle>
+            <DialogDescription>
+              Select a template to use or customize
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="h-[400px] pr-4">
+            {templatesQuery.isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin" />
+              </div>
+            ) : templatesQuery.data && templatesQuery.data.length > 0 ? (
+              <div className="space-y-3">
+                {templatesQuery.data.map((template) => (
+                  <div
+                    key={template.id}
+                    className={`p-4 rounded-lg border cursor-pointer transition-all ${
+                      selectedTemplateId === template.id
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-primary/50"
+                    }`}
+                    onClick={() => handleUseTemplate(template.id)}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium">{template.name}</span>
+                      <Badge className={contentTypeColors[template.contentType]}>
+                        {template.contentType.replace(/_/g, " ")}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-2">
+                      {template.description || "No description"}
+                    </p>
+                    {selectedTemplateId === template.id && template.variables && Array.isArray(template.variables) && template.variables.length > 0 && (
+                      <div className="mt-4 space-y-3 border-t pt-4">
+                        <p className="text-sm font-medium">Fill in variables:</p>
+                        {template.variables.map((v: any) => (
+                          <div key={v.name} className="space-y-1">
+                            <Label className="text-xs">{v.name.replace(/_/g, " ")}</Label>
+                            <Input
+                              placeholder={v.description}
+                              value={templateVariableValues[v.name] || ""}
+                              onChange={(e) => setTemplateVariableValues(prev => ({
+                                ...prev,
+                                [v.name]: e.target.value
+                              }))}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12">
+                <FolderOpen className="h-12 w-12 text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">No templates saved yet</p>
+              </div>
+            )}
+          </ScrollArea>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTemplatesDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleApplyTemplate} disabled={!selectedTemplateId || useTemplateMutation.isPending}>
+              {useTemplateMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Check className="h-4 w-4 mr-2" />
+              )}
+              Apply Template
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Versions Dialog */}
+      <Dialog open={showVersionsDialog} onOpenChange={setShowVersionsDialog}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <GitBranch className="h-5 w-5" />
+              Version History
+            </DialogTitle>
+            <DialogDescription>
+              Track changes and A/B test results for this content
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-2 mb-4">
+            <Button variant="outline" size="sm" onClick={() => setShowCreateVersionDialog(true)}>
+              <Plus className="h-4 w-4 mr-1" />
+              New Version
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setShowCompareDialog(true)}>
+              <ArrowLeftRight className="h-4 w-4 mr-1" />
+              Compare
+            </Button>
+          </div>
+          <ScrollArea className="h-[400px] pr-4">
+            {versionsQuery.isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin" />
+              </div>
+            ) : versionsQuery.data && versionsQuery.data.length > 0 ? (
+              <div className="space-y-3">
+                {versionsQuery.data.map((version) => (
+                  <Card key={version.id}>
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">
+                            {version.versionName || `Version ${version.versionNumber}`}
+                          </span>
+                          <Badge variant={
+                            (version.status === "winner") ? "default" :
+                            version.status === "testing" ? "secondary" :
+                            version.status === "active" ? "outline" : "secondary"
+                          }>
+                            {version.status}
+                          </Badge>
+                          {version.isAbTest && (
+                            <Badge variant="outline" className="text-xs">
+                              A/B Test: {version.abTestVariant}
+                            </Badge>
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(version.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      {version.changeNotes && (
+                        <p className="text-sm text-muted-foreground mb-3">{version.changeNotes}</p>
+                      )}
+                      {version.metrics && (
+                        <div className="grid grid-cols-4 gap-2 mb-3">
+                          {version.metrics.impressions !== undefined && (
+                            <div className="text-center p-2 bg-muted/50 rounded">
+                              <p className="text-xs text-muted-foreground">Impressions</p>
+                              <p className="font-medium">{version.metrics.impressions.toLocaleString()}</p>
+                            </div>
+                          )}
+                          {version.metrics.clicks !== undefined && (
+                            <div className="text-center p-2 bg-muted/50 rounded">
+                              <p className="text-xs text-muted-foreground">Clicks</p>
+                              <p className="font-medium">{version.metrics.clicks.toLocaleString()}</p>
+                            </div>
+                          )}
+                          {version.metrics.ctr !== undefined && (
+                            <div className="text-center p-2 bg-muted/50 rounded">
+                              <p className="text-xs text-muted-foreground">CTR</p>
+                              <p className="font-medium">{version.metrics.ctr.toFixed(2)}%</p>
+                            </div>
+                          )}
+                          {version.metrics.conversionRate !== undefined && (
+                            <div className="text-center p-2 bg-muted/50 rounded">
+                              <p className="text-xs text-muted-foreground">Conv. Rate</p>
+                              <p className="font-medium">{version.metrics.conversionRate.toFixed(2)}%</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedVersionId(version.id);
+                            setShowMetricsDialog(true);
+                          }}
+                        >
+                          <BarChart3 className="h-4 w-4 mr-1" />
+                          Update Metrics
+                        </Button>
+                        <Select
+                          value={version.status || "draft"}
+                          onValueChange={(value) => updateVersionStatusMutation.mutate({
+                            id: version.id,
+                            status: value as any
+                          })}
+                        >
+                          <SelectTrigger className="w-32 h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="draft">Draft</SelectItem>
+                            <SelectItem value="active">Active</SelectItem>
+                            <SelectItem value="testing">Testing</SelectItem>
+                            <SelectItem value="winner">Winner</SelectItem>
+                            <SelectItem value="archived">Archived</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            if (generatedContentId) {
+                              rollbackMutation.mutate({
+                                versionId: version.id,
+                                contentTemplateId: generatedContentId
+                              });
+                            }
+                          }}
+                        >
+                          <Clock className="h-4 w-4 mr-1" />
+                          Restore
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12">
+                <GitBranch className="h-12 w-12 text-muted-foreground mb-4" />
+                <p className="text-muted-foreground mb-4">No versions created yet</p>
+                <Button variant="outline" onClick={() => setShowCreateVersionDialog(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create First Version
+                </Button>
+              </div>
+            )}
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Version Dialog */}
+      <Dialog open={showCreateVersionDialog} onOpenChange={setShowCreateVersionDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Version</DialogTitle>
+            <DialogDescription>
+              Save the current content as a new version for tracking and A/B testing
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Version Name</Label>
+              <Input
+                placeholder="e.g., Holiday variant, Shorter headline"
+                value={versionName}
+                onChange={(e) => setVersionName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Change Notes</Label>
+              <Textarea
+                placeholder="What changed in this version?"
+                value={versionNotes}
+                onChange={(e) => setVersionNotes(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="abtest"
+                checked={isAbTest}
+                onCheckedChange={(checked) => setIsAbTest(checked as boolean)}
+              />
+              <Label htmlFor="abtest">This is an A/B test variant</Label>
+            </div>
+            {isAbTest && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Test Name</Label>
+                  <Input
+                    placeholder="e.g., Headline Test Q1"
+                    value={abTestName}
+                    onChange={(e) => setAbTestName(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Variant</Label>
+                  <Input
+                    placeholder="e.g., A, B, C"
+                    value={abTestVariant}
+                    onChange={(e) => setAbTestVariant(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateVersionDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateVersion} disabled={createVersionMutation.isPending}>
+              {createVersionMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Plus className="h-4 w-4 mr-2" />
+              )}
+              Create Version
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Update Metrics Dialog */}
+      <Dialog open={showMetricsDialog} onOpenChange={setShowMetricsDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Update Performance Metrics</DialogTitle>
+            <DialogDescription>
+              Track A/B test results and performance data
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Impressions</Label>
+              <Input
+                type="number"
+                placeholder="0"
+                value={metricsInput.impressions}
+                onChange={(e) => setMetricsInput(prev => ({ ...prev, impressions: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Clicks</Label>
+              <Input
+                type="number"
+                placeholder="0"
+                value={metricsInput.clicks}
+                onChange={(e) => setMetricsInput(prev => ({ ...prev, clicks: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Conversions</Label>
+              <Input
+                type="number"
+                placeholder="0"
+                value={metricsInput.conversions}
+                onChange={(e) => setMetricsInput(prev => ({ ...prev, conversions: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Revenue ($)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                placeholder="0.00"
+                value={metricsInput.revenue}
+                onChange={(e) => setMetricsInput(prev => ({ ...prev, revenue: e.target.value }))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowMetricsDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateMetrics} disabled={updateMetricsMutation.isPending}>
+              {updateMetricsMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <TrendingUp className="h-4 w-4 mr-2" />
+              )}
+              Update Metrics
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Compare Versions Dialog */}
+      <Dialog open={showCompareDialog} onOpenChange={setShowCompareDialog}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Compare Versions</DialogTitle>
+            <DialogDescription>
+              Select two versions to compare side by side
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="space-y-2">
+              <Label>Version A</Label>
+              <Select
+                value={compareVersionA?.toString() || ""}
+                onValueChange={(v) => setCompareVersionA(parseInt(v))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select version" />
+                </SelectTrigger>
+                <SelectContent>
+                  {versionsQuery.data?.map((v) => (
+                    <SelectItem key={v.id} value={v.id.toString()}>
+                      {v.versionName || `Version ${v.versionNumber}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Version B</Label>
+              <Select
+                value={compareVersionB?.toString() || ""}
+                onValueChange={(v) => setCompareVersionB(parseInt(v))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select version" />
+                </SelectTrigger>
+                <SelectContent>
+                  {versionsQuery.data?.map((v) => (
+                    <SelectItem key={v.id} value={v.id.toString()}>
+                      {v.versionName || `Version ${v.versionNumber}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          {compareQuery.data && (
+            <div className="space-y-4">
+              {/* Metrics Comparison */}
+              {(compareQuery.data.metricsComparison.versionA || compareQuery.data.metricsComparison.versionB) && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Performance Comparison</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-2">Version A</p>
+                        {compareQuery.data.metricsComparison.versionA ? (
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="text-center p-2 bg-muted/50 rounded">
+                              <p className="text-xs">CTR</p>
+                              <p className="font-medium">{compareQuery.data.metricsComparison.versionA.ctr?.toFixed(2) || "-"}%</p>
+                            </div>
+                            <div className="text-center p-2 bg-muted/50 rounded">
+                              <p className="text-xs">Conv.</p>
+                              <p className="font-medium">{compareQuery.data.metricsComparison.versionA.conversionRate?.toFixed(2) || "-"}%</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">No metrics</p>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-2">Version B</p>
+                        {compareQuery.data.metricsComparison.versionB ? (
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="text-center p-2 bg-muted/50 rounded">
+                              <p className="text-xs">CTR</p>
+                              <p className="font-medium">{compareQuery.data.metricsComparison.versionB.ctr?.toFixed(2) || "-"}%</p>
+                            </div>
+                            <div className="text-center p-2 bg-muted/50 rounded">
+                              <p className="text-xs">Conv.</p>
+                              <p className="font-medium">{compareQuery.data.metricsComparison.versionB.conversionRate?.toFixed(2) || "-"}%</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">No metrics</p>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+              {/* Content Diff */}
+              <ScrollArea className="h-[300px] border rounded-lg p-4">
+                <div className="space-y-1 font-mono text-sm">
+                  {compareQuery.data.diff.map((line, i) => (
+                    <div
+                      key={i}
+                      className={`px-2 py-0.5 rounded ${
+                        line.type === "added" ? "bg-green-500/20 text-green-700 dark:text-green-300" :
+                        line.type === "removed" ? "bg-red-500/20 text-red-700 dark:text-red-300" :
+                        ""
+                      }`}
+                    >
+                      <span className="mr-2">
+                        {line.type === "added" ? "+" : line.type === "removed" ? "-" : " "}
+                      </span>
+                      {line.line}
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Export Dialog */}
+      <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Export Content</DialogTitle>
+            <DialogDescription>
+              Export your content to external tools or download as a file
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Destination</Label>
+              <Select value={exportDestination} onValueChange={(v) => setExportDestination(v as any)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="google_docs">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Google Docs (Copy to clipboard)
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="notion">
+                    <div className="flex items-center gap-2">
+                      <Layers className="h-4 w-4" />
+                      Notion (Copy to clipboard)
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="file">
+                    <div className="flex items-center gap-2">
+                      <FileDown className="h-4 w-4" />
+                      Download File
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Format</Label>
+              <Select value={exportFormat} onValueChange={(v) => setExportFormat(v as any)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="markdown">Markdown</SelectItem>
+                  <SelectItem value="plain_text">Plain Text</SelectItem>
+                  {exportDestination === "file" && (
+                    <SelectItem value="rich_text">HTML</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowExportDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleExport}>
+              <ExternalLink className="h-4 w-4 mr-2" />
+              {exportDestination === "file" ? "Download" : "Copy & Export"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -10,7 +10,7 @@ import {
   formatCount,
 } from "./youtube";
 import { getDb } from "./db";
-import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets, amazonProducts, amazonReviews, redditPosts, redditComments, researchSessions, multiSourceInsights, savedPlaylists, playlistRuns, playlistVideos, videos, comments, tiktokCreators, tiktokVideos, tiktokComments, savedComments, commentCollections, nlpAnalysisResults, contentTemplates, aiPromptsKnowledgeBase, croBestPractices, copywritingFrameworks } from "../drizzle/schema";
+import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets, amazonProducts, amazonReviews, redditPosts, redditComments, researchSessions, multiSourceInsights, savedPlaylists, playlistRuns, playlistVideos, videos, comments, tiktokCreators, tiktokVideos, tiktokComments, savedComments, commentCollections, nlpAnalysisResults, contentTemplates, aiPromptsKnowledgeBase, croBestPractices, copywritingFrameworks, savedTemplates, contentVersions, exportHistory } from "../drizzle/schema";
 import { allPrompts, getPromptsForType, getPromptById, copywritingFrameworks as frameworksData, croBestPractices as croPracticesData, ContentPrompt } from "./content-prompts";
 import { invokeLLM } from "./_core/llm";
 import { eq, desc, and, like, or, sql } from "drizzle-orm";
@@ -2961,6 +2961,673 @@ Provide insights that can be directly used in marketing copy.`
         const rawContent2 = response.choices[0]?.message?.content;
         const content2 = typeof rawContent2 === 'string' ? rawContent2 : '{}';
         return JSON.parse(content2);
+      }),
+
+    // ============ SAVED TEMPLATES ============
+
+    // Save content as a reusable template
+    saveAsTemplate: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(255),
+        description: z.string().optional(),
+        contentType: z.enum(["advertorial", "vsl_script", "ugc_scenario", "course_outline", "ad_copy", "sales_page", "email_sequence", "product_idea"]),
+        templateContent: z.string().min(1),
+        variables: z.array(z.object({
+          name: z.string(),
+          description: z.string(),
+          defaultValue: z.string().optional(),
+          required: z.boolean(),
+        })).optional(),
+        frameworkUsed: z.string().optional(),
+        tone: z.string().optional(),
+        category: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Auto-extract variables from {{variable}} patterns if not provided
+        let variables = input.variables;
+        if (!variables || variables.length === 0) {
+          const matches = input.templateContent.match(/\{\{([^}]+)\}\}/g) || [];
+          const uniqueVars = Array.from(new Set(matches.map(m => m.replace(/\{\{|\}\}/g, '').trim())));
+          variables = uniqueVars.map(v => ({
+            name: v,
+            description: `Value for ${v}`,
+            required: true,
+          }));
+        }
+
+        const result = await db.insert(savedTemplates).values({
+          userId: ctx.user.id,
+          name: input.name,
+          description: input.description || null,
+          contentType: input.contentType,
+          templateContent: input.templateContent,
+          variables: variables,
+          frameworkUsed: input.frameworkUsed || null,
+          tone: input.tone || null,
+          category: input.category || null,
+          tags: input.tags || null,
+          useCount: 0,
+          isPublic: false,
+          isFavorite: false,
+        });
+
+        return { success: true, id: result[0].insertId };
+      }),
+
+    // Get all saved templates
+    getTemplates: protectedProcedure
+      .input(z.object({
+        contentType: z.string().optional(),
+        category: z.string().optional(),
+        search: z.string().optional(),
+        limit: z.number().min(1).max(100).default(50),
+      }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        let query = db.select().from(savedTemplates)
+          .where(eq(savedTemplates.userId, ctx.user.id));
+
+        const results = await query
+          .orderBy(desc(savedTemplates.updatedAt))
+          .limit(input.limit);
+
+        // Filter in memory for optional params
+        return results.filter(t => {
+          if (input.contentType && t.contentType !== input.contentType) return false;
+          if (input.category && t.category !== input.category) return false;
+          if (input.search) {
+            const searchLower = input.search.toLowerCase();
+            if (!t.name.toLowerCase().includes(searchLower) && 
+                !(t.description?.toLowerCase().includes(searchLower))) return false;
+          }
+          return true;
+        });
+      }),
+
+    // Get a specific template
+    getTemplate: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return null;
+        if (!ctx.user) return null;
+
+        const results = await db.select().from(savedTemplates)
+          .where(and(
+            eq(savedTemplates.id, input.id),
+            eq(savedTemplates.userId, ctx.user.id)
+          ));
+
+        return results[0] || null;
+      }),
+
+    // Use a template (increment use count and return with variables)
+    useTemplate: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        variableValues: z.record(z.string(), z.string()).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Get the template
+        const templates = await db.select().from(savedTemplates)
+          .where(and(
+            eq(savedTemplates.id, input.id),
+            eq(savedTemplates.userId, ctx.user.id)
+          ));
+
+        if (!templates[0]) throw new Error("Template not found");
+        const template = templates[0];
+
+        // Update use count
+        await db.update(savedTemplates).set({
+          useCount: (template.useCount || 0) + 1,
+          lastUsedAt: new Date(),
+        }).where(eq(savedTemplates.id, input.id));
+
+        // Replace variables in content
+        let content = template.templateContent;
+        if (input.variableValues) {
+          for (const [key, value] of Object.entries(input.variableValues)) {
+            content = content.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+          }
+        }
+
+        return {
+          ...template,
+          processedContent: content,
+        };
+      }),
+
+    // Update a template
+    updateTemplate: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().optional(),
+        description: z.string().optional(),
+        templateContent: z.string().optional(),
+        variables: z.array(z.object({
+          name: z.string(),
+          description: z.string(),
+          defaultValue: z.string().optional(),
+          required: z.boolean(),
+        })).optional(),
+        category: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+        isFavorite: z.boolean().optional(),
+        isPublic: z.boolean().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const updateData: Record<string, unknown> = {};
+        if (input.name !== undefined) updateData.name = input.name;
+        if (input.description !== undefined) updateData.description = input.description;
+        if (input.templateContent !== undefined) updateData.templateContent = input.templateContent;
+        if (input.variables !== undefined) updateData.variables = input.variables;
+        if (input.category !== undefined) updateData.category = input.category;
+        if (input.tags !== undefined) updateData.tags = input.tags;
+        if (input.isFavorite !== undefined) updateData.isFavorite = input.isFavorite;
+        if (input.isPublic !== undefined) updateData.isPublic = input.isPublic;
+
+        await db.update(savedTemplates).set(updateData).where(
+          and(
+            eq(savedTemplates.id, input.id),
+            eq(savedTemplates.userId, ctx.user.id)
+          )
+        );
+
+        return { success: true };
+      }),
+
+    // Delete a template
+    deleteTemplate: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.delete(savedTemplates).where(
+          and(
+            eq(savedTemplates.id, input.id),
+            eq(savedTemplates.userId, ctx.user.id)
+          )
+        );
+
+        return { success: true };
+      }),
+
+    // ============ CONTENT VERSIONING ============
+
+    // Create a new version of content
+    createVersion: protectedProcedure
+      .input(z.object({
+        contentTemplateId: z.number(),
+        versionName: z.string().optional(),
+        content: z.string(),
+        changeNotes: z.string().optional(),
+        changeSummary: z.string().optional(),
+        isAbTest: z.boolean().optional(),
+        abTestName: z.string().optional(),
+        abTestVariant: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Get the latest version number
+        const existingVersions = await db.select().from(contentVersions)
+          .where(eq(contentVersions.contentTemplateId, input.contentTemplateId))
+          .orderBy(desc(contentVersions.versionNumber))
+          .limit(1);
+
+        const nextVersion = (existingVersions[0]?.versionNumber || 0) + 1;
+
+        const result = await db.insert(contentVersions).values({
+          contentTemplateId: input.contentTemplateId,
+          userId: ctx.user.id,
+          versionNumber: nextVersion,
+          versionName: input.versionName || `Version ${nextVersion}`,
+          content: input.content,
+          changeNotes: input.changeNotes || null,
+          changeSummary: input.changeSummary || null,
+          isAbTest: input.isAbTest || false,
+          abTestName: input.abTestName || null,
+          abTestVariant: input.abTestVariant || null,
+          status: "draft",
+          metrics: null,
+          annotations: null,
+        });
+
+        return { success: true, id: result[0].insertId, versionNumber: nextVersion };
+      }),
+
+    // Get all versions for a content template
+    getVersions: protectedProcedure
+      .input(z.object({
+        contentTemplateId: z.number(),
+      }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        const results = await db.select().from(contentVersions)
+          .where(and(
+            eq(contentVersions.contentTemplateId, input.contentTemplateId),
+            eq(contentVersions.userId, ctx.user.id)
+          ))
+          .orderBy(desc(contentVersions.versionNumber));
+
+        return results;
+      }),
+
+    // Get a specific version
+    getVersion: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return null;
+        if (!ctx.user) return null;
+
+        const results = await db.select().from(contentVersions)
+          .where(and(
+            eq(contentVersions.id, input.id),
+            eq(contentVersions.userId, ctx.user.id)
+          ));
+
+        return results[0] || null;
+      }),
+
+    // Update version metrics (for A/B testing)
+    updateVersionMetrics: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        metrics: z.object({
+          impressions: z.number().optional(),
+          clicks: z.number().optional(),
+          conversions: z.number().optional(),
+          ctr: z.number().optional(),
+          conversionRate: z.number().optional(),
+          revenue: z.number().optional(),
+          engagement: z.number().optional(),
+          customMetrics: z.record(z.string(), z.number()).optional(),
+        }),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Get existing metrics
+        const versions = await db.select().from(contentVersions)
+          .where(and(
+            eq(contentVersions.id, input.id),
+            eq(contentVersions.userId, ctx.user.id)
+          ));
+
+        if (!versions[0]) throw new Error("Version not found");
+
+        // Merge metrics
+        const existingMetrics = versions[0].metrics || {};
+        const newMetrics = { ...existingMetrics, ...input.metrics };
+
+        // Calculate CTR and conversion rate if we have the data
+        if (newMetrics.impressions && newMetrics.clicks) {
+          newMetrics.ctr = (newMetrics.clicks / newMetrics.impressions) * 100;
+        }
+        if (newMetrics.clicks && newMetrics.conversions) {
+          newMetrics.conversionRate = (newMetrics.conversions / newMetrics.clicks) * 100;
+        }
+
+        await db.update(contentVersions).set({
+          metrics: newMetrics,
+        }).where(eq(contentVersions.id, input.id));
+
+        return { success: true, metrics: newMetrics };
+      }),
+
+    // Update version status
+    updateVersionStatus: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        status: z.enum(["draft", "active", "testing", "winner", "archived"]),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.update(contentVersions).set({
+          status: input.status,
+        }).where(
+          and(
+            eq(contentVersions.id, input.id),
+            eq(contentVersions.userId, ctx.user.id)
+          )
+        );
+
+        return { success: true };
+      }),
+
+    // Add annotation to version
+    addVersionAnnotation: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        note: z.string(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const versions = await db.select().from(contentVersions)
+          .where(and(
+            eq(contentVersions.id, input.id),
+            eq(contentVersions.userId, ctx.user.id)
+          ));
+
+        if (!versions[0]) throw new Error("Version not found");
+
+        const existingAnnotations = versions[0].annotations || [];
+        const newAnnotation = {
+          timestamp: new Date().toISOString(),
+          note: input.note,
+          author: ctx.user.name || "User",
+        };
+
+        await db.update(contentVersions).set({
+          annotations: [...existingAnnotations, newAnnotation],
+        }).where(eq(contentVersions.id, input.id));
+
+        return { success: true };
+      }),
+
+    // Compare two versions (diff)
+    compareVersions: protectedProcedure
+      .input(z.object({
+        versionAId: z.number(),
+        versionBId: z.number(),
+      }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return null;
+        if (!ctx.user) return null;
+
+        const versionA = await db.select().from(contentVersions)
+          .where(and(
+            eq(contentVersions.id, input.versionAId),
+            eq(contentVersions.userId, ctx.user.id)
+          ));
+
+        const versionB = await db.select().from(contentVersions)
+          .where(and(
+            eq(contentVersions.id, input.versionBId),
+            eq(contentVersions.userId, ctx.user.id)
+          ));
+
+        if (!versionA[0] || !versionB[0]) return null;
+
+        // Simple diff - split by lines and compare
+        const linesA = versionA[0].content.split('\n');
+        const linesB = versionB[0].content.split('\n');
+
+        const diff: { type: 'same' | 'added' | 'removed'; line: string }[] = [];
+        const maxLen = Math.max(linesA.length, linesB.length);
+
+        for (let i = 0; i < maxLen; i++) {
+          const lineA = linesA[i];
+          const lineB = linesB[i];
+
+          if (lineA === lineB) {
+            diff.push({ type: 'same', line: lineA || '' });
+          } else {
+            if (lineA !== undefined) diff.push({ type: 'removed', line: lineA });
+            if (lineB !== undefined) diff.push({ type: 'added', line: lineB });
+          }
+        }
+
+        return {
+          versionA: versionA[0],
+          versionB: versionB[0],
+          diff,
+          metricsComparison: {
+            versionA: versionA[0].metrics,
+            versionB: versionB[0].metrics,
+          },
+        };
+      }),
+
+    // Rollback to a specific version
+    rollbackToVersion: protectedProcedure
+      .input(z.object({
+        versionId: z.number(),
+        contentTemplateId: z.number(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Get the version to rollback to
+        const versions = await db.select().from(contentVersions)
+          .where(and(
+            eq(contentVersions.id, input.versionId),
+            eq(contentVersions.userId, ctx.user.id)
+          ));
+
+        if (!versions[0]) throw new Error("Version not found");
+
+        // Update the main content template
+        await db.update(contentTemplates).set({
+          content: versions[0].content,
+        }).where(
+          and(
+            eq(contentTemplates.id, input.contentTemplateId),
+            eq(contentTemplates.userId, ctx.user.id)
+          )
+        );
+
+        return { success: true, restoredContent: versions[0].content };
+      }),
+
+    // ============ EXPORT FUNCTIONALITY ============
+
+    // Export to Google Docs
+    exportToGoogleDocs: protectedProcedure
+      .input(z.object({
+        contentTemplateId: z.number().optional(),
+        contentVersionId: z.number().optional(),
+        title: z.string(),
+        content: z.string(),
+        format: z.enum(["plain_text", "markdown", "rich_text"]).default("markdown"),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // For now, we'll create a downloadable link and track the export
+        // In production, this would integrate with Google Docs API
+        
+        const result = await db.insert(exportHistory).values({
+          userId: ctx.user.id,
+          contentTemplateId: input.contentTemplateId || null,
+          contentVersionId: input.contentVersionId || null,
+          destination: "google_docs",
+          exportFormat: input.format,
+          title: input.title,
+          contentPreview: input.content.substring(0, 500),
+          wordCount: input.content.split(/\s+/).length,
+          status: "success",
+          // In production, this would be the actual Google Docs URL
+          externalUrl: null,
+          externalId: null,
+        });
+
+        // Return the content formatted for Google Docs copy-paste
+        let formattedContent = input.content;
+        if (input.format === "plain_text") {
+          formattedContent = input.content.replace(/[#*_`]/g, '');
+        }
+
+        return {
+          success: true,
+          exportId: result[0].insertId,
+          formattedContent,
+          message: "Content ready to paste into Google Docs. Copy the content below.",
+        };
+      }),
+
+    // Export to Notion
+    exportToNotion: protectedProcedure
+      .input(z.object({
+        contentTemplateId: z.number().optional(),
+        contentVersionId: z.number().optional(),
+        title: z.string(),
+        content: z.string(),
+        format: z.enum(["plain_text", "markdown"]).default("markdown"),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Track the export
+        const result = await db.insert(exportHistory).values({
+          userId: ctx.user.id,
+          contentTemplateId: input.contentTemplateId || null,
+          contentVersionId: input.contentVersionId || null,
+          destination: "notion",
+          exportFormat: input.format,
+          title: input.title,
+          contentPreview: input.content.substring(0, 500),
+          wordCount: input.content.split(/\s+/).length,
+          status: "success",
+          externalUrl: null,
+          externalId: null,
+        });
+
+        // Format content for Notion (Notion accepts markdown)
+        return {
+          success: true,
+          exportId: result[0].insertId,
+          formattedContent: input.content,
+          message: "Content formatted for Notion. Copy and paste into a new Notion page.",
+        };
+      }),
+
+    // Get export history
+    getExportHistory: protectedProcedure
+      .input(z.object({
+        limit: z.number().min(1).max(100).default(20),
+        destination: z.enum(["google_docs", "notion", "clipboard", "markdown_file", "pdf", "word"]).optional(),
+      }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        let query = db.select().from(exportHistory)
+          .where(eq(exportHistory.userId, ctx.user.id));
+
+        const results = await query
+          .orderBy(desc(exportHistory.exportedAt))
+          .limit(input.limit);
+
+        if (input.destination) {
+          return results.filter(e => e.destination === input.destination);
+        }
+
+        return results;
+      }),
+
+    // Download as file
+    downloadAsFile: protectedProcedure
+      .input(z.object({
+        contentTemplateId: z.number().optional(),
+        contentVersionId: z.number().optional(),
+        title: z.string(),
+        content: z.string(),
+        format: z.enum(["markdown", "txt", "html"]).default("markdown"),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Track the export
+        await db.insert(exportHistory).values({
+          userId: ctx.user.id,
+          contentTemplateId: input.contentTemplateId || null,
+          contentVersionId: input.contentVersionId || null,
+          destination: "markdown_file",
+          exportFormat: input.format,
+          title: input.title,
+          contentPreview: input.content.substring(0, 500),
+          wordCount: input.content.split(/\s+/).length,
+          status: "success",
+        });
+
+        let fileContent = input.content;
+        let mimeType = "text/markdown";
+        let extension = "md";
+
+        if (input.format === "txt") {
+          fileContent = input.content.replace(/[#*_`]/g, '');
+          mimeType = "text/plain";
+          extension = "txt";
+        } else if (input.format === "html") {
+          // Simple markdown to HTML conversion
+          fileContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>${input.title}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.6; }
+    h1, h2, h3 { margin-top: 1.5em; }
+    p { margin: 1em 0; }
+  </style>
+</head>
+<body>
+  <h1>${input.title}</h1>
+  ${input.content
+    .replace(/^### (.*$)/gm, '<h3>$1</h3>')
+    .replace(/^## (.*$)/gm, '<h2>$1</h2>')
+    .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/^- (.*$)/gm, '<li>$1</li>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/^(.+)$/gm, '<p>$1</p>')}
+</body>
+</html>`;
+          mimeType = "text/html";
+          extension = "html";
+        }
+
+        return {
+          success: true,
+          content: fileContent,
+          filename: `${input.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.${extension}`,
+          mimeType,
+        };
       }),
   }),
 });

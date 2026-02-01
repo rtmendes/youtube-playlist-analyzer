@@ -835,3 +835,137 @@ export const copywritingFrameworks = mysqlTable("copywritingFrameworks", {
 
 export type CopywritingFramework = typeof copywritingFrameworks.$inferSelect;
 export type InsertCopywritingFramework = typeof copywritingFrameworks.$inferInsert;
+
+
+/**
+ * Saved Templates - reusable content templates with variable placeholders
+ */
+export const savedTemplates = mysqlTable("savedTemplates", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  // Template identification
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  // Content type this template is for
+  contentType: mysqlEnum("contentType", [
+    "advertorial",
+    "vsl_script",
+    "ugc_scenario",
+    "course_outline",
+    "ad_copy",
+    "sales_page",
+    "email_sequence",
+    "product_idea"
+  ]).notNull(),
+  // The template content with {{variable}} placeholders
+  templateContent: text("templateContent").notNull(),
+  // Variables that need to be filled in
+  variables: json("variables").$type<{
+    name: string;
+    description: string;
+    defaultValue?: string;
+    required: boolean;
+  }[]>(),
+  // Template settings
+  frameworkUsed: varchar("frameworkUsed", { length: 64 }),
+  tone: varchar("tone", { length: 64 }),
+  // Categorization
+  category: varchar("category", { length: 64 }),
+  tags: json("tags").$type<string[]>(),
+  // Usage tracking
+  useCount: int("useCount").default(0),
+  lastUsedAt: timestamp("lastUsedAt"),
+  // Sharing
+  isPublic: boolean("isPublic").default(false),
+  // Metadata
+  isFavorite: boolean("isFavorite").default(false),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type SavedTemplate = typeof savedTemplates.$inferSelect;
+export type InsertSavedTemplate = typeof savedTemplates.$inferInsert;
+
+/**
+ * Content Versions - track iterations and A/B test results
+ */
+export const contentVersions = mysqlTable("contentVersions", {
+  id: int("id").autoincrement().primaryKey(),
+  // Link to the original content template
+  contentTemplateId: int("contentTemplateId").notNull(),
+  userId: int("userId").notNull(),
+  // Version info
+  versionNumber: int("versionNumber").notNull().default(1),
+  versionName: varchar("versionName", { length: 128 }), // e.g., "Version A", "Holiday variant"
+  // The actual content for this version
+  content: text("content").notNull(),
+  // What changed from previous version
+  changeNotes: text("changeNotes"),
+  changeSummary: varchar("changeSummary", { length: 255 }), // brief summary
+  // A/B Test tracking
+  isAbTest: boolean("isAbTest").default(false),
+  abTestName: varchar("abTestName", { length: 128 }),
+  abTestVariant: varchar("abTestVariant", { length: 32 }), // "A", "B", "C", etc.
+  // Performance metrics
+  metrics: json("metrics").$type<{
+    impressions?: number;
+    clicks?: number;
+    conversions?: number;
+    ctr?: number;
+    conversionRate?: number;
+    revenue?: number;
+    engagement?: number;
+    customMetrics?: Record<string, number>;
+  }>(),
+  // Status
+  status: mysqlEnum("status", ["draft", "active", "testing", "winner", "archived"]).default("draft"),
+  // Annotations and notes
+  annotations: json("annotations").$type<{
+    timestamp: string;
+    note: string;
+    author?: string;
+  }[]>(),
+  // Metadata
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ContentVersion = typeof contentVersions.$inferSelect;
+export type InsertContentVersion = typeof contentVersions.$inferInsert;
+
+/**
+ * Export History - track exports to external tools
+ */
+export const exportHistory = mysqlTable("exportHistory", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  // What was exported
+  contentTemplateId: int("contentTemplateId"),
+  contentVersionId: int("contentVersionId"),
+  // Export destination
+  destination: mysqlEnum("destination", [
+    "google_docs",
+    "notion",
+    "clipboard",
+    "markdown_file",
+    "pdf",
+    "word"
+  ]).notNull(),
+  // Export details
+  exportFormat: varchar("exportFormat", { length: 32 }), // "plain_text", "markdown", "rich_text", "html"
+  // External references
+  externalUrl: text("externalUrl"), // URL to the created doc
+  externalId: varchar("externalId", { length: 255 }), // ID in external system
+  // Export metadata
+  title: varchar("title", { length: 255 }),
+  contentPreview: text("contentPreview"), // first 500 chars
+  wordCount: int("wordCount"),
+  // Status
+  status: mysqlEnum("status", ["pending", "success", "failed"]).default("pending"),
+  errorMessage: text("errorMessage"),
+  // Timestamps
+  exportedAt: timestamp("exportedAt").defaultNow().notNull(),
+});
+
+export type ExportHistory = typeof exportHistory.$inferSelect;
+export type InsertExportHistory = typeof exportHistory.$inferInsert;
