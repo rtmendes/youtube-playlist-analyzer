@@ -1077,3 +1077,255 @@ export const abTestResults = mysqlTable("abTestResults", {
 
 export type AbTestResult = typeof abTestResults.$inferSelect;
 export type InsertAbTestResult = typeof abTestResults.$inferInsert;
+
+
+/**
+ * Schedule Goals - goals and targets for content refresh schedules
+ */
+export const scheduleGoals = mysqlTable("scheduleGoals", {
+  id: int("id").autoincrement().primaryKey(),
+  scheduleId: int("scheduleId").notNull(),
+  userId: int("userId").notNull(),
+  // Goal type
+  goalType: mysqlEnum("goalType", [
+    "improve_ctr",
+    "increase_conversions",
+    "boost_engagement",
+    "reduce_bounce",
+    "increase_revenue",
+    "grow_audience",
+    "improve_quality_score"
+  ]).notNull(),
+  // Target metrics
+  targetMetric: varchar("targetMetric", { length: 64 }).notNull(), // e.g., "ctr", "conversion_rate", "engagement_rate"
+  targetValue: decimal("targetValue", { precision: 10, scale: 4 }).notNull(), // e.g., 5.5 for 5.5%
+  currentValue: decimal("currentValue", { precision: 10, scale: 4 }),
+  baselineValue: decimal("baselineValue", { precision: 10, scale: 4 }), // starting value when goal was set
+  // Progress tracking
+  progressPercentage: decimal("progressPercentage", { precision: 5, scale: 2 }).default("0"),
+  status: mysqlEnum("status", ["on_track", "behind", "achieved", "failed"]).default("on_track"),
+  // AI suggestions
+  lastSuggestion: text("lastSuggestion"),
+  suggestionGeneratedAt: timestamp("suggestionGeneratedAt"),
+  // Timestamps
+  deadline: timestamp("deadline"),
+  achievedAt: timestamp("achievedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ScheduleGoal = typeof scheduleGoals.$inferSelect;
+export type InsertScheduleGoal = typeof scheduleGoals.$inferInsert;
+
+/**
+ * Template Comments - discussion threads on shared templates
+ */
+export const templateComments = mysqlTable("templateComments", {
+  id: int("id").autoincrement().primaryKey(),
+  templateId: int("templateId").notNull(), // savedTemplates.id
+  userId: int("userId").notNull(),
+  // Comment content
+  content: text("content").notNull(),
+  // Threading support
+  parentId: int("parentId"), // null for top-level comments, references templateComments.id for replies
+  // Mentions
+  mentionedUserIds: json("mentionedUserIds").$type<number[]>(),
+  // Reactions/likes
+  likeCount: int("likeCount").default(0),
+  // Status
+  isEdited: boolean("isEdited").default(false),
+  isDeleted: boolean("isDeleted").default(false),
+  // Timestamps
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type TemplateComment = typeof templateComments.$inferSelect;
+export type InsertTemplateComment = typeof templateComments.$inferInsert;
+
+/**
+ * Comment Likes - track which users liked which comments
+ */
+export const commentLikes = mysqlTable("commentLikes", {
+  id: int("id").autoincrement().primaryKey(),
+  commentId: int("commentId").notNull(),
+  userId: int("userId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type CommentLike = typeof commentLikes.$inferSelect;
+export type InsertCommentLike = typeof commentLikes.$inferInsert;
+
+/**
+ * Competitors - track competitor companies/brands
+ */
+export const competitors = mysqlTable("competitors", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  // Basic info
+  name: varchar("name", { length: 255 }).notNull(),
+  website: varchar("website", { length: 512 }),
+  logoUrl: text("logoUrl"),
+  // Classification
+  industry: varchar("industry", { length: 128 }),
+  category: varchar("category", { length: 128 }),
+  competitorType: mysqlEnum("competitorType", ["direct", "indirect", "aspirational"]).default("direct"),
+  // Description
+  description: text("description"),
+  tagline: text("tagline"),
+  // Social presence
+  youtubeChannelId: varchar("youtubeChannelId", { length: 64 }),
+  youtubeChannelUrl: text("youtubeChannelUrl"),
+  twitterHandle: varchar("twitterHandle", { length: 64 }),
+  linkedinUrl: text("linkedinUrl"),
+  instagramHandle: varchar("instagramHandle", { length: 64 }),
+  // Business info
+  foundedYear: int("foundedYear"),
+  employeeCount: varchar("employeeCount", { length: 32 }), // e.g., "50-100", "100-500"
+  fundingStage: varchar("fundingStage", { length: 64 }), // e.g., "Series A", "Public"
+  estimatedRevenue: varchar("estimatedRevenue", { length: 64 }), // e.g., "$1M-$10M"
+  // Analysis
+  strengths: json("strengths").$type<string[]>(),
+  weaknesses: json("weaknesses").$type<string[]>(),
+  opportunities: json("opportunities").$type<string[]>(),
+  threats: json("threats").$type<string[]>(),
+  // Notes
+  notes: text("notes"),
+  // Status
+  isActive: boolean("isActive").default(true),
+  lastAnalyzedAt: timestamp("lastAnalyzedAt"),
+  // Timestamps
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Competitor = typeof competitors.$inferSelect;
+export type InsertCompetitor = typeof competitors.$inferInsert;
+
+/**
+ * Competitor Products - products/services offered by competitors
+ */
+export const competitorProducts = mysqlTable("competitorProducts", {
+  id: int("id").autoincrement().primaryKey(),
+  competitorId: int("competitorId").notNull(),
+  userId: int("userId").notNull(),
+  // Product info
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  productUrl: text("productUrl"),
+  imageUrl: text("imageUrl"),
+  // Pricing
+  priceType: mysqlEnum("priceType", ["one_time", "subscription", "freemium", "custom", "free"]).default("one_time"),
+  priceMin: decimal("priceMin", { precision: 10, scale: 2 }),
+  priceMax: decimal("priceMax", { precision: 10, scale: 2 }),
+  priceCurrency: varchar("priceCurrency", { length: 3 }).default("USD"),
+  pricingNotes: text("pricingNotes"),
+  // Features
+  features: json("features").$type<string[]>(),
+  uniqueSellingPoints: json("uniqueSellingPoints").$type<string[]>(),
+  // Positioning
+  targetAudience: text("targetAudience"),
+  positioning: text("positioning"),
+  // Comparison
+  comparisonToOurs: mysqlEnum("comparisonToOurs", ["better", "similar", "worse", "different"]),
+  comparisonNotes: text("comparisonNotes"),
+  // Status
+  isActive: boolean("isActive").default(true),
+  // Timestamps
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CompetitorProduct = typeof competitorProducts.$inferSelect;
+export type InsertCompetitorProduct = typeof competitorProducts.$inferInsert;
+
+/**
+ * Competitor Content - track competitor's content and marketing
+ */
+export const competitorContent = mysqlTable("competitorContent", {
+  id: int("id").autoincrement().primaryKey(),
+  competitorId: int("competitorId").notNull(),
+  userId: int("userId").notNull(),
+  // Content info
+  title: varchar("title", { length: 512 }).notNull(),
+  contentType: mysqlEnum("contentType", [
+    "blog_post",
+    "video",
+    "podcast",
+    "social_post",
+    "ad",
+    "landing_page",
+    "email",
+    "webinar",
+    "case_study",
+    "whitepaper",
+    "other"
+  ]).notNull(),
+  url: text("url"),
+  thumbnailUrl: text("thumbnailUrl"),
+  // Content details
+  description: text("description"),
+  publishedAt: timestamp("publishedAt"),
+  // Engagement metrics (if available)
+  views: int("views"),
+  likes: int("likes"),
+  comments: int("comments"),
+  shares: int("shares"),
+  // Analysis
+  keyTopics: json("keyTopics").$type<string[]>(),
+  targetKeywords: json("targetKeywords").$type<string[]>(),
+  sentiment: mysqlEnum("sentiment", ["positive", "neutral", "negative"]),
+  qualityScore: int("qualityScore"), // 1-10
+  // AI Analysis
+  aiAnalysis: text("aiAnalysis"),
+  contentGaps: json("contentGaps").$type<string[]>(), // topics they cover that we don't
+  // Notes
+  notes: text("notes"),
+  // Timestamps
+  analyzedAt: timestamp("analyzedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CompetitorContent = typeof competitorContent.$inferSelect;
+export type InsertCompetitorContent = typeof competitorContent.$inferInsert;
+
+/**
+ * Competitor Comparisons - side-by-side comparison snapshots
+ */
+export const competitorComparisons = mysqlTable("competitorComparisons", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  // Comparison info
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  // Competitors being compared
+  competitorIds: json("competitorIds").$type<number[]>().notNull(),
+  // Comparison dimensions
+  dimensions: json("dimensions").$type<{
+    name: string;
+    weight: number;
+    scores: Record<number, number>; // competitorId -> score
+  }[]>(),
+  // Analysis results
+  overallScores: json("overallScores").$type<Record<number, number>>(), // competitorId -> total score
+  recommendations: text("recommendations"),
+  // SWOT summary
+  swotAnalysis: json("swotAnalysis").$type<{
+    strengths: string[];
+    weaknesses: string[];
+    opportunities: string[];
+    threats: string[];
+  }>(),
+  // AI-generated insights
+  aiInsights: text("aiInsights"),
+  positioningRecommendation: text("positioningRecommendation"),
+  // Status
+  isPublic: boolean("isPublic").default(false),
+  // Timestamps
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CompetitorComparison = typeof competitorComparisons.$inferSelect;
+export type InsertCompetitorComparison = typeof competitorComparisons.$inferInsert;

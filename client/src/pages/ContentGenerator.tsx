@@ -148,6 +148,16 @@ export default function ContentGenerator() {
   const [showPublicGalleryDialog, setShowPublicGalleryDialog] = useState(false);
   const [publicGallerySearch, setPublicGallerySearch] = useState("");
 
+  // Template comments states
+  const [showCommentsDialog, setShowCommentsDialog] = useState(false);
+  const [commentsTemplateId, setCommentsTemplateId] = useState<number | null>(null);
+  const [newComment, setNewComment] = useState("");
+
+  // Schedule goals states
+  const [scheduleGoal, setScheduleGoal] = useState<"improve_ctr" | "increase_conversions" | "boost_engagement" | "reduce_bounce" | "custom">("improve_ctr");
+  const [scheduleGoalTarget, setScheduleGoalTarget] = useState("");
+  const [scheduleGoalMetric, setScheduleGoalMetric] = useState("");
+
   // Queries
   const contentTypesQuery = trpc.contentGenerator.getContentTypes.useQuery();
   const promptsQuery = trpc.contentGenerator.getPrompts.useQuery(
@@ -210,6 +220,12 @@ export default function ContentGenerator() {
   const publicGalleryQuery = trpc.contentGenerator.getPublicTemplates.useQuery(
     { contentType: selectedType || undefined, search: publicGallerySearch, limit: 20 },
     { enabled: showPublicGalleryDialog }
+  );
+
+  // Template Comments Query
+  const templateCommentsQuery = trpc.contentGenerator.getTemplateComments.useQuery(
+    { templateId: commentsTemplateId || 0 },
+    { enabled: isAuthenticated && showCommentsDialog && !!commentsTemplateId }
   );
 
   // Mutations
@@ -428,6 +444,28 @@ export default function ContentGenerator() {
     },
     onError: (error) => {
       toast.error(`Failed to revoke share: ${error.message}`);
+    },
+  });
+
+  // Template Comments Mutations
+  const addCommentMutation = trpc.contentGenerator.addTemplateComment.useMutation({
+    onSuccess: () => {
+      toast.success("Comment added!");
+      setNewComment("");
+      templateCommentsQuery.refetch();
+    },
+    onError: (error) => {
+      toast.error(`Failed to add comment: ${error.message}`);
+    },
+  });
+
+  const deleteCommentMutation = trpc.contentGenerator.deleteTemplateComment.useMutation({
+    onSuccess: () => {
+      toast.success("Comment deleted!");
+      templateCommentsQuery.refetch();
+    },
+    onError: (error) => {
+      toast.error(`Failed to delete comment: ${error.message}`);
     },
   });
 
@@ -1042,6 +1080,28 @@ export default function ContentGenerator() {
                         onClick={() => handleUseTemplate(template.id)}
                       >
                         Use Template
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setCommentsTemplateId(template.id);
+                          setShowCommentsDialog(true);
+                        }}
+                        title="View Comments"
+                      >
+                        <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setShareTemplateId(template.id);
+                          setShowShareDialog(true);
+                        }}
+                        title="Share Template"
+                      >
+                        <Share2 className="h-4 w-4 text-muted-foreground" />
                       </Button>
                       <Button
                         variant="ghost"
@@ -2346,6 +2406,58 @@ export default function ContentGenerator() {
                 onChange={(e) => setScheduleTimeOfDay(e.target.value)}
               />
             </div>
+            
+            {/* Schedule Goals Section */}
+            <div className="border-t pt-4 mt-4">
+              <Label className="text-base font-medium flex items-center gap-2 mb-3">
+                <Target className="h-4 w-4" />
+                Schedule Goal (Optional)
+              </Label>
+              <div className="space-y-3">
+                <Select value={scheduleGoal} onValueChange={(v) => setScheduleGoal(v as any)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a goal" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="improve_ctr">Improve Click-Through Rate (CTR)</SelectItem>
+                    <SelectItem value="increase_conversions">Increase Conversions</SelectItem>
+                    <SelectItem value="boost_engagement">Boost Engagement</SelectItem>
+                    <SelectItem value="reduce_bounce">Reduce Bounce Rate</SelectItem>
+                    <SelectItem value="custom">Custom Goal</SelectItem>
+                  </SelectContent>
+                </Select>
+                
+                {scheduleGoal === 'custom' && (
+                  <Input
+                    placeholder="Enter your custom goal metric (e.g., 'Increase email open rate')"
+                    value={scheduleGoalMetric}
+                    onChange={(e) => setScheduleGoalMetric(e.target.value)}
+                  />
+                )}
+                
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    placeholder="Target value"
+                    value={scheduleGoalTarget}
+                    onChange={(e) => setScheduleGoalTarget(e.target.value)}
+                    className="w-32"
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    {scheduleGoal === 'improve_ctr' && '% CTR target'}
+                    {scheduleGoal === 'increase_conversions' && '% conversion rate target'}
+                    {scheduleGoal === 'boost_engagement' && '% engagement rate target'}
+                    {scheduleGoal === 'reduce_bounce' && '% bounce rate target'}
+                    {scheduleGoal === 'custom' && '(your metric unit)'}
+                  </span>
+                </div>
+                
+                <p className="text-xs text-muted-foreground">
+                  Setting a goal helps track the effectiveness of your scheduled content refreshes.
+                  The system will analyze performance and suggest optimizations.
+                </p>
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowScheduleDialog(false)}>
@@ -2362,6 +2474,9 @@ export default function ContentGenerator() {
                   frequency: scheduleFrequency,
                   dayOfWeek: scheduleFrequency === 'weekly' ? scheduleDayOfWeek : undefined,
                   timeOfDay: scheduleTimeOfDay,
+                  goal: scheduleGoal,
+                  goalTarget: scheduleGoalTarget ? parseFloat(scheduleGoalTarget) : undefined,
+                  goalMetric: scheduleGoal === 'custom' ? scheduleGoalMetric : undefined,
                 });
               }}
               disabled={!scheduleTemplateId || createScheduleMutation.isPending}
@@ -2622,6 +2737,125 @@ export default function ContentGenerator() {
               </p>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Template Comments Dialog */}
+      <Dialog open={showCommentsDialog} onOpenChange={setShowCommentsDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-primary" />
+              Template Discussion
+            </DialogTitle>
+            <DialogDescription>
+              Collaborate with your team by leaving comments and feedback
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="flex-1 overflow-y-auto space-y-4 py-4">
+            {templateCommentsQuery.isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : templateCommentsQuery.data && templateCommentsQuery.data.length > 0 ? (
+              <div className="space-y-4">
+                {templateCommentsQuery.data.map((comment: any) => (
+                  <Card key={comment.id}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                            <span className="text-sm font-medium text-primary">
+                              {comment.userName?.charAt(0) || 'U'}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="font-medium text-sm">{comment.userName || 'Unknown User'}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(comment.createdAt).toLocaleDateString()} at{' '}
+                              {new Date(comment.createdAt).toLocaleTimeString()}
+                            </p>
+                          </div>
+                        </div>
+                        {user?.id === comment.userId && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => deleteCommentMutation.mutate({ commentId: comment.id })}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                      <p className="text-sm whitespace-pre-wrap">{comment.content}</p>
+                      {comment.isEdited && (
+                        <p className="text-xs text-muted-foreground mt-2">(edited)</p>
+                      )}
+                      
+                      {/* Replies */}
+                      {comment.replies && comment.replies.length > 0 && (
+                        <div className="mt-4 pl-4 border-l-2 border-muted space-y-3">
+                          {comment.replies.map((reply: any) => (
+                            <div key={reply.id} className="text-sm">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="font-medium">{reply.userName || 'Unknown'}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {new Date(reply.createdAt).toLocaleDateString()}
+                                </span>
+                              </div>
+                              <p className="text-muted-foreground">{reply.content}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-8">
+                <MessageSquare className="h-12 w-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-medium mb-2">No Comments Yet</h3>
+                <p className="text-muted-foreground text-center max-w-md">
+                  Be the first to start a discussion about this template.
+                </p>
+              </div>
+            )}
+          </div>
+          
+          {/* Add Comment Form */}
+          <div className="border-t pt-4">
+            <div className="flex gap-2">
+              <Textarea
+                placeholder="Add a comment..."
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                className="flex-1 min-h-[80px]"
+              />
+            </div>
+            <div className="flex justify-end mt-2">
+              <Button
+                onClick={() => {
+                  if (commentsTemplateId && newComment.trim()) {
+                    addCommentMutation.mutate({
+                      templateId: commentsTemplateId,
+                      content: newComment.trim(),
+                    });
+                  }
+                }}
+                disabled={!newComment.trim() || addCommentMutation.isPending}
+              >
+                {addCommentMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                )}
+                Post Comment
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

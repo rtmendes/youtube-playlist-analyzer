@@ -10,7 +10,7 @@ import {
   formatCount,
 } from "./youtube";
 import { getDb } from "./db";
-import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets, amazonProducts, amazonReviews, redditPosts, redditComments, researchSessions, multiSourceInsights, savedPlaylists, playlistRuns, playlistVideos, videos, comments, tiktokCreators, tiktokVideos, tiktokComments, savedComments, commentCollections, nlpAnalysisResults, contentTemplates, aiPromptsKnowledgeBase, croBestPractices, copywritingFrameworks, savedTemplates, contentVersions, exportHistory, contentSchedules, templateShares, abTestResults } from "../drizzle/schema";
+import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets, amazonProducts, amazonReviews, redditPosts, redditComments, researchSessions, multiSourceInsights, savedPlaylists, playlistRuns, playlistVideos, videos, comments, tiktokCreators, tiktokVideos, tiktokComments, savedComments, commentCollections, nlpAnalysisResults, contentTemplates, aiPromptsKnowledgeBase, croBestPractices, copywritingFrameworks, savedTemplates, contentVersions, exportHistory, contentSchedules, templateShares, abTestResults, scheduleGoals, templateComments, commentLikes, competitors, competitorProducts, competitorContent, competitorComparisons, users } from "../drizzle/schema";
 import { allPrompts, getPromptsForType, getPromptById, copywritingFrameworks as frameworksData, croBestPractices as croPracticesData, ContentPrompt } from "./content-prompts";
 import { invokeLLM } from "./_core/llm";
 import { eq, desc, and, like, or, sql } from "drizzle-orm";
@@ -4015,6 +4015,9 @@ Provide insights that can be directly used in marketing copy.`
         timezone: z.string().default("UTC"),
         variables: z.record(z.string(), z.string()).optional(),
         notifyOnComplete: z.boolean().default(true),
+        goal: z.enum(["improve_ctr", "increase_conversions", "boost_engagement", "reduce_bounce", "custom"]).optional(),
+        goalTarget: z.number().optional(),
+        goalMetric: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
@@ -4381,6 +4384,1072 @@ Provide insights that can be directly used in marketing copy.`
           .orderBy(desc(templateShares.createdAt));
 
         return shares;
+      }),
+
+    // ========================================
+    // SCHEDULE GOALS
+    // ========================================
+
+    // Create a goal for a schedule
+    createScheduleGoal: protectedProcedure
+      .input(z.object({
+        scheduleId: z.number(),
+        goalType: z.enum(["improve_ctr", "increase_conversions", "boost_engagement", "reduce_bounce", "increase_revenue", "grow_audience", "improve_quality_score"]),
+        targetMetric: z.string(),
+        targetValue: z.number(),
+        baselineValue: z.number().optional(),
+        deadline: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const [goal] = await db.insert(scheduleGoals).values({
+          scheduleId: input.scheduleId,
+          userId: ctx.user.id,
+          goalType: input.goalType,
+          targetMetric: input.targetMetric,
+          targetValue: input.targetValue.toString(),
+          baselineValue: input.baselineValue?.toString(),
+          deadline: input.deadline ? new Date(input.deadline) : null,
+        }).$returningId();
+
+        return { success: true, goalId: goal.id };
+      }),
+
+    // Get goals for a schedule
+    getScheduleGoals: protectedProcedure
+      .input(z.object({ scheduleId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        const goals = await db.select()
+          .from(scheduleGoals)
+          .where(and(
+            eq(scheduleGoals.scheduleId, input.scheduleId),
+            eq(scheduleGoals.userId, ctx.user.id)
+          ))
+          .orderBy(desc(scheduleGoals.createdAt));
+
+        return goals;
+      }),
+
+    // Update goal progress
+    updateGoalProgress: protectedProcedure
+      .input(z.object({
+        goalId: z.number(),
+        currentValue: z.number(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Get the goal to calculate progress
+        const [goal] = await db.select()
+          .from(scheduleGoals)
+          .where(and(
+            eq(scheduleGoals.id, input.goalId),
+            eq(scheduleGoals.userId, ctx.user.id)
+          ));
+
+        if (!goal) throw new Error("Goal not found");
+
+        const targetValue = parseFloat(goal.targetValue);
+        const baselineValue = goal.baselineValue ? parseFloat(goal.baselineValue) : 0;
+        const progressRange = targetValue - baselineValue;
+        const currentProgress = input.currentValue - baselineValue;
+        const progressPercentage = progressRange > 0 ? Math.min(100, (currentProgress / progressRange) * 100) : 0;
+
+        // Determine status
+        let status: "on_track" | "behind" | "achieved" | "failed" = "on_track";
+        if (progressPercentage >= 100) {
+          status = "achieved";
+        } else if (goal.deadline && new Date(goal.deadline) < new Date()) {
+          status = progressPercentage >= 100 ? "achieved" : "failed";
+        } else if (progressPercentage < 50 && goal.deadline) {
+          const timeElapsed = (Date.now() - new Date(goal.createdAt).getTime()) / (new Date(goal.deadline).getTime() - new Date(goal.createdAt).getTime());
+          if (progressPercentage < timeElapsed * 100 * 0.8) {
+            status = "behind";
+          }
+        }
+
+        await db.update(scheduleGoals)
+          .set({
+            currentValue: input.currentValue.toString(),
+            progressPercentage: progressPercentage.toFixed(2),
+            status,
+            achievedAt: status === "achieved" ? new Date() : null,
+          })
+          .where(eq(scheduleGoals.id, input.goalId));
+
+        return { success: true, progressPercentage, status };
+      }),
+
+    // Generate AI suggestions for improving goal metrics
+    generateGoalSuggestions: protectedProcedure
+      .input(z.object({ goalId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const [goal] = await db.select()
+          .from(scheduleGoals)
+          .where(and(
+            eq(scheduleGoals.id, input.goalId),
+            eq(scheduleGoals.userId, ctx.user.id)
+          ));
+
+        if (!goal) throw new Error("Goal not found");
+
+        const goalTypeDescriptions: Record<string, string> = {
+          improve_ctr: "improving click-through rate",
+          increase_conversions: "increasing conversion rate",
+          boost_engagement: "boosting user engagement",
+          reduce_bounce: "reducing bounce rate",
+          increase_revenue: "increasing revenue",
+          grow_audience: "growing audience size",
+          improve_quality_score: "improving content quality score",
+        };
+
+        const prompt = `You are a marketing optimization expert. The user has a goal of ${goalTypeDescriptions[goal.goalType] || goal.goalType}.
+
+Current metrics:
+- Target: ${goal.targetValue}%
+- Current: ${goal.currentValue || goal.baselineValue || 0}%
+- Progress: ${goal.progressPercentage || 0}%
+- Status: ${goal.status}
+
+Provide 5 specific, actionable suggestions to help achieve this goal. Focus on:
+1. Content optimization techniques
+2. Headline/copy improvements
+3. Call-to-action enhancements
+4. Audience targeting refinements
+5. Testing and iteration strategies
+
+Format each suggestion as a brief, actionable item.`;
+
+        const response = await invokeLLM({
+          messages: [
+            { role: "system", content: "You are a marketing optimization expert providing actionable advice." },
+            { role: "user", content: prompt }
+          ]
+        });
+
+        const suggestionContent = response.choices[0]?.message?.content;
+        const suggestion = typeof suggestionContent === 'string' ? suggestionContent : "Unable to generate suggestions";
+
+        await db.update(scheduleGoals)
+          .set({
+            lastSuggestion: suggestion,
+            suggestionGeneratedAt: new Date(),
+          })
+          .where(eq(scheduleGoals.id, input.goalId));
+
+        return { success: true, suggestion };
+      }),
+
+    // Delete a goal
+    deleteScheduleGoal: protectedProcedure
+      .input(z.object({ goalId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.delete(scheduleGoals)
+          .where(and(
+            eq(scheduleGoals.id, input.goalId),
+            eq(scheduleGoals.userId, ctx.user.id)
+          ));
+
+        return { success: true };
+      }),
+
+    // ========================================
+    // TEMPLATE COMMENTS & DISCUSSION
+    // ========================================
+
+    // Add a comment to a template
+    addTemplateComment: protectedProcedure
+      .input(z.object({
+        templateId: z.number(),
+        content: z.string().min(1).max(5000),
+        parentId: z.number().optional(),
+        mentionedUserIds: z.array(z.number()).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const [comment] = await db.insert(templateComments).values({
+          templateId: input.templateId,
+          userId: ctx.user.id,
+          content: input.content,
+          parentId: input.parentId,
+          mentionedUserIds: input.mentionedUserIds,
+        }).$returningId();
+
+        return { success: true, commentId: comment.id };
+      }),
+
+    // Get comments for a template
+    getTemplateComments: protectedProcedure
+      .input(z.object({ templateId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        const commentsData = await db.select({
+          id: templateComments.id,
+          content: templateComments.content,
+          parentId: templateComments.parentId,
+          likeCount: templateComments.likeCount,
+          isEdited: templateComments.isEdited,
+          createdAt: templateComments.createdAt,
+          userId: templateComments.userId,
+          userName: users.name,
+          mentionedUserIds: templateComments.mentionedUserIds,
+        })
+          .from(templateComments)
+          .leftJoin(users, eq(templateComments.userId, users.id))
+          .where(and(
+            eq(templateComments.templateId, input.templateId),
+            eq(templateComments.isDeleted, false)
+          ))
+          .orderBy(templateComments.createdAt);
+
+        // Organize into threads
+        const topLevel = commentsData.filter(c => !c.parentId);
+        const replies = commentsData.filter(c => c.parentId);
+
+        return topLevel.map(comment => ({
+          ...comment,
+          replies: replies.filter(r => r.parentId === comment.id),
+        }));
+      }),
+
+    // Edit a comment
+    editTemplateComment: protectedProcedure
+      .input(z.object({
+        commentId: z.number(),
+        content: z.string().min(1).max(5000),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.update(templateComments)
+          .set({
+            content: input.content,
+            isEdited: true,
+          })
+          .where(and(
+            eq(templateComments.id, input.commentId),
+            eq(templateComments.userId, ctx.user.id)
+          ));
+
+        return { success: true };
+      }),
+
+    // Delete a comment (soft delete)
+    deleteTemplateComment: protectedProcedure
+      .input(z.object({ commentId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.update(templateComments)
+          .set({ isDeleted: true })
+          .where(and(
+            eq(templateComments.id, input.commentId),
+            eq(templateComments.userId, ctx.user.id)
+          ));
+
+        return { success: true };
+      }),
+
+    // Like/unlike a comment
+    toggleCommentLike: protectedProcedure
+      .input(z.object({ commentId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Check if already liked
+        const [existingLike] = await db.select()
+          .from(commentLikes)
+          .where(and(
+            eq(commentLikes.commentId, input.commentId),
+            eq(commentLikes.userId, ctx.user.id)
+          ));
+
+        if (existingLike) {
+          // Unlike
+          await db.delete(commentLikes)
+            .where(eq(commentLikes.id, existingLike.id));
+          await db.update(templateComments)
+            .set({ likeCount: sql`${templateComments.likeCount} - 1` })
+            .where(eq(templateComments.id, input.commentId));
+          return { success: true, liked: false };
+        } else {
+          // Like
+          await db.insert(commentLikes).values({
+            commentId: input.commentId,
+            userId: ctx.user.id,
+          });
+          await db.update(templateComments)
+            .set({ likeCount: sql`${templateComments.likeCount} + 1` })
+            .where(eq(templateComments.id, input.commentId));
+          return { success: true, liked: true };
+        }
+      }),
+
+    // Get comment count for a template
+    getTemplateCommentCount: protectedProcedure
+      .input(z.object({ templateId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return 0;
+
+        const [result] = await db.select({ count: sql<number>`count(*)` })
+          .from(templateComments)
+          .where(and(
+            eq(templateComments.templateId, input.templateId),
+            eq(templateComments.isDeleted, false)
+          ));
+
+        return result?.count || 0;
+      }),
+  }),
+
+  // ========================================
+  // COMPETITOR ANALYSIS
+  // ========================================
+  competitorAnalysis: router({
+    // Create a competitor
+    createCompetitor: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(255),
+        website: z.string().url().optional(),
+        logoUrl: z.string().optional(),
+        industry: z.string().optional(),
+        category: z.string().optional(),
+        competitorType: z.enum(["direct", "indirect", "aspirational"]).default("direct"),
+        description: z.string().optional(),
+        tagline: z.string().optional(),
+        youtubeChannelId: z.string().optional(),
+        youtubeChannelUrl: z.string().optional(),
+        twitterHandle: z.string().optional(),
+        linkedinUrl: z.string().optional(),
+        instagramHandle: z.string().optional(),
+        foundedYear: z.number().optional(),
+        employeeCount: z.string().optional(),
+        fundingStage: z.string().optional(),
+        estimatedRevenue: z.string().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const [competitor] = await db.insert(competitors).values({
+          userId: ctx.user.id,
+          ...input,
+        }).$returningId();
+
+        return { success: true, competitorId: competitor.id };
+      }),
+
+    // Get all competitors
+    getCompetitors: protectedProcedure
+      .input(z.object({
+        type: z.enum(["direct", "indirect", "aspirational", "all"]).default("all"),
+        industry: z.string().optional(),
+      }).optional())
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        let query = db.select()
+          .from(competitors)
+          .where(and(
+            eq(competitors.userId, ctx.user.id),
+            eq(competitors.isActive, true)
+          ));
+
+        const results = await query.orderBy(desc(competitors.createdAt));
+
+        // Filter by type if specified
+        if (input?.type && input.type !== "all") {
+          return results.filter(c => c.competitorType === input.type);
+        }
+
+        // Filter by industry if specified
+        if (input?.industry) {
+          return results.filter(c => c.industry === input.industry);
+        }
+
+        return results;
+      }),
+
+    // Get a single competitor
+    getCompetitor: protectedProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return null;
+        if (!ctx.user) return null;
+
+        const [competitor] = await db.select()
+          .from(competitors)
+          .where(and(
+            eq(competitors.id, input.competitorId),
+            eq(competitors.userId, ctx.user.id)
+          ));
+
+        return competitor || null;
+      }),
+
+    // Update a competitor
+    updateCompetitor: protectedProcedure
+      .input(z.object({
+        competitorId: z.number(),
+        name: z.string().optional(),
+        website: z.string().optional(),
+        logoUrl: z.string().optional(),
+        industry: z.string().optional(),
+        category: z.string().optional(),
+        competitorType: z.enum(["direct", "indirect", "aspirational"]).optional(),
+        description: z.string().optional(),
+        tagline: z.string().optional(),
+        youtubeChannelId: z.string().optional(),
+        youtubeChannelUrl: z.string().optional(),
+        twitterHandle: z.string().optional(),
+        linkedinUrl: z.string().optional(),
+        instagramHandle: z.string().optional(),
+        foundedYear: z.number().optional(),
+        employeeCount: z.string().optional(),
+        fundingStage: z.string().optional(),
+        estimatedRevenue: z.string().optional(),
+        notes: z.string().optional(),
+        strengths: z.array(z.string()).optional(),
+        weaknesses: z.array(z.string()).optional(),
+        opportunities: z.array(z.string()).optional(),
+        threats: z.array(z.string()).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const { competitorId, ...updateData } = input;
+
+        await db.update(competitors)
+          .set(updateData)
+          .where(and(
+            eq(competitors.id, competitorId),
+            eq(competitors.userId, ctx.user.id)
+          ));
+
+        return { success: true };
+      }),
+
+    // Delete a competitor (soft delete)
+    deleteCompetitor: protectedProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.update(competitors)
+          .set({ isActive: false })
+          .where(and(
+            eq(competitors.id, input.competitorId),
+            eq(competitors.userId, ctx.user.id)
+          ));
+
+        return { success: true };
+      }),
+
+    // Add a product to a competitor
+    addCompetitorProduct: protectedProcedure
+      .input(z.object({
+        competitorId: z.number(),
+        name: z.string().min(1).max(255),
+        description: z.string().optional(),
+        productUrl: z.string().optional(),
+        imageUrl: z.string().optional(),
+        priceType: z.enum(["one_time", "subscription", "freemium", "custom", "free"]).default("one_time"),
+        priceMin: z.number().optional(),
+        priceMax: z.number().optional(),
+        priceCurrency: z.string().default("USD"),
+        pricingNotes: z.string().optional(),
+        features: z.array(z.string()).optional(),
+        uniqueSellingPoints: z.array(z.string()).optional(),
+        targetAudience: z.string().optional(),
+        positioning: z.string().optional(),
+        comparisonToOurs: z.enum(["better", "similar", "worse", "different"]).optional(),
+        comparisonNotes: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const [product] = await db.insert(competitorProducts).values({
+          userId: ctx.user.id,
+          competitorId: input.competitorId,
+          name: input.name,
+          description: input.description,
+          productUrl: input.productUrl,
+          imageUrl: input.imageUrl,
+          priceType: input.priceType,
+          priceMin: input.priceMin?.toString(),
+          priceMax: input.priceMax?.toString(),
+          priceCurrency: input.priceCurrency,
+          pricingNotes: input.pricingNotes,
+          features: input.features,
+          uniqueSellingPoints: input.uniqueSellingPoints,
+          targetAudience: input.targetAudience,
+          positioning: input.positioning,
+          comparisonToOurs: input.comparisonToOurs,
+          comparisonNotes: input.comparisonNotes,
+        }).$returningId();
+
+        return { success: true, productId: product.id };
+      }),
+
+    // Get products for a competitor
+    getCompetitorProducts: protectedProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        const products = await db.select()
+          .from(competitorProducts)
+          .where(and(
+            eq(competitorProducts.competitorId, input.competitorId),
+            eq(competitorProducts.userId, ctx.user.id),
+            eq(competitorProducts.isActive, true)
+          ))
+          .orderBy(desc(competitorProducts.createdAt));
+
+        return products;
+      }),
+
+    // Update a product
+    updateCompetitorProduct: protectedProcedure
+      .input(z.object({
+        productId: z.number(),
+        name: z.string().optional(),
+        description: z.string().optional(),
+        productUrl: z.string().optional(),
+        imageUrl: z.string().optional(),
+        priceType: z.enum(["one_time", "subscription", "freemium", "custom", "free"]).optional(),
+        priceMin: z.number().optional(),
+        priceMax: z.number().optional(),
+        pricingNotes: z.string().optional(),
+        features: z.array(z.string()).optional(),
+        uniqueSellingPoints: z.array(z.string()).optional(),
+        targetAudience: z.string().optional(),
+        positioning: z.string().optional(),
+        comparisonToOurs: z.enum(["better", "similar", "worse", "different"]).optional(),
+        comparisonNotes: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const { productId, priceMin, priceMax, ...updateData } = input;
+
+        await db.update(competitorProducts)
+          .set({
+            ...updateData,
+            priceMin: priceMin?.toString(),
+            priceMax: priceMax?.toString(),
+          })
+          .where(and(
+            eq(competitorProducts.id, productId),
+            eq(competitorProducts.userId, ctx.user.id)
+          ));
+
+        return { success: true };
+      }),
+
+    // Delete a product
+    deleteCompetitorProduct: protectedProcedure
+      .input(z.object({ productId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.update(competitorProducts)
+          .set({ isActive: false })
+          .where(and(
+            eq(competitorProducts.id, input.productId),
+            eq(competitorProducts.userId, ctx.user.id)
+          ));
+
+        return { success: true };
+      }),
+
+    // Add content tracking for a competitor
+    addCompetitorContent: protectedProcedure
+      .input(z.object({
+        competitorId: z.number(),
+        title: z.string().min(1).max(512),
+        contentType: z.enum(["blog_post", "video", "podcast", "social_post", "ad", "landing_page", "email", "webinar", "case_study", "whitepaper", "other"]),
+        url: z.string().optional(),
+        thumbnailUrl: z.string().optional(),
+        description: z.string().optional(),
+        publishedAt: z.string().optional(),
+        views: z.number().optional(),
+        likes: z.number().optional(),
+        comments: z.number().optional(),
+        shares: z.number().optional(),
+        keyTopics: z.array(z.string()).optional(),
+        targetKeywords: z.array(z.string()).optional(),
+        sentiment: z.enum(["positive", "neutral", "negative"]).optional(),
+        qualityScore: z.number().min(1).max(10).optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const [content] = await db.insert(competitorContent).values({
+          userId: ctx.user.id,
+          competitorId: input.competitorId,
+          title: input.title,
+          contentType: input.contentType,
+          url: input.url,
+          thumbnailUrl: input.thumbnailUrl,
+          description: input.description,
+          publishedAt: input.publishedAt ? new Date(input.publishedAt) : null,
+          views: input.views,
+          likes: input.likes,
+          comments: input.comments,
+          shares: input.shares,
+          keyTopics: input.keyTopics,
+          targetKeywords: input.targetKeywords,
+          sentiment: input.sentiment,
+          qualityScore: input.qualityScore,
+          notes: input.notes,
+        }).$returningId();
+
+        return { success: true, contentId: content.id };
+      }),
+
+    // Get content for a competitor
+    getCompetitorContent: protectedProcedure
+      .input(z.object({
+        competitorId: z.number(),
+        contentType: z.enum(["blog_post", "video", "podcast", "social_post", "ad", "landing_page", "email", "webinar", "case_study", "whitepaper", "other", "all"]).default("all"),
+      }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        const content = await db.select()
+          .from(competitorContent)
+          .where(and(
+            eq(competitorContent.competitorId, input.competitorId),
+            eq(competitorContent.userId, ctx.user.id)
+          ))
+          .orderBy(desc(competitorContent.publishedAt));
+
+        if (input.contentType !== "all") {
+          return content.filter(c => c.contentType === input.contentType);
+        }
+
+        return content;
+      }),
+
+    // Analyze competitor content with AI
+    analyzeCompetitorContent: protectedProcedure
+      .input(z.object({ contentId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const [content] = await db.select()
+          .from(competitorContent)
+          .where(and(
+            eq(competitorContent.id, input.contentId),
+            eq(competitorContent.userId, ctx.user.id)
+          ));
+
+        if (!content) throw new Error("Content not found");
+
+        const prompt = `Analyze this competitor content:
+
+Title: ${content.title}
+Type: ${content.contentType}
+Description: ${content.description || "N/A"}
+URL: ${content.url || "N/A"}
+
+Provide analysis including:
+1. Key messaging and value propositions
+2. Target audience indicators
+3. Content quality assessment
+4. SEO/keyword strategy observations
+5. Engagement tactics used
+6. Content gaps or opportunities for us
+7. Recommendations for our content strategy
+
+Format as a structured analysis.`;
+
+        const response = await invokeLLM({
+          messages: [
+            { role: "system", content: "You are a competitive intelligence analyst specializing in content marketing." },
+            { role: "user", content: prompt }
+          ]
+        });
+
+        const analysisContent = response.choices[0]?.message?.content;
+        const analysis = typeof analysisContent === 'string' ? analysisContent : "Unable to generate analysis";
+
+        await db.update(competitorContent)
+          .set({
+            aiAnalysis: analysis,
+            analyzedAt: new Date(),
+          })
+          .where(eq(competitorContent.id, input.contentId));
+
+        return { success: true, analysis };
+      }),
+
+    // Create a comparison between competitors
+    createComparison: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(255),
+        description: z.string().optional(),
+        competitorIds: z.array(z.number()).min(2).max(10),
+        dimensions: z.array(z.object({
+          name: z.string(),
+          weight: z.number().min(0).max(100),
+        })).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const [comparison] = await db.insert(competitorComparisons).values({
+          userId: ctx.user.id,
+          name: input.name,
+          description: input.description,
+          competitorIds: input.competitorIds,
+          dimensions: input.dimensions?.map(d => ({ ...d, scores: {} })),
+        }).$returningId();
+
+        return { success: true, comparisonId: comparison.id };
+      }),
+
+    // Get all comparisons
+    getComparisons: protectedProcedure
+      .query(async ({ ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        const comparisons = await db.select()
+          .from(competitorComparisons)
+          .where(eq(competitorComparisons.userId, ctx.user.id))
+          .orderBy(desc(competitorComparisons.createdAt));
+
+        return comparisons;
+      }),
+
+    // Get a single comparison with competitor details
+    getComparison: protectedProcedure
+      .input(z.object({ comparisonId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return null;
+        if (!ctx.user) return null;
+
+        const [comparison] = await db.select()
+          .from(competitorComparisons)
+          .where(and(
+            eq(competitorComparisons.id, input.comparisonId),
+            eq(competitorComparisons.userId, ctx.user.id)
+          ));
+
+        if (!comparison) return null;
+
+        // Get competitor details
+        const competitorDetails = await db.select()
+          .from(competitors)
+          .where(and(
+            sql`${competitors.id} IN (${sql.join(comparison.competitorIds.map(id => sql`${id}`), sql`, `)})`,
+            eq(competitors.userId, ctx.user.id)
+          ));
+
+        return {
+          ...comparison,
+          competitors: competitorDetails,
+        };
+      }),
+
+    // Update comparison scores
+    updateComparisonScores: protectedProcedure
+      .input(z.object({
+        comparisonId: z.number(),
+        dimensions: z.array(z.object({
+          name: z.string(),
+          weight: z.number(),
+          scores: z.record(z.string(), z.number()), // competitorId -> score
+        })),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Calculate overall scores
+        const overallScores: Record<number, number> = {};
+        for (const dim of input.dimensions) {
+          for (const [competitorId, score] of Object.entries(dim.scores)) {
+            const id = parseInt(competitorId);
+            if (!overallScores[id]) overallScores[id] = 0;
+            overallScores[id] += (score * dim.weight) / 100;
+          }
+        }
+
+        await db.update(competitorComparisons)
+          .set({
+            dimensions: input.dimensions,
+            overallScores,
+          })
+          .where(and(
+            eq(competitorComparisons.id, input.comparisonId),
+            eq(competitorComparisons.userId, ctx.user.id)
+          ));
+
+        return { success: true, overallScores };
+      }),
+
+    // Generate AI insights for a comparison
+    generateComparisonInsights: protectedProcedure
+      .input(z.object({ comparisonId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const [comparison] = await db.select()
+          .from(competitorComparisons)
+          .where(and(
+            eq(competitorComparisons.id, input.comparisonId),
+            eq(competitorComparisons.userId, ctx.user.id)
+          ));
+
+        if (!comparison) throw new Error("Comparison not found");
+
+        // Get competitor details
+        const competitorDetails = await db.select()
+          .from(competitors)
+          .where(and(
+            sql`${competitors.id} IN (${sql.join(comparison.competitorIds.map(id => sql`${id}`), sql`, `)})`,
+            eq(competitors.userId, ctx.user.id)
+          ));
+
+        const prompt = `Analyze this competitive comparison:
+
+Competitors being compared:
+${competitorDetails.map(c => `- ${c.name}: ${c.description || "No description"}`).join("\n")}
+
+Comparison dimensions and scores:
+${comparison.dimensions ? JSON.stringify(comparison.dimensions, null, 2) : "No scores yet"}
+
+Overall scores:
+${comparison.overallScores ? JSON.stringify(comparison.overallScores, null, 2) : "No overall scores yet"}
+
+Provide:
+1. Key competitive insights
+2. SWOT analysis summary
+3. Positioning recommendations
+4. Opportunities to differentiate
+5. Threats to address
+6. Strategic recommendations
+
+Format as a comprehensive competitive analysis report.`;
+
+        const response = await invokeLLM({
+          messages: [
+            { role: "system", content: "You are a strategic competitive intelligence analyst." },
+            { role: "user", content: prompt }
+          ]
+        });
+
+        const insightsContent = response.choices[0]?.message?.content;
+        const insights = typeof insightsContent === 'string' ? insightsContent : "Unable to generate insights";
+
+        // Extract SWOT from insights (simplified)
+        const swotAnalysis = {
+          strengths: ["Based on comparison analysis"],
+          weaknesses: ["Areas for improvement identified"],
+          opportunities: ["Market gaps discovered"],
+          threats: ["Competitive pressures noted"],
+        };
+
+        await db.update(competitorComparisons)
+          .set({
+            aiInsights: insights,
+            swotAnalysis,
+            positioningRecommendation: insights.substring(0, 500),
+          })
+          .where(eq(competitorComparisons.id, input.comparisonId));
+
+        return { success: true, insights, swotAnalysis };
+      }),
+
+    // Generate SWOT analysis for a competitor
+    generateSwotAnalysis: protectedProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const [competitor] = await db.select()
+          .from(competitors)
+          .where(and(
+            eq(competitors.id, input.competitorId),
+            eq(competitors.userId, ctx.user.id)
+          ));
+
+        if (!competitor) throw new Error("Competitor not found");
+
+        // Get their products
+        const products = await db.select()
+          .from(competitorProducts)
+          .where(and(
+            eq(competitorProducts.competitorId, input.competitorId),
+            eq(competitorProducts.isActive, true)
+          ));
+
+        // Get their content
+        const content = await db.select()
+          .from(competitorContent)
+          .where(eq(competitorContent.competitorId, input.competitorId))
+          .limit(10);
+
+        const prompt = `Generate a comprehensive SWOT analysis for this competitor:
+
+Competitor: ${competitor.name}
+Website: ${competitor.website || "N/A"}
+Industry: ${competitor.industry || "N/A"}
+Description: ${competitor.description || "N/A"}
+Tagline: ${competitor.tagline || "N/A"}
+Founded: ${competitor.foundedYear || "N/A"}
+Employees: ${competitor.employeeCount || "N/A"}
+Funding: ${competitor.fundingStage || "N/A"}
+
+Products/Services:
+${products.map(p => `- ${p.name}: ${p.description || "No description"} (${p.priceType})`).join("\n") || "No products tracked"}
+
+Recent Content:
+${content.map(c => `- ${c.title} (${c.contentType})`).join("\n") || "No content tracked"}
+
+Provide a detailed SWOT analysis with 5-7 items for each category:
+1. Strengths - What they do well
+2. Weaknesses - Where they fall short
+3. Opportunities - Market gaps they could exploit
+4. Threats - External factors that could hurt them
+
+Format as JSON with arrays for each category.`;
+
+        const response = await invokeLLM({
+          messages: [
+            { role: "system", content: "You are a strategic business analyst. Return only valid JSON." },
+            { role: "user", content: prompt }
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "swot_analysis",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  strengths: { type: "array", items: { type: "string" } },
+                  weaknesses: { type: "array", items: { type: "string" } },
+                  opportunities: { type: "array", items: { type: "string" } },
+                  threats: { type: "array", items: { type: "string" } },
+                },
+                required: ["strengths", "weaknesses", "opportunities", "threats"],
+                additionalProperties: false,
+              },
+            },
+          },
+        });
+
+        let swot = {
+          strengths: [] as string[],
+          weaknesses: [] as string[],
+          opportunities: [] as string[],
+          threats: [] as string[],
+        };
+
+        try {
+          const content = response.choices[0]?.message?.content;
+          if (content && typeof content === 'string') {
+            swot = JSON.parse(content);
+          }
+        } catch (e) {
+          // Use defaults if parsing fails
+        }
+
+        await db.update(competitors)
+          .set({
+            strengths: swot.strengths,
+            weaknesses: swot.weaknesses,
+            opportunities: swot.opportunities,
+            threats: swot.threats,
+            lastAnalyzedAt: new Date(),
+          })
+          .where(eq(competitors.id, input.competitorId));
+
+        return { success: true, swot };
+      }),
+
+    // Delete a comparison
+    deleteComparison: protectedProcedure
+      .input(z.object({ comparisonId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.delete(competitorComparisons)
+          .where(and(
+            eq(competitorComparisons.id, input.comparisonId),
+            eq(competitorComparisons.userId, ctx.user.id)
+          ));
+
+        return { success: true };
       }),
   }),
 });

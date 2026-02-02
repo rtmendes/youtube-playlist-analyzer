@@ -699,3 +699,31 @@
 - [x] Create public template gallery for community sharing
 - [x] Add template usage analytics (views, uses, duplicates)
 - [x] Enable collaborative editing with version tracking
+
+## Schedule Goals Feature
+- [x] Add goal field to contentSchedules table (goalType, targetMetric, targetValue)
+- [x] Create goal type options (improve_ctr, increase_conversions, boost_engagement, reduce_bounce)
+- [x] Add goal configuration UI to schedule creation dialog
+- [x] Display goal progress tracking in schedules tab
+- [x] Show goal achievement status (on track, behind, achieved)
+- [x] Generate AI suggestions to improve content based on goal
+
+## Template Comments & Discussion
+- [x] Create templateComments database table (templateId, userId, content, parentId, createdAt)
+- [x] Add comments section to shared template view
+- [x] Implement threaded replies for discussions
+- [ ] Add @mention functionality for team members
+- [x] Show comment count on template cards
+- [ ] Add notification when someone comments on your template
+
+## Competitor Analysis Feature
+- [x] Create competitors database table (name, website, industry, description)
+- [x] Create competitorProducts table (competitorId, productName, price, features, positioning)
+- [x] Create competitorContent table (competitorId, contentType, url, analysis)
+- [x] Build Competitor Analysis page with competitor management
+- [x] Add competitor product/service comparison matrix
+- [x] Implement content gap analysis (what competitors cover that you don't)
+- [x] Add pricing comparison visualization
+- [x] Generate competitive positioning recommendations
+- [x] Track competitor content updates and changes
+- [x] Add SWOT analysis generator for each competitor
