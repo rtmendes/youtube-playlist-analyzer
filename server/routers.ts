@@ -10,7 +10,7 @@ import {
   formatCount,
 } from "./youtube";
 import { getDb } from "./db";
-import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets, amazonProducts, amazonReviews, redditPosts, redditComments, researchSessions, multiSourceInsights, savedPlaylists, playlistRuns, playlistVideos, videos, comments, tiktokCreators, tiktokVideos, tiktokComments, savedComments, commentCollections, nlpAnalysisResults, contentTemplates, aiPromptsKnowledgeBase, croBestPractices, copywritingFrameworks, savedTemplates, contentVersions, exportHistory } from "../drizzle/schema";
+import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets, amazonProducts, amazonReviews, redditPosts, redditComments, researchSessions, multiSourceInsights, savedPlaylists, playlistRuns, playlistVideos, videos, comments, tiktokCreators, tiktokVideos, tiktokComments, savedComments, commentCollections, nlpAnalysisResults, contentTemplates, aiPromptsKnowledgeBase, croBestPractices, copywritingFrameworks, savedTemplates, contentVersions, exportHistory, contentSchedules, templateShares, abTestResults } from "../drizzle/schema";
 import { allPrompts, getPromptsForType, getPromptById, copywritingFrameworks as frameworksData, croBestPractices as croPracticesData, ContentPrompt } from "./content-prompts";
 import { invokeLLM } from "./_core/llm";
 import { eq, desc, and, like, or, sql } from "drizzle-orm";
@@ -3865,6 +3865,522 @@ Provide insights that can be directly used in marketing copy.`
           .limit(input.limit);
 
         return results;
+      }),
+
+    // ========================================
+    // A/B TEST WINNER AUTO-DETECTION
+    // ========================================
+
+    // Get A/B test analysis for a content template
+    getAbTestAnalysis: protectedProcedure
+      .input(z.object({
+        contentTemplateId: z.number(),
+      }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return null;
+        if (!ctx.user) return null;
+
+        // Get all versions for this content
+        const versions = await db.select()
+          .from(contentVersions)
+          .where(and(
+            eq(contentVersions.contentTemplateId, input.contentTemplateId),
+            eq(contentVersions.userId, ctx.user.id)
+          ))
+          .orderBy(desc(contentVersions.versionNumber));
+
+        if (versions.length < 2) {
+          return { hasEnoughVersions: false, versions, winner: null, analysis: null };
+        }
+
+        // Calculate metrics for each version
+        const versionMetrics = versions.map(v => {
+          const metrics = v.metrics as {
+            impressions?: number;
+            clicks?: number;
+            conversions?: number;
+            ctr?: number;
+            conversionRate?: number;
+          } | null;
+
+          const impressions = metrics?.impressions || 0;
+          const clicks = metrics?.clicks || 0;
+          const conversions = metrics?.conversions || 0;
+          const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
+          const conversionRate = clicks > 0 ? (conversions / clicks) * 100 : 0;
+
+          return {
+            id: v.id,
+            versionNumber: v.versionNumber,
+            versionName: v.versionName,
+            status: v.status,
+            impressions,
+            clicks,
+            conversions,
+            ctr,
+            conversionRate,
+            score: ctr * 0.4 + conversionRate * 0.6, // Weighted score
+          };
+        });
+
+        // Find the winner based on score
+        const sortedByScore = [...versionMetrics].sort((a, b) => b.score - a.score);
+        const potentialWinner = sortedByScore[0];
+        const runnerUp = sortedByScore[1];
+
+        // Calculate statistical significance (simplified)
+        const minSampleSize = 100;
+        const hasEnoughData = potentialWinner.impressions >= minSampleSize && runnerUp.impressions >= minSampleSize;
+        
+        // Calculate uplift
+        const uplift = runnerUp.score > 0 ? ((potentialWinner.score - runnerUp.score) / runnerUp.score) * 100 : 0;
+        
+        // Simplified confidence calculation based on sample size and uplift
+        let confidence = 0;
+        if (hasEnoughData) {
+          const sampleFactor = Math.min(1, (potentialWinner.impressions + runnerUp.impressions) / 1000);
+          const upliftFactor = Math.min(1, Math.abs(uplift) / 20);
+          confidence = Math.min(99, 50 + sampleFactor * 25 + upliftFactor * 24);
+        }
+
+        const isStatisticallySignificant = confidence >= 95;
+        const winner = isStatisticallySignificant ? potentialWinner : null;
+
+        return {
+          hasEnoughVersions: true,
+          versions: versionMetrics,
+          winner,
+          analysis: {
+            potentialWinner,
+            runnerUp,
+            uplift,
+            confidence,
+            isStatisticallySignificant,
+            hasEnoughData,
+            recommendation: isStatisticallySignificant
+              ? `Version ${potentialWinner.versionName || potentialWinner.versionNumber} is the winner with ${uplift.toFixed(1)}% improvement`
+              : hasEnoughData
+                ? `More data needed. Current leader: Version ${potentialWinner.versionName || potentialWinner.versionNumber}`
+                : `Need at least ${minSampleSize} impressions per version to determine winner`,
+          },
+        };
+      }),
+
+    // Declare a winner manually or auto
+    declareAbTestWinner: protectedProcedure
+      .input(z.object({
+        contentTemplateId: z.number(),
+        winnerVersionId: z.number(),
+        declaredBy: z.enum(["auto", "manual"]).default("manual"),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Update the winner version status
+        await db.update(contentVersions)
+          .set({ status: "winner" })
+          .where(and(
+            eq(contentVersions.id, input.winnerVersionId),
+            eq(contentVersions.userId, ctx.user.id)
+          ));
+
+        // Archive other versions
+        await db.update(contentVersions)
+          .set({ status: "archived" })
+          .where(and(
+            eq(contentVersions.contentTemplateId, input.contentTemplateId),
+            eq(contentVersions.userId, ctx.user.id),
+            sql`${contentVersions.id} != ${input.winnerVersionId}`
+          ));
+
+        return { success: true, winnerVersionId: input.winnerVersionId };
+      }),
+
+    // ========================================
+    // SCHEDULED CONTENT REFRESH
+    // ========================================
+
+    // Create a content refresh schedule
+    createSchedule: protectedProcedure
+      .input(z.object({
+        savedTemplateId: z.number(),
+        contentTemplateId: z.number().optional(),
+        frequency: z.enum(["daily", "weekly", "biweekly", "monthly"]),
+        dayOfWeek: z.number().min(0).max(6).optional(),
+        dayOfMonth: z.number().min(1).max(31).optional(),
+        timeOfDay: z.string().default("09:00"),
+        timezone: z.string().default("UTC"),
+        variables: z.record(z.string(), z.string()).optional(),
+        notifyOnComplete: z.boolean().default(true),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Calculate next run time
+        const now = new Date();
+        let nextRunAt = new Date();
+        
+        switch (input.frequency) {
+          case "daily":
+            nextRunAt.setDate(now.getDate() + 1);
+            break;
+          case "weekly":
+            const daysUntilNext = ((input.dayOfWeek || 0) - now.getDay() + 7) % 7 || 7;
+            nextRunAt.setDate(now.getDate() + daysUntilNext);
+            break;
+          case "biweekly":
+            nextRunAt.setDate(now.getDate() + 14);
+            break;
+          case "monthly":
+            nextRunAt.setMonth(now.getMonth() + 1);
+            if (input.dayOfMonth) {
+              nextRunAt.setDate(input.dayOfMonth);
+            }
+            break;
+        }
+
+        const [schedule] = await db.insert(contentSchedules).values({
+          userId: ctx.user.id,
+          savedTemplateId: input.savedTemplateId,
+          contentTemplateId: input.contentTemplateId,
+          frequency: input.frequency,
+          dayOfWeek: input.dayOfWeek,
+          dayOfMonth: input.dayOfMonth,
+          timeOfDay: input.timeOfDay,
+          timezone: input.timezone,
+          variables: input.variables,
+          notifyOnComplete: input.notifyOnComplete,
+          nextRunAt,
+          status: "active",
+        }).$returningId();
+
+        return { success: true, scheduleId: schedule.id, nextRunAt };
+      }),
+
+    // Get user's schedules
+    getSchedules: protectedProcedure
+      .query(async ({ ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        const schedules = await db.select({
+          id: contentSchedules.id,
+          savedTemplateId: contentSchedules.savedTemplateId,
+          frequency: contentSchedules.frequency,
+          dayOfWeek: contentSchedules.dayOfWeek,
+          dayOfMonth: contentSchedules.dayOfMonth,
+          timeOfDay: contentSchedules.timeOfDay,
+          timezone: contentSchedules.timezone,
+          status: contentSchedules.status,
+          lastRunAt: contentSchedules.lastRunAt,
+          nextRunAt: contentSchedules.nextRunAt,
+          runCount: contentSchedules.runCount,
+          templateName: savedTemplates.name,
+          templateType: savedTemplates.contentType,
+        })
+          .from(contentSchedules)
+          .leftJoin(savedTemplates, eq(contentSchedules.savedTemplateId, savedTemplates.id))
+          .where(eq(contentSchedules.userId, ctx.user.id))
+          .orderBy(desc(contentSchedules.createdAt));
+
+        return schedules;
+      }),
+
+    // Update schedule status (pause/resume)
+    updateScheduleStatus: protectedProcedure
+      .input(z.object({
+        scheduleId: z.number(),
+        status: z.enum(["active", "paused"]),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.update(contentSchedules)
+          .set({ status: input.status })
+          .where(and(
+            eq(contentSchedules.id, input.scheduleId),
+            eq(contentSchedules.userId, ctx.user.id)
+          ));
+
+        return { success: true };
+      }),
+
+    // Delete a schedule
+    deleteSchedule: protectedProcedure
+      .input(z.object({ scheduleId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.delete(contentSchedules)
+          .where(and(
+            eq(contentSchedules.id, input.scheduleId),
+            eq(contentSchedules.userId, ctx.user.id)
+          ));
+
+        return { success: true };
+      }),
+
+    // ========================================
+    // TEAM COLLABORATION & TEMPLATE SHARING
+    // ========================================
+
+    // Share a template with another user
+    shareTemplate: protectedProcedure
+      .input(z.object({
+        savedTemplateId: z.number(),
+        sharedWithEmail: z.string().email().optional(),
+        permission: z.enum(["view", "duplicate", "edit"]).default("view"),
+        shareType: z.enum(["direct", "link", "public"]).default("direct"),
+        expiresInDays: z.number().min(1).max(365).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Generate share token for link-based sharing
+        const shareToken = input.shareType === "link" || input.shareType === "public"
+          ? Math.random().toString(36).substring(2) + Date.now().toString(36)
+          : null;
+
+        // Calculate expiration date
+        const expiresAt = input.expiresInDays
+          ? new Date(Date.now() + input.expiresInDays * 24 * 60 * 60 * 1000)
+          : null;
+
+        const [share] = await db.insert(templateShares).values({
+          savedTemplateId: input.savedTemplateId,
+          ownerUserId: ctx.user.id,
+          sharedWithEmail: input.sharedWithEmail,
+          permission: input.permission,
+          shareType: input.shareType,
+          shareToken,
+          status: input.shareType === "public" ? "accepted" : "pending",
+          expiresAt,
+        }).$returningId();
+
+        // If making public, update the template
+        if (input.shareType === "public") {
+          await db.update(savedTemplates)
+            .set({ isPublic: true })
+            .where(eq(savedTemplates.id, input.savedTemplateId));
+        }
+
+        return {
+          success: true,
+          shareId: share.id,
+          shareToken,
+          shareUrl: shareToken ? `/templates/shared/${shareToken}` : null,
+        };
+      }),
+
+    // Get templates shared with the current user
+    getSharedWithMe: protectedProcedure
+      .query(async ({ ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        const shared = await db.select({
+          shareId: templateShares.id,
+          permission: templateShares.permission,
+          shareType: templateShares.shareType,
+          status: templateShares.status,
+          sharedAt: templateShares.createdAt,
+          templateId: savedTemplates.id,
+          templateName: savedTemplates.name,
+          templateDescription: savedTemplates.description,
+          templateType: savedTemplates.contentType,
+          ownerName: sql<string>`(SELECT name FROM users WHERE id = ${templateShares.ownerUserId})`,
+        })
+          .from(templateShares)
+          .innerJoin(savedTemplates, eq(templateShares.savedTemplateId, savedTemplates.id))
+          .where(and(
+            eq(templateShares.sharedWithEmail, ctx.user.email || ""),
+            eq(templateShares.status, "accepted")
+          ))
+          .orderBy(desc(templateShares.createdAt));
+
+        return shared;
+      }),
+
+    // Get public templates gallery
+    getPublicTemplates: publicProcedure
+      .input(z.object({
+        contentType: z.string().optional(),
+        search: z.string().optional(),
+        limit: z.number().min(1).max(50).default(20),
+      }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) return [];
+
+        let conditions = [eq(savedTemplates.isPublic, true)];
+        
+        if (input.contentType) {
+          conditions.push(eq(savedTemplates.contentType, input.contentType as any));
+        }
+        
+        if (input.search) {
+          conditions.push(
+            or(
+              like(savedTemplates.name, `%${input.search}%`),
+              like(savedTemplates.description, `%${input.search}%`)
+            ) || sql`1=1`
+          );
+        }
+
+        const templates = await db.select({
+          id: savedTemplates.id,
+          name: savedTemplates.name,
+          description: savedTemplates.description,
+          contentType: savedTemplates.contentType,
+          category: savedTemplates.category,
+          tags: savedTemplates.tags,
+          useCount: savedTemplates.useCount,
+          createdAt: savedTemplates.createdAt,
+          ownerName: sql<string>`(SELECT name FROM users WHERE id = ${savedTemplates.userId})`,
+        })
+          .from(savedTemplates)
+          .where(and(...conditions))
+          .orderBy(desc(savedTemplates.useCount))
+          .limit(input.limit);
+
+        return templates;
+      }),
+
+    // Duplicate a shared template
+    duplicateTemplate: protectedProcedure
+      .input(z.object({
+        templateId: z.number(),
+        shareToken: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Get the original template
+        const [original] = await db.select()
+          .from(savedTemplates)
+          .where(eq(savedTemplates.id, input.templateId));
+
+        if (!original) throw new Error("Template not found");
+
+        // Check if user has permission (public or shared)
+        if (!original.isPublic && original.userId !== ctx.user.id) {
+          // Check for share permission
+          const [share] = await db.select()
+            .from(templateShares)
+            .where(and(
+              eq(templateShares.savedTemplateId, input.templateId),
+              or(
+                eq(templateShares.sharedWithEmail, ctx.user.email || ""),
+                input.shareToken ? eq(templateShares.shareToken, input.shareToken) : sql`1=0`
+              ),
+              or(
+                eq(templateShares.permission, "duplicate"),
+                eq(templateShares.permission, "edit")
+              )
+            ));
+
+          if (!share) throw new Error("No permission to duplicate this template");
+
+          // Update duplicate count
+          await db.update(templateShares)
+            .set({ duplicateCount: sql`${templateShares.duplicateCount} + 1` })
+            .where(eq(templateShares.id, share.id));
+        }
+
+        // Create the duplicate
+        const [newTemplate] = await db.insert(savedTemplates).values({
+          userId: ctx.user.id,
+          name: `${original.name} (Copy)`,
+          description: original.description,
+          contentType: original.contentType,
+          templateContent: original.templateContent,
+          variables: original.variables,
+          frameworkUsed: original.frameworkUsed,
+          tone: original.tone,
+          category: original.category,
+          tags: original.tags,
+          isPublic: false,
+        }).$returningId();
+
+        // Update use count on original
+        await db.update(savedTemplates)
+          .set({ useCount: sql`${savedTemplates.useCount} + 1` })
+          .where(eq(savedTemplates.id, input.templateId));
+
+        return { success: true, newTemplateId: newTemplate.id };
+      }),
+
+    // Accept or decline a share invitation
+    respondToShare: protectedProcedure
+      .input(z.object({
+        shareId: z.number(),
+        response: z.enum(["accepted", "declined"]),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.update(templateShares)
+          .set({ status: input.response })
+          .where(and(
+            eq(templateShares.id, input.shareId),
+            eq(templateShares.sharedWithEmail, ctx.user.email || "")
+          ));
+
+        return { success: true };
+      }),
+
+    // Revoke a share
+    revokeShare: protectedProcedure
+      .input(z.object({ shareId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.update(templateShares)
+          .set({ status: "revoked" })
+          .where(and(
+            eq(templateShares.id, input.shareId),
+            eq(templateShares.ownerUserId, ctx.user.id)
+          ));
+
+        return { success: true };
+      }),
+
+    // Get shares for a template (owner view)
+    getTemplateShares: protectedProcedure
+      .input(z.object({ templateId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        const shares = await db.select()
+          .from(templateShares)
+          .where(and(
+            eq(templateShares.savedTemplateId, input.templateId),
+            eq(templateShares.ownerUserId, ctx.user.id)
+          ))
+          .orderBy(desc(templateShares.createdAt));
+
+        return shares;
       }),
   }),
 });

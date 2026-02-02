@@ -973,3 +973,107 @@ export const exportHistory = mysqlTable("exportHistory", {
 
 export type ExportHistory = typeof exportHistory.$inferSelect;
 export type InsertExportHistory = typeof exportHistory.$inferInsert;
+
+/**
+ * Content Schedules - automatic content refresh scheduling
+ */
+export const contentSchedules = mysqlTable("contentSchedules", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  // What to refresh
+  savedTemplateId: int("savedTemplateId").notNull(),
+  contentTemplateId: int("contentTemplateId"), // optional link to specific generated content
+  // Schedule configuration
+  frequency: mysqlEnum("frequency", ["daily", "weekly", "biweekly", "monthly"]).notNull(),
+  dayOfWeek: int("dayOfWeek"), // 0-6 for weekly schedules
+  dayOfMonth: int("dayOfMonth"), // 1-31 for monthly schedules
+  timeOfDay: varchar("timeOfDay", { length: 8 }), // HH:MM format
+  timezone: varchar("timezone", { length: 64 }).default("UTC"),
+  // Variables to use for regeneration
+  variables: json("variables").$type<Record<string, string>>(),
+  // Status
+  status: mysqlEnum("status", ["active", "paused", "completed", "failed"]).default("active"),
+  // Tracking
+  lastRunAt: timestamp("lastRunAt"),
+  nextRunAt: timestamp("nextRunAt"),
+  runCount: int("runCount").default(0),
+  // Notification settings
+  notifyOnComplete: boolean("notifyOnComplete").default(true),
+  notifyEmail: varchar("notifyEmail", { length: 320 }),
+  // Metadata
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ContentSchedule = typeof contentSchedules.$inferSelect;
+export type InsertContentSchedule = typeof contentSchedules.$inferInsert;
+
+/**
+ * Template Shares - sharing templates with other users
+ */
+export const templateShares = mysqlTable("templateShares", {
+  id: int("id").autoincrement().primaryKey(),
+  // The template being shared
+  savedTemplateId: int("savedTemplateId").notNull(),
+  // Who owns the template
+  ownerUserId: int("ownerUserId").notNull(),
+  // Who it's shared with (null for public shares)
+  sharedWithUserId: int("sharedWithUserId"),
+  sharedWithEmail: varchar("sharedWithEmail", { length: 320 }),
+  // Permission level
+  permission: mysqlEnum("permission", ["view", "duplicate", "edit"]).default("view"),
+  // Share type
+  shareType: mysqlEnum("shareType", ["direct", "link", "public"]).default("direct"),
+  // Share link for link-based sharing
+  shareToken: varchar("shareToken", { length: 64 }),
+  // Status
+  status: mysqlEnum("status", ["pending", "accepted", "declined", "revoked"]).default("pending"),
+  // Usage tracking
+  viewCount: int("viewCount").default(0),
+  duplicateCount: int("duplicateCount").default(0),
+  lastAccessedAt: timestamp("lastAccessedAt"),
+  // Timestamps
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  expiresAt: timestamp("expiresAt"),
+});
+
+export type TemplateShare = typeof templateShares.$inferSelect;
+export type InsertTemplateShare = typeof templateShares.$inferInsert;
+
+/**
+ * A/B Test Results - detailed tracking for A/B test winner detection
+ */
+export const abTestResults = mysqlTable("abTestResults", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  // The A/B test identification
+  testName: varchar("testName", { length: 255 }).notNull(),
+  contentTemplateId: int("contentTemplateId").notNull(),
+  // Versions being tested
+  versionAId: int("versionAId").notNull(),
+  versionBId: int("versionBId").notNull(),
+  // Additional variants (optional)
+  additionalVersionIds: json("additionalVersionIds").$type<number[]>(),
+  // Test configuration
+  primaryMetric: mysqlEnum("primaryMetric", ["ctr", "conversion_rate", "engagement", "revenue"]).default("ctr"),
+  minimumSampleSize: int("minimumSampleSize").default(100),
+  confidenceThreshold: decimal("confidenceThreshold", { precision: 5, scale: 4 }).default("0.95"),
+  // Results
+  winnerVersionId: int("winnerVersionId"),
+  winnerDeclaredAt: timestamp("winnerDeclaredAt"),
+  winnerDeclaredBy: mysqlEnum("winnerDeclaredBy", ["auto", "manual"]),
+  // Statistical analysis
+  statisticalSignificance: decimal("statisticalSignificance", { precision: 5, scale: 4 }),
+  confidenceLevel: decimal("confidenceLevel", { precision: 5, scale: 4 }),
+  uplift: decimal("uplift", { precision: 10, scale: 4 }), // percentage improvement
+  // Test status
+  status: mysqlEnum("status", ["running", "paused", "completed", "inconclusive"]).default("running"),
+  // Timestamps
+  startedAt: timestamp("startedAt").defaultNow().notNull(),
+  endedAt: timestamp("endedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type AbTestResult = typeof abTestResults.$inferSelect;
+export type InsertAbTestResult = typeof abTestResults.$inferInsert;

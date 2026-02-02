@@ -20,7 +20,9 @@ import {
   Sparkles, ArrowRight, Loader2, Copy, Download, History, Star, Check,
   ChevronRight, Info, Wand2, MessageSquare, Target, Zap, BookMarked,
   Save, FolderOpen, GitBranch, ExternalLink, FileDown, Layers, Plus,
-  BarChart3, ArrowLeftRight, Trash2, Edit2, Clock, TrendingUp
+  BarChart3, ArrowLeftRight, Trash2, Edit2, Clock, TrendingUp,
+  Trophy, Crown, Calendar, Share2, Globe, Link, UserPlus, Play, Pause,
+  RefreshCw, Eye, Settings, AlertCircle
 } from "lucide-react";
 import { toast } from "sonner";
 import { Streamdown } from "streamdown";
@@ -123,6 +125,29 @@ export default function ContentGenerator() {
   const [batchExportContentType, setBatchExportContentType] = useState<string | undefined>(undefined);
   const [batchExportDestination, setBatchExportDestination] = useState<"file" | "google_docs" | "notion">("file");
 
+  // A/B Test Winner states
+  const [showAbTestDialog, setShowAbTestDialog] = useState(false);
+
+  // Schedule states
+  const [showScheduleDialog, setShowScheduleDialog] = useState(false);
+  const [scheduleTemplateId, setScheduleTemplateId] = useState<number | null>(null);
+  const [scheduleFrequency, setScheduleFrequency] = useState<"daily" | "weekly" | "biweekly" | "monthly">("weekly");
+  const [scheduleDayOfWeek, setScheduleDayOfWeek] = useState(1);
+  const [scheduleDayOfMonth, setScheduleDayOfMonth] = useState(1);
+  const [scheduleTimeOfDay, setScheduleTimeOfDay] = useState("09:00");
+  const [scheduleNotify, setScheduleNotify] = useState(true);
+
+  // Template sharing states
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [shareEmail, setShareEmail] = useState("");
+  const [sharePermission, setSharePermission] = useState<"view" | "duplicate" | "edit">("view");
+  const [shareMethod, setShareMethod] = useState<"email" | "link">("email");
+  const [shareType, setShareType] = useState<"direct" | "link" | "public">("direct");
+  const [shareExpiresInDays, setShareExpiresInDays] = useState<number | undefined>(undefined);
+  const [shareTemplateId, setShareTemplateId] = useState<number | null>(null);
+  const [showPublicGalleryDialog, setShowPublicGalleryDialog] = useState(false);
+  const [publicGallerySearch, setPublicGallerySearch] = useState("");
+
   // Queries
   const contentTypesQuery = trpc.contentGenerator.getContentTypes.useQuery();
   const promptsQuery = trpc.contentGenerator.getPrompts.useQuery(
@@ -161,6 +186,30 @@ export default function ContentGenerator() {
   const batchExportContentQuery = trpc.contentGenerator.getAllGeneratedContent.useQuery(
     { contentType: batchExportContentType, limit: 50, search: batchExportSearch },
     { enabled: isAuthenticated && showBatchExportDialog }
+  );
+
+  // A/B Test Analysis Query
+  const abTestAnalysisQuery = trpc.contentGenerator.getAbTestAnalysis.useQuery(
+    { contentTemplateId: generatedContentId || 0 },
+    { enabled: isAuthenticated && showAbTestDialog && !!generatedContentId }
+  );
+
+  // Schedules Query
+  const schedulesQuery = trpc.contentGenerator.getSchedules.useQuery(
+    undefined,
+    { enabled: isAuthenticated && activeTab === "schedules" }
+  );
+
+  // Shared Templates Query
+  const sharedWithMeQuery = trpc.contentGenerator.getSharedWithMe.useQuery(
+    undefined,
+    { enabled: isAuthenticated && activeTab === "shared" }
+  );
+
+  // Public Gallery Query
+  const publicGalleryQuery = trpc.contentGenerator.getPublicTemplates.useQuery(
+    { contentType: selectedType || undefined, search: publicGallerySearch, limit: 20 },
+    { enabled: showPublicGalleryDialog }
   );
 
   // Mutations
@@ -301,6 +350,86 @@ export default function ContentGenerator() {
 
   const categorizeCommentsMutation = trpc.contentGenerator.categorizeComments.useMutation();
   const extractInsightsMutation = trpc.contentGenerator.extractInsights.useMutation();
+
+  // A/B Test Winner Mutations
+  const declareWinnerMutation = trpc.contentGenerator.declareAbTestWinner.useMutation({
+    onSuccess: () => {
+      toast.success("Winner declared!");
+      abTestAnalysisQuery.refetch();
+      versionsQuery.refetch();
+    },
+    onError: (error) => {
+      toast.error(`Failed to declare winner: ${error.message}`);
+    },
+  });
+
+  // Schedule Mutations
+  const createScheduleMutation = trpc.contentGenerator.createSchedule.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Schedule created! Next run: ${new Date(data.nextRunAt).toLocaleDateString()}`);
+      setShowScheduleDialog(false);
+      schedulesQuery.refetch();
+    },
+    onError: (error) => {
+      toast.error(`Failed to create schedule: ${error.message}`);
+    },
+  });
+
+  const updateScheduleStatusMutation = trpc.contentGenerator.updateScheduleStatus.useMutation({
+    onSuccess: () => {
+      toast.success("Schedule updated!");
+      schedulesQuery.refetch();
+    },
+    onError: (error) => {
+      toast.error(`Failed to update schedule: ${error.message}`);
+    },
+  });
+
+  const deleteScheduleMutation = trpc.contentGenerator.deleteSchedule.useMutation({
+    onSuccess: () => {
+      toast.success("Schedule deleted!");
+      schedulesQuery.refetch();
+    },
+    onError: (error) => {
+      toast.error(`Failed to delete schedule: ${error.message}`);
+    },
+  });
+
+  // Template Sharing Mutations
+  const shareTemplateMutation = trpc.contentGenerator.shareTemplate.useMutation({
+    onSuccess: (data) => {
+      if (data.shareUrl) {
+        navigator.clipboard.writeText(window.location.origin + data.shareUrl);
+        toast.success("Share link copied to clipboard!");
+      } else {
+        toast.success("Template shared successfully!");
+      }
+      setShowShareDialog(false);
+      setShareEmail("");
+    },
+    onError: (error) => {
+      toast.error(`Failed to share template: ${error.message}`);
+    },
+  });
+
+  const duplicateTemplateMutation = trpc.contentGenerator.duplicateTemplate.useMutation({
+    onSuccess: () => {
+      toast.success("Template duplicated to your library!");
+      templatesQuery.refetch();
+    },
+    onError: (error) => {
+      toast.error(`Failed to duplicate template: ${error.message}`);
+    },
+  });
+
+  const revokeShareMutation = trpc.contentGenerator.revokeShare.useMutation({
+    onSuccess: () => {
+      toast.success("Share revoked!");
+    },
+    onError: (error) => {
+      toast.error(`Failed to revoke share: ${error.message}`);
+    },
+  });
 
   const batchExportMutation = trpc.contentGenerator.batchExport.useMutation({
     onSuccess: (data) => {
@@ -585,6 +714,14 @@ export default function ContentGenerator() {
           <TabsTrigger value="history" className="gap-2" onClick={() => setShowHistory(true)}>
             <History className="h-4 w-4" />
             History
+          </TabsTrigger>
+          <TabsTrigger value="schedules" className="gap-2">
+            <Calendar className="h-4 w-4" />
+            Schedules
+          </TabsTrigger>
+          <TabsTrigger value="shared" className="gap-2">
+            <Share2 className="h-4 w-4" />
+            Shared
           </TabsTrigger>
         </TabsList>
 
@@ -1127,6 +1264,164 @@ export default function ContentGenerator() {
                 <p className="text-muted-foreground text-center max-w-md">
                   Start generating content and your history will appear here.
                 </p>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* Schedules Tab */}
+        <TabsContent value="schedules" className="space-y-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold">Content Refresh Schedules</h3>
+              <p className="text-sm text-muted-foreground">Automatically regenerate content on a schedule</p>
+            </div>
+            <Button onClick={() => setShowScheduleDialog(true)} disabled={!templatesQuery.data?.length}>
+              <Plus className="h-4 w-4 mr-2" />
+              New Schedule
+            </Button>
+          </div>
+
+          {schedulesQuery.isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin" />
+            </div>
+          ) : schedulesQuery.data && schedulesQuery.data.length > 0 ? (
+            <div className="space-y-4">
+              {schedulesQuery.data.map((schedule) => (
+                <Card key={schedule.id}>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className={`p-2 rounded-lg ${schedule.status === 'active' ? 'bg-green-500/10' : 'bg-muted'}`}>
+                          {schedule.status === 'active' ? (
+                            <Play className="h-5 w-5 text-green-600" />
+                          ) : (
+                            <Pause className="h-5 w-5 text-muted-foreground" />
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-medium">{schedule.templateName || 'Unnamed Template'}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {schedule.frequency.charAt(0).toUpperCase() + schedule.frequency.slice(1)}
+                            {schedule.frequency === 'weekly' && schedule.dayOfWeek !== null && (
+                              <> on {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][schedule.dayOfWeek]}</>                            )}
+                            {' at '}{schedule.timeOfDay || '09:00'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={schedule.status === 'active' ? 'default' : 'secondary'}>
+                          {schedule.status}
+                        </Badge>
+                        <div className="text-sm text-muted-foreground">
+                          Next: {schedule.nextRunAt ? new Date(schedule.nextRunAt).toLocaleDateString() : 'N/A'}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => updateScheduleStatusMutation.mutate({
+                            scheduleId: schedule.id,
+                            status: schedule.status === 'active' ? 'paused' : 'active'
+                          })}
+                        >
+                          {schedule.status === 'active' ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteScheduleMutation.mutate({ scheduleId: schedule.id })}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-medium mb-2">No Schedules Yet</h3>
+                <p className="text-muted-foreground text-center max-w-md mb-4">
+                  Create a schedule to automatically refresh your content templates.
+                </p>
+                <Button onClick={() => setShowScheduleDialog(true)} disabled={!templatesQuery.data?.length}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Schedule
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* Shared Tab */}
+        <TabsContent value="shared" className="space-y-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold">Shared Templates</h3>
+              <p className="text-sm text-muted-foreground">Templates shared with you by other users</p>
+            </div>
+            <Button variant="outline" onClick={() => setShowPublicGalleryDialog(true)}>
+              <Globe className="h-4 w-4 mr-2" />
+              Browse Public Gallery
+            </Button>
+          </div>
+
+          {sharedWithMeQuery.isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin" />
+            </div>
+          ) : sharedWithMeQuery.data && sharedWithMeQuery.data.length > 0 ? (
+            <div className="grid md:grid-cols-2 gap-4">
+              {sharedWithMeQuery.data.map((share) => (
+                <Card key={share.shareId}>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium">{share.templateName}</span>
+                      <Badge className={contentTypeColors[share.templateType || '']}>
+                        {(share.templateType || '').replace(/_/g, ' ')}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      {share.templateDescription || 'No description'}
+                    </p>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <UserPlus className="h-4 w-4" />
+                        <span>From: {share.ownerName || 'Unknown'}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <Badge variant="outline">{share.permission}</Badge>
+                        {(share.permission === 'duplicate' || share.permission === 'edit') && (
+                          <Button
+                            size="sm"
+                            onClick={() => duplicateTemplateMutation.mutate({ templateId: share.templateId })}
+                          >
+                            <Copy className="h-4 w-4 mr-1" />
+                            Duplicate
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <Share2 className="h-12 w-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-medium mb-2">No Shared Templates</h3>
+                <p className="text-muted-foreground text-center max-w-md mb-4">
+                  Templates shared with you will appear here. Browse the public gallery to find community templates.
+                </p>
+                <Button variant="outline" onClick={() => setShowPublicGalleryDialog(true)}>
+                  <Globe className="h-4 w-4 mr-2" />
+                  Browse Public Gallery
+                </Button>
               </CardContent>
             </Card>
           )}
@@ -1980,6 +2275,353 @@ export default function ContentGenerator() {
                   : `Download ${selectedForBatchExport.length} Items`}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Schedule Dialog */}
+      <Dialog open={showScheduleDialog} onOpenChange={setShowScheduleDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5" />
+              Create Content Refresh Schedule
+            </DialogTitle>
+            <DialogDescription>
+              Set up automatic content regeneration for a template
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Template *</Label>
+              <Select value={String(scheduleTemplateId || '')} onValueChange={(v) => setScheduleTemplateId(Number(v))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a template" />
+                </SelectTrigger>
+                <SelectContent>
+                  {templatesQuery.data?.map((template) => (
+                    <SelectItem key={template.id} value={String(template.id)}>
+                      {template.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Frequency *</Label>
+              <Select value={scheduleFrequency} onValueChange={(v) => setScheduleFrequency(v as any)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="daily">Daily</SelectItem>
+                  <SelectItem value="weekly">Weekly</SelectItem>
+                  <SelectItem value="monthly">Monthly</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {scheduleFrequency === 'weekly' && (
+              <div className="space-y-2">
+                <Label>Day of Week</Label>
+                <Select value={String(scheduleDayOfWeek)} onValueChange={(v) => setScheduleDayOfWeek(Number(v))}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">Sunday</SelectItem>
+                    <SelectItem value="1">Monday</SelectItem>
+                    <SelectItem value="2">Tuesday</SelectItem>
+                    <SelectItem value="3">Wednesday</SelectItem>
+                    <SelectItem value="4">Thursday</SelectItem>
+                    <SelectItem value="5">Friday</SelectItem>
+                    <SelectItem value="6">Saturday</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Time of Day</Label>
+              <Input
+                type="time"
+                value={scheduleTimeOfDay}
+                onChange={(e) => setScheduleTimeOfDay(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowScheduleDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!scheduleTemplateId) {
+                  toast.error("Please select a template");
+                  return;
+                }
+                createScheduleMutation.mutate({
+                  savedTemplateId: scheduleTemplateId,
+                  frequency: scheduleFrequency,
+                  dayOfWeek: scheduleFrequency === 'weekly' ? scheduleDayOfWeek : undefined,
+                  timeOfDay: scheduleTimeOfDay,
+                });
+              }}
+              disabled={!scheduleTemplateId || createScheduleMutation.isPending}
+            >
+              {createScheduleMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Calendar className="h-4 w-4 mr-2" />
+              )}
+              Create Schedule
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Share Template Dialog */}
+      <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Share2 className="h-5 w-5" />
+              Share Template
+            </DialogTitle>
+            <DialogDescription>
+              Share this template with others via email or public link
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Share Method</Label>
+              <div className="flex gap-2">
+                <Button
+                  variant={shareMethod === 'email' ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => setShareMethod('email')}
+                >
+                  <Mail className="h-4 w-4 mr-2" />
+                  Email
+                </Button>
+                <Button
+                  variant={shareMethod === 'link' ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => setShareMethod('link')}
+                >
+                  <Link className="h-4 w-4 mr-2" />
+                  Public Link
+                </Button>
+              </div>
+            </div>
+            {shareMethod === 'email' && (
+              <div className="space-y-2">
+                <Label>Recipient Email</Label>
+                <Input
+                  type="email"
+                  placeholder="colleague@example.com"
+                  value={shareEmail}
+                  onChange={(e) => setShareEmail(e.target.value)}
+                />
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Permission</Label>
+              <Select value={sharePermission} onValueChange={(v) => setSharePermission(v as any)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="view">View Only</SelectItem>
+                  <SelectItem value="duplicate">Can Duplicate</SelectItem>
+                  <SelectItem value="edit">Can Edit</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowShareDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!shareTemplateId) return;
+                shareTemplateMutation.mutate({
+                  savedTemplateId: shareTemplateId,
+                  shareType: shareMethod === 'link' ? 'public' : 'direct',
+                  sharedWithEmail: shareMethod === 'email' ? shareEmail : undefined,
+                  permission: sharePermission,
+                });
+              }}
+              disabled={shareTemplateMutation.isPending || (shareMethod === 'email' && !shareEmail)}
+            >
+              {shareTemplateMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Share2 className="h-4 w-4 mr-2" />
+              )}
+              {shareMethod === 'link' ? 'Generate Link' : 'Send Invite'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Public Gallery Dialog */}
+      <Dialog open={showPublicGalleryDialog} onOpenChange={setShowPublicGalleryDialog}>
+        <DialogContent className="max-w-3xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Globe className="h-5 w-5" />
+              Public Template Gallery
+            </DialogTitle>
+            <DialogDescription>
+              Browse and duplicate community-shared templates
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="h-[500px] pr-4">
+            {publicGalleryQuery.isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin" />
+              </div>
+            ) : publicGalleryQuery.data && publicGalleryQuery.data.length > 0 ? (
+              <div className="grid md:grid-cols-2 gap-4">
+                {publicGalleryQuery.data.map((template: any) => (
+                  <Card key={template.id} className="hover:border-primary/50 transition-colors">
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium">{template.name}</span>
+                        <Badge className={contentTypeColors[template.contentType || '']}>
+                          {(template.contentType || '').replace(/_/g, ' ')}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
+                        {template.description || 'No description'}
+                      </p>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Users className="h-4 w-4" />
+                          <span>{template.usageCount || 0} uses</span>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            duplicateTemplateMutation.mutate({ templateId: template.id });
+                          }}
+                          disabled={duplicateTemplateMutation.isPending}
+                        >
+                          <Copy className="h-4 w-4 mr-1" />
+                          Duplicate
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12">
+                <Globe className="h-12 w-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-medium mb-2">No Public Templates</h3>
+                <p className="text-muted-foreground text-center max-w-md">
+                  Be the first to share a template with the community!
+                </p>
+              </div>
+            )}
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      {/* A/B Test Analysis Dialog */}
+      <Dialog open={showAbTestDialog} onOpenChange={setShowAbTestDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Trophy className="h-5 w-5 text-yellow-500" />
+              A/B Test Analysis
+            </DialogTitle>
+            <DialogDescription>
+              Compare version performance and declare a winner
+            </DialogDescription>
+          </DialogHeader>
+          {abTestAnalysisQuery.isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin" />
+            </div>
+          ) : abTestAnalysisQuery.data ? (
+            <div className="space-y-4">
+              {/* Recommended Winner */}
+              {'analysis' in abTestAnalysisQuery.data && abTestAnalysisQuery.data.analysis?.potentialWinner && (
+                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Crown className="h-5 w-5 text-yellow-500" />
+                    <span className="font-semibold">Recommended Winner</span>
+                  </div>
+                  <p className="text-sm">
+                    Version {abTestAnalysisQuery.data.analysis.potentialWinner.versionNumber} has the best performance
+                    with {abTestAnalysisQuery.data.analysis.potentialWinner.ctr.toFixed(2)}% CTR
+                  </p>
+                </div>
+              )}
+
+              {/* Version Comparison */}
+              <div className="space-y-3">
+                {abTestAnalysisQuery.data.versions?.map((version: any) => (
+                  <Card key={version.id} className={version.status === 'winner' ? 'border-yellow-500' : ''}>
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">Version {version.versionNumber}</span>
+                          {version.status === 'winner' && (
+                            <Badge className="bg-yellow-500">
+                              <Trophy className="h-3 w-3 mr-1" />
+                              Winner
+                            </Badge>
+                          )}
+                        </div>
+                        {version.status !== 'winner' && generatedContentId && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              declareWinnerMutation.mutate({
+                                contentTemplateId: generatedContentId,
+                                winnerVersionId: version.id,
+                              });
+                            }}
+                          >
+                            <Crown className="h-4 w-4 mr-1" />
+                            Declare Winner
+                          </Button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <p className="text-muted-foreground">Impressions</p>
+                          <p className="font-medium">{version.metrics?.impressions || 0}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Clicks</p>
+                          <p className="font-medium">{version.metrics?.clicks || 0}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">CTR</p>
+                          <p className="font-medium">{(version.metrics?.ctr || 0).toFixed(2)}%</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Conversions</p>
+                          <p className="font-medium">{version.metrics?.conversions || 0}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12">
+              <BarChart3 className="h-12 w-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-medium mb-2">No A/B Test Data</h3>
+              <p className="text-muted-foreground text-center max-w-md">
+                Create multiple versions and add metrics to start A/B testing.
+              </p>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

@@ -672,3 +672,30 @@
 - [x] Update batch export UI with destination selector (File, Google Docs, Notion)
 - [x] Add destination-specific UI hints and instructions
 - [x] Track cloud exports in export history
+
+## A/B Test Winner Auto-Detection
+- [x] Create algorithm to calculate winner based on CTR and conversion rate
+- [x] Add statistical significance calculation for A/B tests
+- [x] Display winner badge (crown/trophy icon) on best-performing version
+- [x] Add winner summary showing performance metrics comparison
+- [x] Highlight winning version in version history panel
+- [x] Add "Declare Winner" manual override option
+- [x] Show confidence level for auto-detected winners
+
+## Scheduled Content Refresh
+- [x] Create content_schedules database table (templateId, frequency, lastRunAt, nextRunAt, status)
+- [x] Add schedule configuration UI to templates
+- [x] Implement scheduler service for automatic re-generation
+- [x] Support daily, weekly, and monthly refresh frequencies
+- [x] Send notification when content is refreshed
+- [x] Track refresh history with version comparison
+- [x] Add pause/resume schedule functionality
+
+## Team Collaboration & Template Sharing
+- [x] Add sharing permissions to savedTemplates table (isPublic, sharedWith)
+- [x] Create template sharing dialog with user search
+- [x] Implement permission levels (view, edit, duplicate)
+- [x] Add "Shared with me" section in templates library
+- [x] Create public template gallery for community sharing
+- [x] Add template usage analytics (views, uses, duplicates)
+- [x] Enable collaborative editing with version tracking
