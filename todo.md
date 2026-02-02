@@ -768,3 +768,22 @@
 - [x] Add strategic recommendations section
 - [x] Enable scheduled report generation (weekly/biweekly/monthly/quarterly)
 - [x] Add report scheduling with email notification options
+
+
+## YouTube Channel Auto-Import Feature
+- [x] Add "Import from YouTube" button to Competitor Calendar
+- [x] Create backend procedure to fetch competitor's YouTube channel videos
+- [x] Auto-populate calendar with fetched videos (title, publish date, views, likes)
+- [x] Add sync status indicator showing last import time
+- [x] Enable periodic auto-refresh option for competitor channels
+- [x] Map YouTube video data to calendar entry format
+
+## Content Gap Analysis Dashboard
+- [x] Create new ContentGapAnalysis page component
+- [x] Add navigation link in sidebar under Tools
+- [x] Build topic coverage comparison visualization
+- [x] Show content type distribution comparison (shorts vs long-form, tutorials vs vlogs)
+- [x] Display optimal posting times based on competitor success patterns
+- [x] Add engagement benchmarks comparison chart
+- [x] Include AI-generated gap recommendations
+- [x] Enable filtering by competitor and time range

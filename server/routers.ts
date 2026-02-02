@@ -6407,6 +6407,261 @@ Be specific and actionable.`;
         return { success: true };
       }),
 
+    // Import competitor YouTube videos to calendar
+    importFromYouTube: protectedProcedure
+      .input(z.object({
+        competitorId: z.number(),
+        apiKey: z.string(),
+        maxVideos: z.number().min(1).max(100).default(50),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Get competitor's YouTube channel
+        const [ytChannel] = await db.select()
+          .from(competitorYouTubeChannels)
+          .where(and(
+            eq(competitorYouTubeChannels.competitorId, input.competitorId),
+            eq(competitorYouTubeChannels.userId, ctx.user.id)
+          ));
+
+        if (!ytChannel) {
+          throw new Error("No YouTube channel linked to this competitor. Please add a YouTube channel first.");
+        }
+
+        // Fetch videos from YouTube
+        youtubeClient.setApiKey(input.apiKey);
+        const videos = await youtubeClient.getChannelVideos(ytChannel.channelId, input.maxVideos);
+
+        // Import videos to calendar
+        let importedCount = 0;
+        let skippedCount = 0;
+
+        for (const video of videos) {
+          const publishedDate = new Date(video.snippet.publishedAt);
+          const dayOfWeek = publishedDate.getDay();
+          const hourOfDay = publishedDate.getHours();
+
+          const views = parseInt(video.statistics?.viewCount || "0", 10);
+          const likes = parseInt(video.statistics?.likeCount || "0", 10);
+          const commentCount = parseInt(video.statistics?.commentCount || "0", 10);
+
+          let engagementRate = null;
+          if (views > 0) {
+            const totalEngagement = likes + commentCount;
+            engagementRate = ((totalEngagement / views) * 100).toFixed(4);
+          }
+
+          const thumbnailUrl = video.snippet.thumbnails.maxres?.url ||
+            video.snippet.thumbnails.high?.url ||
+            video.snippet.thumbnails.medium?.url ||
+            video.snippet.thumbnails.default?.url || null;
+
+          // Check if entry already exists (by URL)
+          const videoUrl = `https://www.youtube.com/watch?v=${video.id}`;
+          const existing = await db.select()
+            .from(competitorContentCalendar)
+            .where(and(
+              eq(competitorContentCalendar.userId, ctx.user.id),
+              eq(competitorContentCalendar.competitorId, input.competitorId),
+              sql`${competitorContentCalendar.url} = ${videoUrl}`
+            ))
+            .limit(1);
+
+          if (existing.length > 0) {
+            // Update existing entry
+            await db.update(competitorContentCalendar)
+              .set({
+                title: video.snippet.title,
+                thumbnailUrl,
+                views,
+                likes,
+                comments: commentCount,
+                engagementRate,
+                topics: video.snippet.tags || [],
+              })
+              .where(eq(competitorContentCalendar.id, existing[0].id));
+            skippedCount++;
+          } else {
+            // Insert new entry
+            await db.insert(competitorContentCalendar).values({
+              userId: ctx.user.id,
+              competitorId: input.competitorId,
+              title: video.snippet.title,
+              contentType: "video",
+              url: videoUrl,
+              thumbnailUrl,
+              publishedAt: publishedDate,
+              dayOfWeek,
+              hourOfDay,
+              views,
+              likes,
+              comments: commentCount,
+              engagementRate,
+              topics: video.snippet.tags || [],
+              sentiment: "neutral",
+            });
+            importedCount++;
+          }
+        }
+
+        // Update last analyzed timestamp on the YouTube channel
+        await db.update(competitorYouTubeChannels)
+          .set({ lastAnalyzedAt: new Date() })
+          .where(eq(competitorYouTubeChannels.id, ytChannel.id));
+
+        return {
+          success: true,
+          importedCount,
+          updatedCount: skippedCount,
+          totalVideos: videos.length,
+          channelName: ytChannel.channelName,
+        };
+      }),
+
+    // Analyze content gaps
+    analyzeContentGap: protectedProcedure
+      .input(z.object({
+        competitorIds: z.array(z.number()).optional(),
+        timeRangeDays: z.number().default(90),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Get all calendar entries for analysis
+        const entries = await db.select()
+          .from(competitorContentCalendar)
+          .where(eq(competitorContentCalendar.userId, ctx.user.id))
+          .orderBy(desc(competitorContentCalendar.publishedAt));
+
+        // Get all competitors
+        const competitorList = await db.select()
+          .from(competitors)
+          .where(eq(competitors.userId, ctx.user.id));
+
+        // Filter by time range
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - input.timeRangeDays);
+        
+        const filteredEntries = entries.filter(e => {
+          const entryDate = new Date(e.publishedAt);
+          const inTimeRange = entryDate >= cutoffDate;
+          const matchesCompetitor = !input.competitorIds || input.competitorIds.length === 0 ||
+            input.competitorIds.includes(e.competitorId);
+          return inTimeRange && matchesCompetitor;
+        });
+
+        // Analyze topics
+        const topicsByCompetitor: Record<number, Set<string>> = {};
+        const contentTypesByCompetitor: Record<number, Record<string, number>> = {};
+        const engagementByCompetitor: Record<number, { views: number; likes: number; comments: number; count: number }> = {};
+
+        filteredEntries.forEach(entry => {
+          const cId = entry.competitorId;
+          
+          // Topics
+          if (!topicsByCompetitor[cId]) topicsByCompetitor[cId] = new Set();
+          const topics = entry.topics as string[] | null;
+          if (topics && Array.isArray(topics)) {
+            topics.forEach(t => topicsByCompetitor[cId].add(t.toLowerCase()));
+          }
+
+          // Content types
+          if (!contentTypesByCompetitor[cId]) contentTypesByCompetitor[cId] = {};
+          contentTypesByCompetitor[cId][entry.contentType] = 
+            (contentTypesByCompetitor[cId][entry.contentType] || 0) + 1;
+
+          // Engagement
+          if (!engagementByCompetitor[cId]) {
+            engagementByCompetitor[cId] = { views: 0, likes: 0, comments: 0, count: 0 };
+          }
+          engagementByCompetitor[cId].views += entry.views || 0;
+          engagementByCompetitor[cId].likes += entry.likes || 0;
+          engagementByCompetitor[cId].comments += entry.comments || 0;
+          engagementByCompetitor[cId].count += 1;
+        });
+
+        // Find common topics (covered by multiple competitors)
+        const allTopics: Record<string, number[]> = {};
+        Object.entries(topicsByCompetitor).forEach(([cId, topics]) => {
+          topics.forEach(topic => {
+            if (!allTopics[topic]) allTopics[topic] = [];
+            allTopics[topic].push(parseInt(cId));
+          });
+        });
+
+        const contentGaps = Object.entries(allTopics)
+          .filter(([_, cIds]) => cIds.length >= 2)
+          .map(([topic, cIds]) => ({
+            topic,
+            competitorIds: cIds,
+            competitorCount: cIds.length,
+          }))
+          .sort((a, b) => b.competitorCount - a.competitorCount)
+          .slice(0, 20);
+
+        // Calculate benchmarks
+        const benchmarks = Object.entries(engagementByCompetitor).map(([cId, data]) => {
+          const competitor = competitorList.find(c => c.id === parseInt(cId));
+          return {
+            competitorId: parseInt(cId),
+            competitorName: competitor?.name || `Competitor ${cId}`,
+            avgViews: data.count > 0 ? Math.round(data.views / data.count) : 0,
+            avgLikes: data.count > 0 ? Math.round(data.likes / data.count) : 0,
+            avgComments: data.count > 0 ? Math.round(data.comments / data.count) : 0,
+            contentCount: data.count,
+          };
+        });
+
+        return {
+          success: true,
+          totalEntriesAnalyzed: filteredEntries.length,
+          competitorsAnalyzed: Object.keys(topicsByCompetitor).length,
+          contentGaps,
+          benchmarks,
+          contentTypeDistribution: contentTypesByCompetitor,
+        };
+      }),
+
+    // Get import status for a competitor
+    getImportStatus: protectedProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return null;
+        if (!ctx.user) return null;
+
+        const [ytChannel] = await db.select()
+          .from(competitorYouTubeChannels)
+          .where(and(
+            eq(competitorYouTubeChannels.competitorId, input.competitorId),
+            eq(competitorYouTubeChannels.userId, ctx.user.id)
+          ));
+
+        if (!ytChannel) return null;
+
+        // Count calendar entries from this competitor
+        const entries = await db.select({ count: sql<number>`count(*)` })
+          .from(competitorContentCalendar)
+          .where(and(
+            eq(competitorContentCalendar.userId, ctx.user.id),
+            eq(competitorContentCalendar.competitorId, input.competitorId),
+            eq(competitorContentCalendar.contentType, "video")
+          ));
+
+        return {
+          hasYouTubeChannel: true,
+          channelId: ytChannel.channelId,
+          channelName: ytChannel.channelName,
+          lastImportedAt: ytChannel.lastAnalyzedAt,
+          importedVideoCount: entries[0]?.count || 0,
+        };
+      }),
+
     // ========================================
     // AUTOMATED REPORTS
     // ========================================

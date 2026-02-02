@@ -519,6 +519,107 @@ class YouTubeAPIClient {
       forUsername: username,
     });
   }
+
+  async searchChannelVideos(
+    channelId: string,
+    pageToken?: string,
+    maxResults: number = 50,
+    order: "date" | "viewCount" | "rating" | "relevance" = "date"
+  ): Promise<YouTubeSearchResponse> {
+    const params: Record<string, string> = {
+      part: "snippet",
+      channelId,
+      type: "video",
+      maxResults: maxResults.toString(),
+      order,
+    };
+    if (pageToken) {
+      params.pageToken = pageToken;
+    }
+    return this.request<YouTubeSearchResponse>("search", params);
+  }
+
+  async getChannelVideos(
+    channelId: string,
+    maxVideos: number = 50
+  ): Promise<YouTubeVideoItem[]> {
+    // First get the uploads playlist ID
+    const channelResponse = await this.getChannelById(channelId);
+    if (!channelResponse.items || channelResponse.items.length === 0) {
+      throw new Error("Channel not found");
+    }
+    
+    const uploadsPlaylistId = channelResponse.items[0].contentDetails?.relatedPlaylists?.uploads;
+    if (!uploadsPlaylistId) {
+      throw new Error("Could not find uploads playlist for channel");
+    }
+
+    // Get videos from uploads playlist
+    const allVideoIds: string[] = [];
+    let pageToken: string | undefined;
+    
+    while (allVideoIds.length < maxVideos) {
+      const playlistItems = await this.getPlaylistItems(
+        uploadsPlaylistId,
+        pageToken,
+        Math.min(50, maxVideos - allVideoIds.length)
+      );
+      
+      const videoIds = playlistItems.items
+        .map(item => item.contentDetails?.videoId)
+        .filter((id): id is string => !!id);
+      
+      allVideoIds.push(...videoIds);
+      
+      if (!playlistItems.nextPageToken || allVideoIds.length >= maxVideos) {
+        break;
+      }
+      pageToken = playlistItems.nextPageToken;
+    }
+
+    // Get full video details in batches of 50
+    const allVideos: YouTubeVideoItem[] = [];
+    for (let i = 0; i < allVideoIds.length; i += 50) {
+      const batch = allVideoIds.slice(i, i + 50);
+      const videoResponse = await this.getVideos(batch);
+      allVideos.push(...videoResponse.items);
+    }
+
+    return allVideos;
+  }
+}
+
+export interface YouTubeSearchResponse {
+  kind: string;
+  etag: string;
+  nextPageToken?: string;
+  prevPageToken?: string;
+  pageInfo: { totalResults: number; resultsPerPage: number };
+  items: YouTubeSearchItem[];
+}
+
+export interface YouTubeSearchItem {
+  kind: string;
+  etag: string;
+  id: {
+    kind: string;
+    videoId?: string;
+    channelId?: string;
+    playlistId?: string;
+  };
+  snippet: {
+    publishedAt: string;
+    channelId: string;
+    title: string;
+    description: string;
+    thumbnails: {
+      default?: { url: string; width: number; height: number };
+      medium?: { url: string; width: number; height: number };
+      high?: { url: string; width: number; height: number };
+    };
+    channelTitle: string;
+    liveBroadcastContent?: string;
+  };
 }
 
 export const youtubeClient = new YouTubeAPIClient();

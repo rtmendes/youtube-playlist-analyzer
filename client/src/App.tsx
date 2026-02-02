@@ -28,6 +28,7 @@ import SavedComments from "./pages/SavedComments";
 import SharedCollection from "./pages/SharedCollection";
 import ContentGenerator from "./pages/ContentGenerator";
 import CompetitorCalendar from "./pages/CompetitorCalendar";
+import ContentGapAnalysis from "./pages/ContentGapAnalysis";
 
 function Router() {
   return (
@@ -54,6 +55,7 @@ function Router() {
       <Route path={"/shared-collection/:shareToken"} component={SharedCollection} />
       <Route path={"/content-generator"} component={ContentGenerator} />
       <Route path={"/competitor-calendar"} component={CompetitorCalendar} />
+      <Route path={"/content-gap-analysis"} component={ContentGapAnalysis} />
       <Route path={"/playlists"} component={NotFound} />
       <Route path={"/trash"} component={NotFound} />
       <Route path={"/404"} component={NotFound} />

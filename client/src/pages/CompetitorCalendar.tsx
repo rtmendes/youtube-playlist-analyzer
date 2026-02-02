@@ -212,6 +212,25 @@ export default function CompetitorCalendar() {
     },
   });
 
+  // YouTube Import state
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importCompetitorId, setImportCompetitorId] = useState<string>("");
+  const [importApiKey, setImportApiKey] = useState("");
+  const [importMaxVideos, setImportMaxVideos] = useState(50);
+
+  const importFromYouTubeMutation = trpc.competitorAnalysis.importFromYouTube.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Imported ${data.importedCount} videos, updated ${data.updatedCount} from ${data.channelName}`);
+      setShowImportDialog(false);
+      setImportCompetitorId("");
+      setImportApiKey("");
+      calendarViewQuery.refetch();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to import videos");
+    },
+  });
+
   // Calendar helpers
   const getDaysInMonth = (year: number, month: number) => {
     return new Date(year, month + 1, 0).getDate();
@@ -362,6 +381,96 @@ export default function CompetitorCalendar() {
               ))}
             </SelectContent>
           </Select>
+          <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Download className="w-4 h-4 mr-2" />
+                Import from YouTube
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Import from YouTube</DialogTitle>
+                <DialogDescription>
+                  Automatically import videos from a competitor's YouTube channel to the calendar
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="space-y-2">
+                  <Label>Select Competitor *</Label>
+                  <Select value={importCompetitorId} onValueChange={setImportCompetitorId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a competitor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {competitorsQuery.data?.map((competitor) => (
+                        <SelectItem key={competitor.id} value={competitor.id.toString()}>
+                          {competitor.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    The competitor must have a YouTube channel linked in Competitor Analysis
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>YouTube API Key *</Label>
+                  <Input
+                    type="password"
+                    placeholder="Your YouTube Data API v3 key"
+                    value={importApiKey}
+                    onChange={(e) => setImportApiKey(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Get your API key from the{" "}
+                    <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                      Google Cloud Console
+                    </a>
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Maximum Videos</Label>
+                  <Select value={importMaxVideos.toString()} onValueChange={(v) => setImportMaxVideos(parseInt(v))}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10 videos</SelectItem>
+                      <SelectItem value="25">25 videos</SelectItem>
+                      <SelectItem value="50">50 videos</SelectItem>
+                      <SelectItem value="100">100 videos</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowImportDialog(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (!importCompetitorId || !importApiKey) {
+                      toast.error("Please select a competitor and enter your API key");
+                      return;
+                    }
+                    importFromYouTubeMutation.mutate({
+                      competitorId: parseInt(importCompetitorId),
+                      apiKey: importApiKey,
+                      maxVideos: importMaxVideos,
+                    });
+                  }}
+                  disabled={importFromYouTubeMutation.isPending}
+                >
+                  {importFromYouTubeMutation.isPending ? (
+                    <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Importing...</>
+                  ) : (
+                    <><Download className="w-4 h-4 mr-2" /> Import Videos</>
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
             <DialogTrigger asChild>
               <Button>
