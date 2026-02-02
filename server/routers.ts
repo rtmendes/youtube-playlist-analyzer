@@ -10,7 +10,7 @@ import {
   formatCount,
 } from "./youtube";
 import { getDb } from "./db";
-import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets, amazonProducts, amazonReviews, redditPosts, redditComments, researchSessions, multiSourceInsights, savedPlaylists, playlistRuns, playlistVideos, videos, comments, tiktokCreators, tiktokVideos, tiktokComments, savedComments, commentCollections, nlpAnalysisResults, contentTemplates, aiPromptsKnowledgeBase, croBestPractices, copywritingFrameworks, savedTemplates, contentVersions, exportHistory, contentSchedules, templateShares, abTestResults, scheduleGoals, templateComments, commentLikes, competitors, competitorProducts, competitorContent, competitorComparisons, users } from "../drizzle/schema";
+import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets, amazonProducts, amazonReviews, redditPosts, redditComments, researchSessions, multiSourceInsights, savedPlaylists, playlistRuns, playlistVideos, videos, comments, tiktokCreators, tiktokVideos, tiktokComments, savedComments, commentCollections, nlpAnalysisResults, contentTemplates, aiPromptsKnowledgeBase, croBestPractices, copywritingFrameworks, savedTemplates, contentVersions, exportHistory, contentSchedules, templateShares, abTestResults, scheduleGoals, templateComments, commentLikes, competitors, competitorProducts, competitorContent, competitorComparisons, users, competitorAlerts, alertHistory, competitorYouTubeChannels, youtubeChannelComparisons } from "../drizzle/schema";
 import { allPrompts, getPromptsForType, getPromptById, copywritingFrameworks as frameworksData, croBestPractices as croPracticesData, ContentPrompt } from "./content-prompts";
 import { invokeLLM } from "./_core/llm";
 import { eq, desc, and, like, or, sql } from "drizzle-orm";
@@ -5450,6 +5450,626 @@ Format as JSON with arrays for each category.`;
           ));
 
         return { success: true };
+      }),
+
+    // ========================================
+    // YOUTUBE CHANNEL COMPARISON
+    // ========================================
+
+    // Add YouTube channel to competitor
+    addYouTubeChannel: protectedProcedure
+      .input(z.object({
+        competitorId: z.number(),
+        channelId: z.string(),
+        channelName: z.string(),
+        channelHandle: z.string().optional(),
+        thumbnailUrl: z.string().optional(),
+        description: z.string().optional(),
+        subscriberCount: z.number().optional(),
+        videoCount: z.number().optional(),
+        viewCount: z.number().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const [channel] = await db.insert(competitorYouTubeChannels).values({
+          competitorId: input.competitorId,
+          userId: ctx.user.id,
+          channelId: input.channelId,
+          channelName: input.channelName,
+          channelHandle: input.channelHandle,
+          thumbnailUrl: input.thumbnailUrl,
+          description: input.description,
+          subscriberCount: input.subscriberCount,
+          videoCount: input.videoCount,
+          viewCount: input.viewCount,
+        }).$returningId();
+
+        return { success: true, channelId: channel.id };
+      }),
+
+    // Get YouTube channels for a competitor
+    getYouTubeChannels: protectedProcedure
+      .input(z.object({ competitorId: z.number().optional() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        const conditions = [eq(competitorYouTubeChannels.userId, ctx.user.id)];
+        if (input.competitorId) {
+          conditions.push(eq(competitorYouTubeChannels.competitorId, input.competitorId));
+        }
+
+        const channels = await db.select()
+          .from(competitorYouTubeChannels)
+          .where(and(...conditions))
+          .orderBy(desc(competitorYouTubeChannels.subscriberCount));
+
+        return channels;
+      }),
+
+    // Analyze YouTube channel
+    analyzeYouTubeChannel: protectedProcedure
+      .input(z.object({
+        channelDbId: z.number(),
+        apiKey: z.string(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const [channel] = await db.select()
+          .from(competitorYouTubeChannels)
+          .where(and(
+            eq(competitorYouTubeChannels.id, input.channelDbId),
+            eq(competitorYouTubeChannels.userId, ctx.user.id)
+          ));
+
+        if (!channel) throw new Error("Channel not found");
+
+        // Fetch channel data from YouTube API
+        youtubeClient.setApiKey(input.apiKey);
+        const channelData = await youtubeClient.getChannelById(channel.channelId);
+
+        if (!channelData.items || channelData.items.length === 0) {
+          throw new Error("Channel not found on YouTube");
+        }
+
+        const ytChannel = channelData.items[0];
+        const stats = ytChannel.statistics || { viewCount: '0', videoCount: '0', subscriberCount: '0' };
+        const snippet = ytChannel.snippet;
+
+        // Calculate engagement metrics (sample based on recent videos)
+        const avgViews = Math.floor(Number(stats.viewCount || 0) / Math.max(Number(stats.videoCount || 1), 1));
+        const engagementRate = Number(stats.subscriberCount || 0) > 0 
+          ? (avgViews / Number(stats.subscriberCount || 1)) * 100 
+          : 0;
+
+        // Determine posting frequency (estimate)
+        const videoCount = Number(stats.videoCount || 0);
+        const channelAge = new Date().getFullYear() - new Date(snippet.publishedAt).getFullYear();
+        const videosPerYear = videoCount / Math.max(channelAge, 1);
+        let postingFrequency = "Unknown";
+        if (videosPerYear > 365) postingFrequency = "Daily+";
+        else if (videosPerYear > 156) postingFrequency = "3-4 per week";
+        else if (videosPerYear > 52) postingFrequency = "1-3 per week";
+        else if (videosPerYear > 12) postingFrequency = "1-4 per month";
+        else postingFrequency = "Less than monthly";
+
+        // Update channel with fresh data
+        await db.update(competitorYouTubeChannels)
+          .set({
+            channelName: snippet.title,
+            thumbnailUrl: snippet.thumbnails?.high?.url || snippet.thumbnails?.default?.url,
+            bannerUrl: (ytChannel as any).brandingSettings?.image?.bannerExternalUrl,
+            description: snippet.description,
+            subscriberCount: Number(stats.subscriberCount || 0),
+            videoCount: Number(stats.videoCount || 0),
+            viewCount: Number(stats.viewCount || 0),
+            avgViews,
+            engagementRate: engagementRate.toFixed(4),
+            postingFrequency,
+            lastAnalyzedAt: new Date(),
+          })
+          .where(eq(competitorYouTubeChannels.id, input.channelDbId));
+
+        return {
+          success: true,
+          channelName: snippet.title,
+          subscriberCount: Number(stats.subscriberCount || 0),
+          videoCount: Number(stats.videoCount || 0),
+          viewCount: Number(stats.viewCount || 0),
+          avgViews,
+          engagementRate,
+          postingFrequency,
+        };
+      }),
+
+    // Compare YouTube channels
+    compareYouTubeChannels: protectedProcedure
+      .input(z.object({
+        channelDbIds: z.array(z.number()).min(2).max(10),
+        name: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Get channel data
+        const channels = await db.select()
+          .from(competitorYouTubeChannels)
+          .where(and(
+            sql`${competitorYouTubeChannels.id} IN (${sql.join(input.channelDbIds.map(id => sql`${id}`), sql`, `)})`,
+            eq(competitorYouTubeChannels.userId, ctx.user.id)
+          ));
+
+        if (channels.length < 2) {
+          throw new Error("Need at least 2 channels to compare");
+        }
+
+        // Build metrics comparison
+        const metricsComparison = channels.map(ch => ({
+          channelId: ch.id,
+          channelName: ch.channelName,
+          subscribers: ch.subscriberCount || 0,
+          videos: ch.videoCount || 0,
+          totalViews: ch.viewCount || 0,
+          avgViews: ch.avgViews || 0,
+          avgLikes: ch.avgLikes || 0,
+          avgComments: ch.avgComments || 0,
+          engagementRate: Number(ch.engagementRate) || 0,
+          postingFrequency: ch.postingFrequency || "Unknown",
+        }));
+
+        // Find winner (highest engagement rate)
+        const winner = metricsComparison.reduce((best, ch) => 
+          ch.engagementRate > best.engagementRate ? ch : best
+        );
+
+        // Identify opportunities and threats
+        const opportunities: string[] = [];
+        const threats: string[] = [];
+
+        const avgSubscribers = metricsComparison.reduce((sum, ch) => sum + ch.subscribers, 0) / metricsComparison.length;
+        const avgEngagement = metricsComparison.reduce((sum, ch) => sum + ch.engagementRate, 0) / metricsComparison.length;
+
+        metricsComparison.forEach(ch => {
+          if (ch.subscribers < avgSubscribers && ch.engagementRate > avgEngagement) {
+            opportunities.push(`${ch.channelName} has high engagement but lower reach - opportunity for growth`);
+          }
+          if (ch.subscribers > avgSubscribers * 2) {
+            threats.push(`${ch.channelName} dominates in subscriber count`);
+          }
+        });
+
+        // Create comparison record
+        const [comparison] = await db.insert(youtubeChannelComparisons).values({
+          userId: ctx.user.id,
+          name: input.name || `Channel Comparison - ${new Date().toLocaleDateString()}`,
+          channelIds: input.channelDbIds,
+          metricsComparison,
+          winner: winner.channelId,
+          winnerReason: `Highest engagement rate at ${winner.engagementRate.toFixed(2)}%`,
+          opportunities,
+          threats,
+        }).$returningId();
+
+        return {
+          success: true,
+          comparisonId: comparison.id,
+          metricsComparison,
+          winner,
+          opportunities,
+          threats,
+        };
+      }),
+
+    // Get YouTube channel comparisons
+    getYouTubeComparisons: protectedProcedure
+      .query(async ({ ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        const comparisons = await db.select()
+          .from(youtubeChannelComparisons)
+          .where(eq(youtubeChannelComparisons.userId, ctx.user.id))
+          .orderBy(desc(youtubeChannelComparisons.createdAt));
+
+        return comparisons;
+      }),
+
+    // Generate AI insights for YouTube comparison
+    generateYouTubeInsights: protectedProcedure
+      .input(z.object({ comparisonId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const [comparison] = await db.select()
+          .from(youtubeChannelComparisons)
+          .where(and(
+            eq(youtubeChannelComparisons.id, input.comparisonId),
+            eq(youtubeChannelComparisons.userId, ctx.user.id)
+          ));
+
+        if (!comparison) throw new Error("Comparison not found");
+
+        const metrics = comparison.metricsComparison || [];
+        const channelSummary = metrics.map((m: any) => 
+          `${m.channelName}: ${formatCount(m.subscribers)} subscribers, ${formatCount(m.totalViews)} views, ${m.engagementRate.toFixed(2)}% engagement, posts ${m.postingFrequency}`
+        ).join("\n");
+
+        const prompt = `Analyze these YouTube channels and provide competitive insights:
+
+${channelSummary}
+
+Provide:
+1. Key competitive advantages of each channel
+2. Content strategy recommendations
+3. Audience engagement insights
+4. Growth opportunities
+5. Potential threats to watch
+
+Be specific and actionable.`;
+
+        const response = await invokeLLM({
+          messages: [
+            { role: "system", content: "You are a YouTube marketing strategist providing competitive analysis." },
+            { role: "user", content: prompt }
+          ]
+        });
+
+        const rawInsights = response.choices[0]?.message?.content;
+        const insights = typeof rawInsights === 'string' ? rawInsights : "Unable to generate insights";
+
+        await db.update(youtubeChannelComparisons)
+          .set({ aiInsights: insights })
+          .where(eq(youtubeChannelComparisons.id, input.comparisonId));
+
+        return { success: true, insights };
+      }),
+
+    // Delete YouTube channel
+    deleteYouTubeChannel: protectedProcedure
+      .input(z.object({ channelDbId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.delete(competitorYouTubeChannels)
+          .where(and(
+            eq(competitorYouTubeChannels.id, input.channelDbId),
+            eq(competitorYouTubeChannels.userId, ctx.user.id)
+          ));
+
+        return { success: true };
+      }),
+
+    // ========================================
+    // COMPETITOR ALERTS
+    // ========================================
+
+    // Create alert
+    createAlert: protectedProcedure
+      .input(z.object({
+        competitorId: z.number(),
+        name: z.string().min(1).max(255),
+        alertType: z.enum([
+          "new_content",
+          "review_change",
+          "rating_change",
+          "price_change",
+          "subscriber_milestone",
+          "engagement_spike",
+          "sentiment_shift",
+          "keyword_mention",
+          "custom"
+        ]),
+        threshold: z.number().optional(),
+        thresholdType: z.enum(["absolute", "percentage"]).optional(),
+        keywords: z.array(z.string()).optional(),
+        frequency: z.enum(["realtime", "daily", "weekly"]).default("daily"),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const [alert] = await db.insert(competitorAlerts).values({
+          userId: ctx.user.id,
+          competitorId: input.competitorId,
+          name: input.name,
+          alertType: input.alertType,
+          threshold: input.threshold,
+          thresholdType: input.thresholdType,
+          keywords: input.keywords,
+          frequency: input.frequency,
+          isEnabled: true,
+        }).$returningId();
+
+        return { success: true, alertId: alert.id };
+      }),
+
+    // Get alerts
+    getAlerts: protectedProcedure
+      .input(z.object({ competitorId: z.number().optional() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        const conditions = [eq(competitorAlerts.userId, ctx.user.id)];
+        if (input.competitorId) {
+          conditions.push(eq(competitorAlerts.competitorId, input.competitorId));
+        }
+
+        const alerts = await db.select()
+          .from(competitorAlerts)
+          .where(and(...conditions))
+          .orderBy(desc(competitorAlerts.createdAt));
+
+        return alerts;
+      }),
+
+    // Toggle alert
+    toggleAlert: protectedProcedure
+      .input(z.object({ alertId: z.number(), isEnabled: z.boolean() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.update(competitorAlerts)
+          .set({ isEnabled: input.isEnabled })
+          .where(and(
+            eq(competitorAlerts.id, input.alertId),
+            eq(competitorAlerts.userId, ctx.user.id)
+          ));
+
+        return { success: true };
+      }),
+
+    // Delete alert
+    deleteAlert: protectedProcedure
+      .input(z.object({ alertId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.delete(competitorAlerts)
+          .where(and(
+            eq(competitorAlerts.id, input.alertId),
+            eq(competitorAlerts.userId, ctx.user.id)
+          ));
+
+        return { success: true };
+      }),
+
+    // Get alert history
+    getAlertHistory: protectedProcedure
+      .input(z.object({
+        limit: z.number().min(1).max(100).default(50),
+        unreadOnly: z.boolean().default(false),
+      }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        const conditions = [eq(alertHistory.userId, ctx.user.id)];
+        if (input.unreadOnly) {
+          conditions.push(eq(alertHistory.isRead, false));
+        }
+
+        const history = await db.select()
+          .from(alertHistory)
+          .where(and(...conditions))
+          .orderBy(desc(alertHistory.triggeredAt))
+          .limit(input.limit);
+
+        return history;
+      }),
+
+    // Get unread alert count
+    getUnreadAlertCount: protectedProcedure
+      .query(async ({ ctx }) => {
+        const db = await getDb();
+        if (!db) return 0;
+        if (!ctx.user) return 0;
+
+        const result = await db.select({ count: sql<number>`count(*)` })
+          .from(alertHistory)
+          .where(and(
+            eq(alertHistory.userId, ctx.user.id),
+            eq(alertHistory.isRead, false)
+          ));
+
+        return result[0]?.count || 0;
+      }),
+
+    // Mark alert as read
+    markAlertRead: protectedProcedure
+      .input(z.object({ alertHistoryId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.update(alertHistory)
+          .set({ isRead: true })
+          .where(and(
+            eq(alertHistory.id, input.alertHistoryId),
+            eq(alertHistory.userId, ctx.user.id)
+          ));
+
+        return { success: true };
+      }),
+
+    // Mark all alerts as read
+    markAllAlertsRead: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.update(alertHistory)
+          .set({ isRead: true })
+          .where(and(
+            eq(alertHistory.userId, ctx.user.id),
+            eq(alertHistory.isRead, false)
+          ));
+
+        return { success: true };
+      }),
+
+    // Dismiss alert
+    dismissAlert: protectedProcedure
+      .input(z.object({ alertHistoryId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.update(alertHistory)
+          .set({ isDismissed: true, isRead: true })
+          .where(and(
+            eq(alertHistory.id, input.alertHistoryId),
+            eq(alertHistory.userId, ctx.user.id)
+          ));
+
+        return { success: true };
+      }),
+
+    // Trigger test alert (for testing purposes)
+    triggerTestAlert: protectedProcedure
+      .input(z.object({ alertId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const [alert] = await db.select()
+          .from(competitorAlerts)
+          .where(and(
+            eq(competitorAlerts.id, input.alertId),
+            eq(competitorAlerts.userId, ctx.user.id)
+          ));
+
+        if (!alert) throw new Error("Alert not found");
+
+        // Get competitor name
+        const [competitor] = await db.select()
+          .from(competitors)
+          .where(eq(competitors.id, alert.competitorId));
+
+        const competitorName = competitor?.name || "Unknown Competitor";
+
+        // Create test alert history entry
+        await db.insert(alertHistory).values({
+          alertId: alert.id,
+          userId: ctx.user.id,
+          competitorId: alert.competitorId,
+          alertType: alert.alertType,
+          title: `Test Alert: ${alert.name}`,
+          message: `This is a test alert for ${competitorName}. Alert type: ${alert.alertType}.`,
+          isRead: false,
+          isDismissed: false,
+        });
+
+        // Update last triggered
+        await db.update(competitorAlerts)
+          .set({ lastTriggeredAt: new Date() })
+          .where(eq(competitorAlerts.id, alert.id));
+
+        return { success: true };
+      }),
+
+    // Check alerts (simulate checking for changes)
+    checkAlerts: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Get all enabled alerts for user
+        const alerts = await db.select()
+          .from(competitorAlerts)
+          .where(and(
+            eq(competitorAlerts.userId, ctx.user.id),
+            eq(competitorAlerts.isEnabled, true)
+          ));
+
+        let triggeredCount = 0;
+
+        // For demo purposes, randomly trigger some alerts
+        for (const alert of alerts) {
+          // 20% chance to trigger each alert for demo
+          if (Math.random() < 0.2) {
+            const [competitor] = await db.select()
+              .from(competitors)
+              .where(eq(competitors.id, alert.competitorId));
+
+            const competitorName = competitor?.name || "Unknown Competitor";
+
+            let title = "";
+            let message = "";
+
+            switch (alert.alertType) {
+              case "new_content":
+                title = `New Content from ${competitorName}`;
+                message = `${competitorName} has published new content. Check their latest updates.`;
+                break;
+              case "review_change":
+                title = `Review Activity for ${competitorName}`;
+                message = `${competitorName} has received new reviews. Their average rating may have changed.`;
+                break;
+              case "subscriber_milestone":
+                title = `Subscriber Milestone for ${competitorName}`;
+                message = `${competitorName} has reached a new subscriber milestone.`;
+                break;
+              case "engagement_spike":
+                title = `Engagement Spike for ${competitorName}`;
+                message = `${competitorName} is experiencing higher than usual engagement.`;
+                break;
+              default:
+                title = `Alert: ${alert.name}`;
+                message = `Alert triggered for ${competitorName}.`;
+            }
+
+            await db.insert(alertHistory).values({
+              alertId: alert.id,
+              userId: ctx.user.id,
+              competitorId: alert.competitorId,
+              alertType: alert.alertType,
+              title,
+              message,
+              isRead: false,
+              isDismissed: false,
+            });
+
+            await db.update(competitorAlerts)
+              .set({ lastCheckedAt: new Date(), lastTriggeredAt: new Date() })
+              .where(eq(competitorAlerts.id, alert.id));
+
+            triggeredCount++;
+          } else {
+            // Just update last checked
+            await db.update(competitorAlerts)
+              .set({ lastCheckedAt: new Date() })
+              .where(eq(competitorAlerts.id, alert.id));
+          }
+        }
+
+        return { success: true, alertsChecked: alerts.length, alertsTriggered: triggeredCount };
       }),
   }),
 });

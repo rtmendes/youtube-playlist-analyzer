@@ -727,3 +727,24 @@
 - [x] Generate competitive positioning recommendations
 - [x] Track competitor content updates and changes
 - [x] Add SWOT analysis generator for each competitor
+
+## YouTube Channel Comparison Feature
+- [x] Create YouTube channel comparison UI in Competitor Analysis page
+- [x] Add channel input fields for comparing multiple channels
+- [x] Fetch channel statistics (subscribers, views, video count)
+- [x] Compare engagement metrics across channels
+- [x] Analyze content themes and posting frequency
+- [x] Show audience sentiment comparison from comments
+- [x] Generate competitive insights and recommendations
+- [x] Add channel performance visualization charts
+
+## Competitor Tracking Alerts Feature
+- [x] Create competitorAlerts database table (competitorId, alertType, threshold, enabled)
+- [x] Create alertHistory database table (alertId, triggeredAt, details, read)
+- [x] Add alert configuration UI for each competitor
+- [x] Implement new content detection alerts
+- [x] Implement review/rating change alerts
+- [x] Implement significant metric change alerts
+- [x] Add notification bell icon with unread count
+- [x] Create alerts management page
+- [x] Send in-app notifications when alerts trigger

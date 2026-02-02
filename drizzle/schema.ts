@@ -1329,3 +1329,184 @@ export const competitorComparisons = mysqlTable("competitorComparisons", {
 
 export type CompetitorComparison = typeof competitorComparisons.$inferSelect;
 export type InsertCompetitorComparison = typeof competitorComparisons.$inferInsert;
+
+
+/**
+ * Competitor Alerts - track changes and notify users
+ */
+export const competitorAlerts = mysqlTable("competitorAlerts", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  competitorId: int("competitorId").notNull(),
+  // Alert configuration
+  name: varchar("name", { length: 255 }).notNull(),
+  alertType: mysqlEnum("alertType", [
+    "new_content",
+    "review_change",
+    "rating_change",
+    "price_change",
+    "subscriber_milestone",
+    "engagement_spike",
+    "sentiment_shift",
+    "keyword_mention",
+    "custom"
+  ]).notNull(),
+  // Thresholds and conditions
+  threshold: int("threshold"), // e.g., 10% change, 1000 new subscribers
+  thresholdType: mysqlEnum("thresholdType", ["absolute", "percentage"]),
+  keywords: json("keywords").$type<string[]>(), // for keyword_mention alerts
+  // Settings
+  isEnabled: boolean("isEnabled").default(true),
+  frequency: mysqlEnum("frequency", ["realtime", "daily", "weekly"]).default("daily"),
+  // Last check info
+  lastCheckedAt: timestamp("lastCheckedAt"),
+  lastTriggeredAt: timestamp("lastTriggeredAt"),
+  // Timestamps
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CompetitorAlert = typeof competitorAlerts.$inferSelect;
+export type InsertCompetitorAlert = typeof competitorAlerts.$inferInsert;
+
+/**
+ * Alert History - log of triggered alerts
+ */
+export const alertHistory = mysqlTable("alertHistory", {
+  id: int("id").autoincrement().primaryKey(),
+  alertId: int("alertId").notNull(),
+  userId: int("userId").notNull(),
+  competitorId: int("competitorId").notNull(),
+  // Alert details
+  alertType: varchar("alertType", { length: 64 }).notNull(),
+  title: varchar("title", { length: 512 }).notNull(),
+  message: text("message").notNull(),
+  // Change details
+  previousValue: text("previousValue"),
+  newValue: text("newValue"),
+  changePercent: decimal("changePercent", { precision: 10, scale: 2 }),
+  // Related content
+  relatedUrl: text("relatedUrl"),
+  relatedContentId: int("relatedContentId"),
+  // Status
+  isRead: boolean("isRead").default(false),
+  isDismissed: boolean("isDismissed").default(false),
+  // Action taken
+  actionTaken: text("actionTaken"),
+  actionTakenAt: timestamp("actionTakenAt"),
+  // Timestamps
+  triggeredAt: timestamp("triggeredAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type AlertHistoryItem = typeof alertHistory.$inferSelect;
+export type InsertAlertHistoryItem = typeof alertHistory.$inferInsert;
+
+/**
+ * Competitor YouTube Channels - track YouTube channels for comparison
+ */
+export const competitorYouTubeChannels = mysqlTable("competitorYouTubeChannels", {
+  id: int("id").autoincrement().primaryKey(),
+  competitorId: int("competitorId").notNull(),
+  userId: int("userId").notNull(),
+  // Channel info
+  channelId: varchar("channelId", { length: 64 }).notNull(),
+  channelName: varchar("channelName", { length: 255 }).notNull(),
+  channelHandle: varchar("channelHandle", { length: 64 }),
+  thumbnailUrl: text("thumbnailUrl"),
+  bannerUrl: text("bannerUrl"),
+  description: text("description"),
+  // Metrics
+  subscriberCount: bigint("subscriberCount", { mode: "number" }),
+  videoCount: int("videoCount"),
+  viewCount: bigint("viewCount", { mode: "number" }),
+  // Engagement metrics
+  avgViews: int("avgViews"),
+  avgLikes: int("avgLikes"),
+  avgComments: int("avgComments"),
+  engagementRate: decimal("engagementRate", { precision: 10, scale: 4 }),
+  // Content analysis
+  postingFrequency: varchar("postingFrequency", { length: 64 }), // e.g., "3 per week"
+  topContentTypes: json("topContentTypes").$type<string[]>(),
+  topKeywords: json("topKeywords").$type<string[]>(),
+  contentThemes: json("contentThemes").$type<{
+    theme: string;
+    percentage: number;
+  }[]>(),
+  // Audience analysis
+  audienceSentiment: mysqlEnum("audienceSentiment", ["very_positive", "positive", "neutral", "negative", "very_negative"]),
+  sentimentBreakdown: json("sentimentBreakdown").$type<{
+    positive: number;
+    neutral: number;
+    negative: number;
+  }>(),
+  topAudienceComplaints: json("topAudienceComplaints").$type<string[]>(),
+  topAudiencePraises: json("topAudiencePraises").$type<string[]>(),
+  // Historical data
+  historicalMetrics: json("historicalMetrics").$type<{
+    date: string;
+    subscribers: number;
+    views: number;
+    videos: number;
+  }[]>(),
+  // Last analysis
+  lastAnalyzedAt: timestamp("lastAnalyzedAt"),
+  // Timestamps
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CompetitorYouTubeChannel = typeof competitorYouTubeChannels.$inferSelect;
+export type InsertCompetitorYouTubeChannel = typeof competitorYouTubeChannels.$inferInsert;
+
+/**
+ * YouTube Channel Comparisons - side-by-side channel analysis
+ */
+export const youtubeChannelComparisons = mysqlTable("youtubeChannelComparisons", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  // Comparison info
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  // Channels being compared
+  channelIds: json("channelIds").$type<number[]>().notNull(), // competitorYouTubeChannels IDs
+  // Comparison results
+  metricsComparison: json("metricsComparison").$type<{
+    channelId: number;
+    channelName: string;
+    subscribers: number;
+    videos: number;
+    totalViews: number;
+    avgViews: number;
+    avgLikes: number;
+    avgComments: number;
+    engagementRate: number;
+    postingFrequency: string;
+  }[]>(),
+  // Content analysis
+  contentOverlap: json("contentOverlap").$type<{
+    sharedTopics: string[];
+    uniqueTopics: Record<number, string[]>; // channelId -> unique topics
+  }>(),
+  // Audience comparison
+  audienceComparison: json("audienceComparison").$type<{
+    channelId: number;
+    sentiment: string;
+    topPraises: string[];
+    topComplaints: string[];
+  }[]>(),
+  // Competitive insights
+  winner: int("winner"), // channelId of best performer
+  winnerReason: text("winnerReason"),
+  recommendations: text("recommendations"),
+  opportunities: json("opportunities").$type<string[]>(),
+  threats: json("threats").$type<string[]>(),
+  // AI analysis
+  aiInsights: text("aiInsights"),
+  // Timestamps
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type YouTubeChannelComparison = typeof youtubeChannelComparisons.$inferSelect;
+export type InsertYouTubeChannelComparison = typeof youtubeChannelComparisons.$inferInsert;
