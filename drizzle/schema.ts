@@ -1510,3 +1510,217 @@ export const youtubeChannelComparisons = mysqlTable("youtubeChannelComparisons",
 
 export type YouTubeChannelComparison = typeof youtubeChannelComparisons.$inferSelect;
 export type InsertYouTubeChannelComparison = typeof youtubeChannelComparisons.$inferInsert;
+
+
+/**
+ * Competitor Content Calendar - calendar view of competitor content
+ */
+export const competitorContentCalendar = mysqlTable("competitorContentCalendar", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  competitorId: int("competitorId").notNull(),
+  competitorContentId: int("competitorContentId"), // link to competitorContent if exists
+  // Calendar entry info
+  title: varchar("title", { length: 512 }).notNull(),
+  contentType: mysqlEnum("contentType", [
+    "blog_post",
+    "video",
+    "podcast",
+    "social_post",
+    "ad",
+    "landing_page",
+    "email",
+    "webinar",
+    "case_study",
+    "whitepaper",
+    "product_launch",
+    "event",
+    "other"
+  ]).notNull(),
+  url: text("url"),
+  thumbnailUrl: text("thumbnailUrl"),
+  // Date and time
+  publishedAt: timestamp("publishedAt").notNull(),
+  dayOfWeek: int("dayOfWeek"), // 0-6
+  hourOfDay: int("hourOfDay"), // 0-23
+  // Engagement metrics
+  views: int("views"),
+  likes: int("likes"),
+  comments: int("comments"),
+  shares: int("shares"),
+  engagementRate: decimal("engagementRate", { precision: 10, scale: 4 }),
+  // Content analysis
+  topics: json("topics").$type<string[]>(),
+  sentiment: mysqlEnum("sentiment", ["positive", "neutral", "negative"]),
+  // Notes
+  notes: text("notes"),
+  // Timestamps
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CompetitorContentCalendarEntry = typeof competitorContentCalendar.$inferSelect;
+export type InsertCompetitorContentCalendarEntry = typeof competitorContentCalendar.$inferInsert;
+
+/**
+ * Competitor Reports - generated PDF reports
+ */
+export const competitorReports = mysqlTable("competitorReports", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  // Report info
+  title: varchar("title", { length: 255 }).notNull(),
+  reportType: mysqlEnum("reportType", [
+    "weekly_summary",
+    "monthly_summary",
+    "quarterly_review",
+    "competitor_deep_dive",
+    "market_overview",
+    "custom"
+  ]).notNull(),
+  // Competitors included
+  competitorIds: json("competitorIds").$type<number[]>(),
+  // Report content sections
+  sections: json("sections").$type<{
+    id: string;
+    title: string;
+    type: "summary" | "metrics" | "swot" | "timeline" | "recommendations" | "charts" | "custom";
+    content: string;
+    data?: Record<string, unknown>;
+  }[]>(),
+  // Generated content
+  executiveSummary: text("executiveSummary"),
+  keyFindings: json("keyFindings").$type<string[]>(),
+  recommendations: json("recommendations").$type<string[]>(),
+  // Metrics snapshot
+  metricsSnapshot: json("metricsSnapshot").$type<{
+    competitorId: number;
+    competitorName: string;
+    metrics: Record<string, number | string>;
+  }[]>(),
+  // SWOT analysis
+  swotAnalysis: json("swotAnalysis").$type<{
+    strengths: string[];
+    weaknesses: string[];
+    opportunities: string[];
+    threats: string[];
+  }>(),
+  // File storage
+  pdfUrl: text("pdfUrl"),
+  pdfSize: int("pdfSize"), // in bytes
+  // Schedule info (if auto-generated)
+  scheduleId: int("scheduleId"),
+  isScheduled: boolean("isScheduled").default(false),
+  // Status
+  status: mysqlEnum("status", ["generating", "completed", "failed"]).default("generating"),
+  errorMessage: text("errorMessage"),
+  // Email delivery
+  emailDelivered: boolean("emailDelivered").default(false),
+  emailDeliveredAt: timestamp("emailDeliveredAt"),
+  emailRecipients: json("emailRecipients").$type<string[]>(),
+  // Timestamps
+  generatedAt: timestamp("generatedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CompetitorReport = typeof competitorReports.$inferSelect;
+export type InsertCompetitorReport = typeof competitorReports.$inferInsert;
+
+/**
+ * Report Schedules - automated report generation schedules
+ */
+export const reportSchedules = mysqlTable("reportSchedules", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  // Schedule info
+  name: varchar("name", { length: 255 }).notNull(),
+  reportType: mysqlEnum("reportType", [
+    "weekly_summary",
+    "monthly_summary",
+    "quarterly_review",
+    "competitor_deep_dive",
+    "market_overview",
+    "custom"
+  ]).notNull(),
+  // Competitors to include
+  competitorIds: json("competitorIds").$type<number[]>(),
+  // Schedule configuration
+  frequency: mysqlEnum("frequency", ["weekly", "biweekly", "monthly", "quarterly"]).notNull(),
+  dayOfWeek: int("dayOfWeek"), // 0-6 for weekly
+  dayOfMonth: int("dayOfMonth"), // 1-31 for monthly
+  timeOfDay: varchar("timeOfDay", { length: 8 }), // HH:MM format
+  timezone: varchar("timezone", { length: 64 }).default("UTC"),
+  // Email delivery
+  emailEnabled: boolean("emailEnabled").default(true),
+  emailRecipients: json("emailRecipients").$type<string[]>(),
+  // Report customization
+  includeSections: json("includeSections").$type<string[]>(), // which sections to include
+  customPrompt: text("customPrompt"), // custom AI prompt for recommendations
+  // Status
+  status: mysqlEnum("status", ["active", "paused", "completed"]).default("active"),
+  // Tracking
+  lastRunAt: timestamp("lastRunAt"),
+  nextRunAt: timestamp("nextRunAt"),
+  runCount: int("runCount").default(0),
+  // Timestamps
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ReportSchedule = typeof reportSchedules.$inferSelect;
+export type InsertReportSchedule = typeof reportSchedules.$inferInsert;
+
+/**
+ * Posting Patterns - analyzed posting patterns for competitors
+ */
+export const postingPatterns = mysqlTable("postingPatterns", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  competitorId: int("competitorId").notNull(),
+  // Pattern analysis
+  avgPostsPerWeek: decimal("avgPostsPerWeek", { precision: 5, scale: 2 }),
+  avgPostsPerMonth: decimal("avgPostsPerMonth", { precision: 5, scale: 2 }),
+  // Best performing times
+  bestDayOfWeek: int("bestDayOfWeek"), // 0-6
+  bestHourOfDay: int("bestHourOfDay"), // 0-23
+  // Day distribution
+  dayDistribution: json("dayDistribution").$type<{
+    day: number;
+    count: number;
+    avgEngagement: number;
+  }[]>(),
+  // Hour distribution
+  hourDistribution: json("hourDistribution").$type<{
+    hour: number;
+    count: number;
+    avgEngagement: number;
+  }[]>(),
+  // Content type distribution
+  contentTypeDistribution: json("contentTypeDistribution").$type<{
+    type: string;
+    count: number;
+    percentage: number;
+    avgEngagement: number;
+  }[]>(),
+  // Gaps and opportunities
+  contentGaps: json("contentGaps").$type<{
+    dayOfWeek?: number;
+    hourOfDay?: number;
+    contentType?: string;
+    opportunity: string;
+  }[]>(),
+  // Recommendations
+  recommendations: json("recommendations").$type<string[]>(),
+  // Analysis period
+  analyzedFrom: timestamp("analyzedFrom"),
+  analyzedTo: timestamp("analyzedTo"),
+  contentCount: int("contentCount"),
+  // Timestamps
+  analyzedAt: timestamp("analyzedAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type PostingPattern = typeof postingPatterns.$inferSelect;
+export type InsertPostingPattern = typeof postingPatterns.$inferInsert;

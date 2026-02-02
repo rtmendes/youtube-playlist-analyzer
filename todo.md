@@ -748,3 +748,23 @@
 - [x] Add notification bell icon with unread count
 - [x] Create alerts management page
 - [x] Send in-app notifications when alerts trigger
+
+
+## Competitor Content Calendar Feature
+- [x] Create competitorContentCalendar database table for tracking competitor posts
+- [x] Build calendar view component with month/week/day views
+- [x] Display competitor posts on calendar with color coding by competitor
+- [x] Show posting frequency patterns and optimal posting times
+- [x] Add content gap analysis visualization (insights tab)
+- [x] Enable filtering by competitor, content type, and date range
+- [x] Add click-to-view content details
+
+## Automated Competitor Reports Feature
+- [x] Create competitorReports database table for storing generated reports
+- [x] Build markdown report generation with competitor summary
+- [x] Include performance metrics comparison
+- [x] Add SWOT analysis section to reports
+- [x] Include AI-generated executive summary
+- [x] Add strategic recommendations section
+- [x] Enable scheduled report generation (weekly/biweekly/monthly/quarterly)
+- [x] Add report scheduling with email notification options

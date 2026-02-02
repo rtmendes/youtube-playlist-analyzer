@@ -10,7 +10,7 @@ import {
   formatCount,
 } from "./youtube";
 import { getDb } from "./db";
-import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets, amazonProducts, amazonReviews, redditPosts, redditComments, researchSessions, multiSourceInsights, savedPlaylists, playlistRuns, playlistVideos, videos, comments, tiktokCreators, tiktokVideos, tiktokComments, savedComments, commentCollections, nlpAnalysisResults, contentTemplates, aiPromptsKnowledgeBase, croBestPractices, copywritingFrameworks, savedTemplates, contentVersions, exportHistory, contentSchedules, templateShares, abTestResults, scheduleGoals, templateComments, commentLikes, competitors, competitorProducts, competitorContent, competitorComparisons, users, competitorAlerts, alertHistory, competitorYouTubeChannels, youtubeChannelComparisons } from "../drizzle/schema";
+import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets, amazonProducts, amazonReviews, redditPosts, redditComments, researchSessions, multiSourceInsights, savedPlaylists, playlistRuns, playlistVideos, videos, comments, tiktokCreators, tiktokVideos, tiktokComments, savedComments, commentCollections, nlpAnalysisResults, contentTemplates, aiPromptsKnowledgeBase, croBestPractices, copywritingFrameworks, savedTemplates, contentVersions, exportHistory, contentSchedules, templateShares, abTestResults, scheduleGoals, templateComments, commentLikes, competitors, competitorProducts, competitorContent, competitorComparisons, users, competitorAlerts, alertHistory, competitorYouTubeChannels, youtubeChannelComparisons, competitorContentCalendar, competitorReports, reportSchedules, postingPatterns } from "../drizzle/schema";
 import { allPrompts, getPromptsForType, getPromptById, copywritingFrameworks as frameworksData, croBestPractices as croPracticesData, ContentPrompt } from "./content-prompts";
 import { invokeLLM } from "./_core/llm";
 import { eq, desc, and, like, or, sql } from "drizzle-orm";
@@ -6070,6 +6070,787 @@ Be specific and actionable.`;
         }
 
         return { success: true, alertsChecked: alerts.length, alertsTriggered: triggeredCount };
+      }),
+
+    // ========================================
+    // CONTENT CALENDAR
+    // ========================================
+
+    // Add content to calendar
+    addCalendarEntry: protectedProcedure
+      .input(z.object({
+        competitorId: z.number(),
+        title: z.string().min(1).max(512),
+        contentType: z.enum([
+          "blog_post", "video", "podcast", "social_post", "ad",
+          "landing_page", "email", "webinar", "case_study",
+          "whitepaper", "product_launch", "event", "other"
+        ]),
+        url: z.string().optional(),
+        thumbnailUrl: z.string().optional(),
+        publishedAt: z.string(), // ISO date string
+        views: z.number().optional(),
+        likes: z.number().optional(),
+        comments: z.number().optional(),
+        shares: z.number().optional(),
+        topics: z.array(z.string()).optional(),
+        sentiment: z.enum(["positive", "neutral", "negative"]).optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const publishedDate = new Date(input.publishedAt);
+        const dayOfWeek = publishedDate.getDay();
+        const hourOfDay = publishedDate.getHours();
+
+        // Calculate engagement rate if metrics provided
+        let engagementRate = null;
+        if (input.views && input.views > 0) {
+          const totalEngagement = (input.likes || 0) + (input.comments || 0) + (input.shares || 0);
+          engagementRate = (totalEngagement / input.views) * 100;
+        }
+
+        const [entry] = await db.insert(competitorContentCalendar).values({
+          userId: ctx.user.id,
+          competitorId: input.competitorId,
+          title: input.title,
+          contentType: input.contentType,
+          url: input.url,
+          thumbnailUrl: input.thumbnailUrl,
+          publishedAt: publishedDate,
+          dayOfWeek,
+          hourOfDay,
+          views: input.views,
+          likes: input.likes,
+          comments: input.comments,
+          shares: input.shares,
+          engagementRate: engagementRate?.toString(),
+          topics: input.topics,
+          sentiment: input.sentiment,
+          notes: input.notes,
+        }).$returningId();
+
+        return { success: true, entryId: entry.id };
+      }),
+
+    // Get calendar entries
+    getCalendarEntries: protectedProcedure
+      .input(z.object({
+        competitorId: z.number().optional(),
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+        contentType: z.string().optional(),
+      }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        const conditions = [eq(competitorContentCalendar.userId, ctx.user.id)];
+        
+        if (input.competitorId) {
+          conditions.push(eq(competitorContentCalendar.competitorId, input.competitorId));
+        }
+
+        const entries = await db.select()
+          .from(competitorContentCalendar)
+          .where(and(...conditions))
+          .orderBy(desc(competitorContentCalendar.publishedAt));
+
+        // Filter by date range in JS if provided
+        let filteredEntries = entries;
+        if (input.startDate) {
+          const start = new Date(input.startDate);
+          filteredEntries = filteredEntries.filter(e => new Date(e.publishedAt) >= start);
+        }
+        if (input.endDate) {
+          const end = new Date(input.endDate);
+          filteredEntries = filteredEntries.filter(e => new Date(e.publishedAt) <= end);
+        }
+        if (input.contentType) {
+          filteredEntries = filteredEntries.filter(e => e.contentType === input.contentType);
+        }
+
+        return filteredEntries;
+      }),
+
+    // Get calendar view data (organized by date)
+    getCalendarView: protectedProcedure
+      .input(z.object({
+        year: z.number(),
+        month: z.number(), // 0-11
+      }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return { entries: [], byDate: {} };
+        if (!ctx.user) return { entries: [], byDate: {} };
+
+        const startDate = new Date(input.year, input.month, 1);
+        const endDate = new Date(input.year, input.month + 1, 0, 23, 59, 59);
+
+        const entries = await db.select({
+          entry: competitorContentCalendar,
+          competitor: competitors,
+        })
+          .from(competitorContentCalendar)
+          .leftJoin(competitors, eq(competitorContentCalendar.competitorId, competitors.id))
+          .where(eq(competitorContentCalendar.userId, ctx.user.id))
+          .orderBy(desc(competitorContentCalendar.publishedAt));
+
+        // Filter by date range
+        const filteredEntries = entries.filter(e => {
+          const date = new Date(e.entry.publishedAt);
+          return date >= startDate && date <= endDate;
+        });
+
+        // Organize by date
+        const byDate: Record<string, typeof filteredEntries> = {};
+        filteredEntries.forEach(entry => {
+          const dateKey = new Date(entry.entry.publishedAt).toISOString().split('T')[0];
+          if (!byDate[dateKey]) byDate[dateKey] = [];
+          byDate[dateKey].push(entry);
+        });
+
+        return { entries: filteredEntries, byDate };
+      }),
+
+    // Analyze posting patterns
+    analyzePostingPatterns: protectedProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Get all calendar entries for this competitor
+        const entries = await db.select()
+          .from(competitorContentCalendar)
+          .where(and(
+            eq(competitorContentCalendar.userId, ctx.user.id),
+            eq(competitorContentCalendar.competitorId, input.competitorId)
+          ))
+          .orderBy(desc(competitorContentCalendar.publishedAt));
+
+        if (entries.length === 0) {
+          return { success: false, message: "No content entries found for this competitor" };
+        }
+
+        // Calculate patterns
+        const dayDistribution: Record<number, { count: number; totalEngagement: number }> = {};
+        const hourDistribution: Record<number, { count: number; totalEngagement: number }> = {};
+        const contentTypeDistribution: Record<string, { count: number; totalEngagement: number }> = {};
+
+        for (let i = 0; i < 7; i++) dayDistribution[i] = { count: 0, totalEngagement: 0 };
+        for (let i = 0; i < 24; i++) hourDistribution[i] = { count: 0, totalEngagement: 0 };
+
+        entries.forEach(entry => {
+          const engagement = parseFloat(entry.engagementRate || "0");
+          
+          // Day distribution
+          if (entry.dayOfWeek !== null) {
+            dayDistribution[entry.dayOfWeek].count++;
+            dayDistribution[entry.dayOfWeek].totalEngagement += engagement;
+          }
+          
+          // Hour distribution
+          if (entry.hourOfDay !== null) {
+            hourDistribution[entry.hourOfDay].count++;
+            hourDistribution[entry.hourOfDay].totalEngagement += engagement;
+          }
+          
+          // Content type distribution
+          if (!contentTypeDistribution[entry.contentType]) {
+            contentTypeDistribution[entry.contentType] = { count: 0, totalEngagement: 0 };
+          }
+          contentTypeDistribution[entry.contentType].count++;
+          contentTypeDistribution[entry.contentType].totalEngagement += engagement;
+        });
+
+        // Find best performing times
+        let bestDay = 0;
+        let bestDayEngagement = 0;
+        Object.entries(dayDistribution).forEach(([day, data]) => {
+          const avgEngagement = data.count > 0 ? data.totalEngagement / data.count : 0;
+          if (avgEngagement > bestDayEngagement) {
+            bestDay = parseInt(day);
+            bestDayEngagement = avgEngagement;
+          }
+        });
+
+        let bestHour = 0;
+        let bestHourEngagement = 0;
+        Object.entries(hourDistribution).forEach(([hour, data]) => {
+          const avgEngagement = data.count > 0 ? data.totalEngagement / data.count : 0;
+          if (avgEngagement > bestHourEngagement) {
+            bestHour = parseInt(hour);
+            bestHourEngagement = avgEngagement;
+          }
+        });
+
+        // Calculate posting frequency
+        const dateRange = entries.length > 1 
+          ? (new Date(entries[0].publishedAt).getTime() - new Date(entries[entries.length - 1].publishedAt).getTime()) / (1000 * 60 * 60 * 24 * 7)
+          : 1;
+        const avgPostsPerWeek = entries.length / Math.max(dateRange, 1);
+        const avgPostsPerMonth = avgPostsPerWeek * 4.33;
+
+        // Generate recommendations
+        const recommendations: string[] = [];
+        const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+        recommendations.push(`Best posting day: ${dayNames[bestDay]} (avg ${bestDayEngagement.toFixed(2)}% engagement)`);
+        recommendations.push(`Best posting hour: ${bestHour}:00 (avg ${bestHourEngagement.toFixed(2)}% engagement)`);
+        recommendations.push(`Posting frequency: ${avgPostsPerWeek.toFixed(1)} posts/week`);
+
+        // Find content gaps
+        const contentGaps: { dayOfWeek?: number; hourOfDay?: number; contentType?: string; opportunity: string }[] = [];
+        
+        // Days with no posts
+        Object.entries(dayDistribution).forEach(([day, data]) => {
+          if (data.count === 0) {
+            contentGaps.push({
+              dayOfWeek: parseInt(day),
+              opportunity: `No content posted on ${dayNames[parseInt(day)]} - consider testing this day`
+            });
+          }
+        });
+
+        // Format distributions for storage
+        const formattedDayDist = Object.entries(dayDistribution).map(([day, data]) => ({
+          day: parseInt(day),
+          count: data.count,
+          avgEngagement: data.count > 0 ? data.totalEngagement / data.count : 0
+        }));
+
+        const formattedHourDist = Object.entries(hourDistribution).map(([hour, data]) => ({
+          hour: parseInt(hour),
+          count: data.count,
+          avgEngagement: data.count > 0 ? data.totalEngagement / data.count : 0
+        }));
+
+        const formattedContentTypeDist = Object.entries(contentTypeDistribution).map(([type, data]) => ({
+          type,
+          count: data.count,
+          percentage: (data.count / entries.length) * 100,
+          avgEngagement: data.count > 0 ? data.totalEngagement / data.count : 0
+        }));
+
+        // Save pattern analysis
+        const [pattern] = await db.insert(postingPatterns).values({
+          userId: ctx.user.id,
+          competitorId: input.competitorId,
+          avgPostsPerWeek: avgPostsPerWeek.toString(),
+          avgPostsPerMonth: avgPostsPerMonth.toString(),
+          bestDayOfWeek: bestDay,
+          bestHourOfDay: bestHour,
+          dayDistribution: formattedDayDist,
+          hourDistribution: formattedHourDist,
+          contentTypeDistribution: formattedContentTypeDist,
+          contentGaps,
+          recommendations,
+          analyzedFrom: entries[entries.length - 1].publishedAt,
+          analyzedTo: entries[0].publishedAt,
+          contentCount: entries.length,
+        }).$returningId();
+
+        return {
+          success: true,
+          patternId: pattern.id,
+          avgPostsPerWeek,
+          avgPostsPerMonth,
+          bestDay: dayNames[bestDay],
+          bestHour,
+          recommendations,
+          contentGaps,
+          dayDistribution: formattedDayDist,
+          hourDistribution: formattedHourDist,
+          contentTypeDistribution: formattedContentTypeDist,
+        };
+      }),
+
+    // Get posting patterns
+    getPostingPatterns: protectedProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return null;
+        if (!ctx.user) return null;
+
+        const [pattern] = await db.select()
+          .from(postingPatterns)
+          .where(and(
+            eq(postingPatterns.userId, ctx.user.id),
+            eq(postingPatterns.competitorId, input.competitorId)
+          ))
+          .orderBy(desc(postingPatterns.analyzedAt))
+          .limit(1);
+
+        return pattern || null;
+      }),
+
+    // Delete calendar entry
+    deleteCalendarEntry: protectedProcedure
+      .input(z.object({ entryId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.delete(competitorContentCalendar)
+          .where(and(
+            eq(competitorContentCalendar.id, input.entryId),
+            eq(competitorContentCalendar.userId, ctx.user.id)
+          ));
+
+        return { success: true };
+      }),
+
+    // ========================================
+    // AUTOMATED REPORTS
+    // ========================================
+
+    // Create report schedule
+    createReportSchedule: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(255),
+        reportType: z.enum([
+          "weekly_summary", "monthly_summary", "quarterly_review",
+          "competitor_deep_dive", "market_overview", "custom"
+        ]),
+        competitorIds: z.array(z.number()),
+        frequency: z.enum(["weekly", "biweekly", "monthly", "quarterly"]),
+        dayOfWeek: z.number().min(0).max(6).optional(),
+        dayOfMonth: z.number().min(1).max(31).optional(),
+        timeOfDay: z.string().optional(),
+        emailEnabled: z.boolean().default(true),
+        emailRecipients: z.array(z.string()).optional(),
+        includeSections: z.array(z.string()).optional(),
+        customPrompt: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Calculate next run time
+        const now = new Date();
+        let nextRunAt = new Date();
+        
+        switch (input.frequency) {
+          case "weekly":
+            nextRunAt.setDate(now.getDate() + (7 - now.getDay() + (input.dayOfWeek || 1)) % 7);
+            break;
+          case "biweekly":
+            nextRunAt.setDate(now.getDate() + 14);
+            break;
+          case "monthly":
+            nextRunAt.setMonth(now.getMonth() + 1);
+            nextRunAt.setDate(input.dayOfMonth || 1);
+            break;
+          case "quarterly":
+            nextRunAt.setMonth(now.getMonth() + 3);
+            nextRunAt.setDate(1);
+            break;
+        }
+
+        if (input.timeOfDay) {
+          const [hours, minutes] = input.timeOfDay.split(':').map(Number);
+          nextRunAt.setHours(hours, minutes, 0, 0);
+        }
+
+        const [schedule] = await db.insert(reportSchedules).values({
+          userId: ctx.user.id,
+          name: input.name,
+          reportType: input.reportType,
+          competitorIds: input.competitorIds,
+          frequency: input.frequency,
+          dayOfWeek: input.dayOfWeek,
+          dayOfMonth: input.dayOfMonth,
+          timeOfDay: input.timeOfDay,
+          emailEnabled: input.emailEnabled,
+          emailRecipients: input.emailRecipients,
+          includeSections: input.includeSections,
+          customPrompt: input.customPrompt,
+          status: "active",
+          nextRunAt,
+        }).$returningId();
+
+        return { success: true, scheduleId: schedule.id, nextRunAt };
+      }),
+
+    // Get report schedules
+    getReportSchedules: protectedProcedure
+      .query(async ({ ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        const schedules = await db.select()
+          .from(reportSchedules)
+          .where(eq(reportSchedules.userId, ctx.user.id))
+          .orderBy(desc(reportSchedules.createdAt));
+
+        return schedules;
+      }),
+
+    // Update report schedule
+    updateReportSchedule: protectedProcedure
+      .input(z.object({
+        scheduleId: z.number(),
+        status: z.enum(["active", "paused", "completed"]).optional(),
+        emailEnabled: z.boolean().optional(),
+        emailRecipients: z.array(z.string()).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const updates: Record<string, unknown> = {};
+        if (input.status !== undefined) updates.status = input.status;
+        if (input.emailEnabled !== undefined) updates.emailEnabled = input.emailEnabled;
+        if (input.emailRecipients !== undefined) updates.emailRecipients = input.emailRecipients;
+
+        await db.update(reportSchedules)
+          .set(updates)
+          .where(and(
+            eq(reportSchedules.id, input.scheduleId),
+            eq(reportSchedules.userId, ctx.user.id)
+          ));
+
+        return { success: true };
+      }),
+
+    // Delete report schedule
+    deleteReportSchedule: protectedProcedure
+      .input(z.object({ scheduleId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.delete(reportSchedules)
+          .where(and(
+            eq(reportSchedules.id, input.scheduleId),
+            eq(reportSchedules.userId, ctx.user.id)
+          ));
+
+        return { success: true };
+      }),
+
+    // Generate report
+    generateReport: protectedProcedure
+      .input(z.object({
+        reportType: z.enum([
+          "weekly_summary", "monthly_summary", "quarterly_review",
+          "competitor_deep_dive", "market_overview", "custom"
+        ]),
+        competitorIds: z.array(z.number()),
+        title: z.string().optional(),
+        customPrompt: z.string().optional(),
+        scheduleId: z.number().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        // Get competitors
+        const competitorList = await db.select()
+          .from(competitors)
+          .where(and(
+            eq(competitors.userId, ctx.user.id),
+            sql`${competitors.id} IN (${input.competitorIds.join(',')})`
+          ));
+
+        if (competitorList.length === 0) {
+          throw new Error("No competitors found");
+        }
+
+        // Create report record
+        const reportTitle = input.title || `${input.reportType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} - ${new Date().toLocaleDateString()}`;
+
+        const [report] = await db.insert(competitorReports).values({
+          userId: ctx.user.id,
+          title: reportTitle,
+          reportType: input.reportType,
+          competitorIds: input.competitorIds,
+          scheduleId: input.scheduleId,
+          isScheduled: !!input.scheduleId,
+          status: "generating",
+        }).$returningId();
+
+        // Gather metrics snapshot
+        const metricsSnapshot = competitorList.map(c => ({
+          competitorId: c.id,
+          competitorName: c.name,
+          metrics: {
+            website: c.website || "N/A",
+            industry: c.industry || "N/A",
+            employeeCount: c.employeeCount || "N/A",
+            fundingStage: c.fundingStage || "N/A",
+            estimatedRevenue: c.estimatedRevenue || "N/A",
+          }
+        }));
+
+        // Generate SWOT analysis
+        const allStrengths: string[] = [];
+        const allWeaknesses: string[] = [];
+        const allOpportunities: string[] = [];
+        const allThreats: string[] = [];
+
+        competitorList.forEach(c => {
+          if (c.strengths) allStrengths.push(...(c.strengths as string[]));
+          if (c.weaknesses) allWeaknesses.push(...(c.weaknesses as string[]));
+          if (c.opportunities) allOpportunities.push(...(c.opportunities as string[]));
+          if (c.threats) allThreats.push(...(c.threats as string[]));
+        });
+
+        const swotAnalysis = {
+          strengths: Array.from(new Set(allStrengths)).slice(0, 5),
+          weaknesses: Array.from(new Set(allWeaknesses)).slice(0, 5),
+          opportunities: Array.from(new Set(allOpportunities)).slice(0, 5),
+          threats: Array.from(new Set(allThreats)).slice(0, 5),
+        };
+
+        // Generate AI executive summary
+        const competitorSummary = competitorList.map(c => 
+          `${c.name}: ${c.industry || 'Unknown industry'}, ${c.employeeCount || 'Unknown'} employees, ${c.estimatedRevenue || 'Unknown revenue'}`
+        ).join('\n');
+
+        const aiPrompt = input.customPrompt || `Generate an executive summary for a competitive analysis report covering these competitors:
+
+${competitorSummary}
+
+Provide:
+1. Key market trends
+2. Competitive positioning insights
+3. Strategic recommendations
+4. Risk factors to monitor
+
+Keep it concise and actionable.`;
+
+        const aiResponse = await invokeLLM({
+          messages: [
+            { role: "system", content: "You are a competitive intelligence analyst. Generate concise, actionable insights." },
+            { role: "user", content: aiPrompt }
+          ]
+        });
+
+        const executiveSummary = typeof aiResponse.choices[0]?.message?.content === 'string' 
+          ? aiResponse.choices[0].message.content 
+          : "Unable to generate executive summary";
+
+        // Extract key findings and recommendations
+        const keyFindings = [
+          `Analyzed ${competitorList.length} competitors`,
+          `Primary industries: ${Array.from(new Set(competitorList.map(c => c.industry).filter(Boolean))).join(', ') || 'Various'}`,
+          `Report type: ${input.reportType.replace(/_/g, ' ')}`,
+        ];
+
+        const recommendations = [
+          "Monitor competitor content publishing patterns",
+          "Track pricing changes across competitors",
+          "Analyze customer sentiment trends",
+          "Identify content gaps for differentiation",
+        ];
+
+        // Build report sections
+        const sections = [
+          {
+            id: "executive-summary",
+            title: "Executive Summary",
+            type: "summary" as const,
+            content: executiveSummary,
+          },
+          {
+            id: "competitor-overview",
+            title: "Competitor Overview",
+            type: "metrics" as const,
+            content: `Overview of ${competitorList.length} tracked competitors.`,
+            data: { competitors: metricsSnapshot },
+          },
+          {
+            id: "swot-analysis",
+            title: "SWOT Analysis",
+            type: "swot" as const,
+            content: "Aggregated SWOT analysis across all competitors.",
+            data: swotAnalysis,
+          },
+          {
+            id: "recommendations",
+            title: "Strategic Recommendations",
+            type: "recommendations" as const,
+            content: recommendations.join('\n'),
+          },
+        ];
+
+        // Update report with generated content
+        await db.update(competitorReports)
+          .set({
+            sections,
+            executiveSummary,
+            keyFindings,
+            recommendations,
+            metricsSnapshot,
+            swotAnalysis,
+            status: "completed",
+            generatedAt: new Date(),
+          })
+          .where(eq(competitorReports.id, report.id));
+
+        // Update schedule if this was a scheduled report
+        if (input.scheduleId) {
+          await db.update(reportSchedules)
+            .set({
+              lastRunAt: new Date(),
+              runCount: sql`${reportSchedules.runCount} + 1`,
+            })
+            .where(eq(reportSchedules.id, input.scheduleId));
+        }
+
+        return {
+          success: true,
+          reportId: report.id,
+          title: reportTitle,
+          executiveSummary,
+          keyFindings,
+          recommendations,
+          swotAnalysis,
+          metricsSnapshot,
+          sections,
+        };
+      }),
+
+    // Get reports
+    getReports: protectedProcedure
+      .input(z.object({
+        reportType: z.string().optional(),
+        limit: z.number().default(20),
+      }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return [];
+        if (!ctx.user) return [];
+
+        const conditions = [eq(competitorReports.userId, ctx.user.id)];
+
+        const reports = await db.select()
+          .from(competitorReports)
+          .where(and(...conditions))
+          .orderBy(desc(competitorReports.createdAt))
+          .limit(input.limit);
+
+        return reports;
+      }),
+
+    // Get single report
+    getReport: protectedProcedure
+      .input(z.object({ reportId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return null;
+        if (!ctx.user) return null;
+
+        const [report] = await db.select()
+          .from(competitorReports)
+          .where(and(
+            eq(competitorReports.id, input.reportId),
+            eq(competitorReports.userId, ctx.user.id)
+          ));
+
+        return report || null;
+      }),
+
+    // Delete report
+    deleteReport: protectedProcedure
+      .input(z.object({ reportId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        await db.delete(competitorReports)
+          .where(and(
+            eq(competitorReports.id, input.reportId),
+            eq(competitorReports.userId, ctx.user.id)
+          ));
+
+        return { success: true };
+      }),
+
+    // Export report as markdown
+    exportReportMarkdown: protectedProcedure
+      .input(z.object({ reportId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        if (!ctx.user) throw new Error("Not authenticated");
+
+        const [report] = await db.select()
+          .from(competitorReports)
+          .where(and(
+            eq(competitorReports.id, input.reportId),
+            eq(competitorReports.userId, ctx.user.id)
+          ));
+
+        if (!report) throw new Error("Report not found");
+
+        // Build markdown content
+        let markdown = `# ${report.title}\n\n`;
+        markdown += `**Generated:** ${report.generatedAt ? new Date(report.generatedAt).toLocaleString() : 'N/A'}\n`;
+        markdown += `**Report Type:** ${report.reportType?.replace(/_/g, ' ')}\n\n`;
+        markdown += `---\n\n`;
+
+        // Executive Summary
+        if (report.executiveSummary) {
+          markdown += `## Executive Summary\n\n${report.executiveSummary}\n\n`;
+        }
+
+        // Key Findings
+        if (report.keyFindings && (report.keyFindings as string[]).length > 0) {
+          markdown += `## Key Findings\n\n`;
+          (report.keyFindings as string[]).forEach((finding, i) => {
+            markdown += `${i + 1}. ${finding}\n`;
+          });
+          markdown += `\n`;
+        }
+
+        // SWOT Analysis
+        if (report.swotAnalysis) {
+          const swot = report.swotAnalysis as { strengths: string[]; weaknesses: string[]; opportunities: string[]; threats: string[] };
+          markdown += `## SWOT Analysis\n\n`;
+          markdown += `### Strengths\n${swot.strengths?.map(s => `- ${s}`).join('\n') || 'None identified'}\n\n`;
+          markdown += `### Weaknesses\n${swot.weaknesses?.map(w => `- ${w}`).join('\n') || 'None identified'}\n\n`;
+          markdown += `### Opportunities\n${swot.opportunities?.map(o => `- ${o}`).join('\n') || 'None identified'}\n\n`;
+          markdown += `### Threats\n${swot.threats?.map(t => `- ${t}`).join('\n') || 'None identified'}\n\n`;
+        }
+
+        // Recommendations
+        if (report.recommendations && (report.recommendations as string[]).length > 0) {
+          markdown += `## Strategic Recommendations\n\n`;
+          (report.recommendations as string[]).forEach((rec, i) => {
+            markdown += `${i + 1}. ${rec}\n`;
+          });
+          markdown += `\n`;
+        }
+
+        // Competitor Metrics
+        if (report.metricsSnapshot && (report.metricsSnapshot as any[]).length > 0) {
+          markdown += `## Competitor Metrics\n\n`;
+          markdown += `| Competitor | Website | Industry | Employees | Revenue |\n`;
+          markdown += `|------------|---------|----------|-----------|---------|\n`;
+          (report.metricsSnapshot as any[]).forEach(m => {
+            markdown += `| ${m.competitorName} | ${m.metrics.website} | ${m.metrics.industry} | ${m.metrics.employeeCount} | ${m.metrics.estimatedRevenue} |\n`;
+          });
+          markdown += `\n`;
+        }
+
+        markdown += `---\n\n*Report generated by YouTube Playlist Analyzer*\n`;
+
+        return { markdown, title: report.title };
       }),
   }),
 });

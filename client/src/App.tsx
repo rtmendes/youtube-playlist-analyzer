@@ -27,6 +27,7 @@ import TikTokIntelligence from "./pages/TikTokIntelligence";
 import SavedComments from "./pages/SavedComments";
 import SharedCollection from "./pages/SharedCollection";
 import ContentGenerator from "./pages/ContentGenerator";
+import CompetitorCalendar from "./pages/CompetitorCalendar";
 
 function Router() {
   return (
@@ -52,6 +53,7 @@ function Router() {
       <Route path={"/saved-comments"} component={SavedComments} />
       <Route path={"/shared-collection/:shareToken"} component={SharedCollection} />
       <Route path={"/content-generator"} component={ContentGenerator} />
+      <Route path={"/competitor-calendar"} component={CompetitorCalendar} />
       <Route path={"/playlists"} component={NotFound} />
       <Route path={"/trash"} component={NotFound} />
       <Route path={"/404"} component={NotFound} />
