@@ -58,14 +58,47 @@ export default function ContentGenerator() {
   // State
   const [selectedType, setSelectedType] = useState<string | null>(null);
 
-  // Handle URL parameter for content type
+  // State for gap analysis source info
+  const [gapAnalysisSource, setGapAnalysisSource] = useState<{
+    topic: string;
+    competitors: string[];
+    priority?: string;
+    type?: string;
+  } | null>(null);
+
+  // Handle URL parameter for content type and gap analysis
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const typeParam = params.get("type");
+    const topicParam = params.get("topic");
+    const sourceParam = params.get("source");
+    const competitorsParam = params.get("competitors");
+    const priorityParam = params.get("priority");
+    const gapTypeParam = params.get("type");
+    
     if (typeParam && ["advertorial", "vsl_script", "ugc_scenario", "course_outline", "ad_copy", "sales_page", "email_sequence", "product_idea"].includes(typeParam)) {
       setSelectedType(typeParam);
-      window.history.replaceState({}, "", location.split("?")[0]);
     }
+    
+    // Handle gap analysis source
+    if (sourceParam === "gap-analysis" && topicParam) {
+      setGapAnalysisSource({
+        topic: topicParam,
+        competitors: competitorsParam ? competitorsParam.split(",") : [],
+        priority: priorityParam || undefined,
+        type: gapTypeParam || undefined,
+      });
+      // Pre-fill the topic into variables
+      setVariables(prev => ({
+        ...prev,
+        topic: topicParam,
+        product_name: topicParam,
+        subject: topicParam,
+      }));
+      toast.info(`Content topic pre-filled from Gap Analysis: "${topicParam}"`);
+    }
+    
+    window.history.replaceState({}, "", location.split("?")[0]);
   }, [location]);
 
   const [selectedPrompt, setSelectedPrompt] = useState<string | null>(null);
@@ -765,6 +798,47 @@ export default function ContentGenerator() {
 
         {/* Generator Tab */}
         <TabsContent value="generator" className="space-y-6">
+          {/* Gap Analysis Source Banner */}
+          {gapAnalysisSource && (
+            <Card className="border-primary/30 bg-primary/5">
+              <CardContent className="py-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                      <Target className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm">Inspired by Content Gap Analysis</p>
+                      <p className="text-sm text-muted-foreground mt-0.5">
+                        Topic: <span className="font-medium text-foreground">"{gapAnalysisSource.topic}"</span>
+                      </p>
+                      {gapAnalysisSource.competitors.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          <span className="text-xs text-muted-foreground">Covered by:</span>
+                          {gapAnalysisSource.competitors.map((comp, i) => (
+                            <Badge key={i} variant="secondary" className="text-xs">{comp}</Badge>
+                          ))}
+                        </div>
+                      )}
+                      {gapAnalysisSource.priority && (
+                        <Badge variant={gapAnalysisSource.priority === 'high' ? 'destructive' : 'default'} className="mt-2 text-xs">
+                          {gapAnalysisSource.priority} priority
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setGapAnalysisSource(null)}
+                    className="text-xs"
+                  >
+                    Dismiss
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
           <div className="grid lg:grid-cols-3 gap-6">
             {/* Left Column - Content Type & Prompt Selection */}
             <div className="space-y-6">

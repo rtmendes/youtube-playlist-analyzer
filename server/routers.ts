@@ -5456,6 +5456,59 @@ Format as JSON with arrays for each category.`;
     // YOUTUBE CHANNEL COMPARISON
     // ========================================
 
+    // Search YouTube channels by name
+    searchYouTubeChannels: protectedProcedure
+      .input(z.object({
+        query: z.string().min(1),
+        apiKey: z.string(),
+        maxResults: z.number().min(1).max(25).default(10),
+      }))
+      .mutation(async ({ input }) => {
+        youtubeClient.setApiKey(input.apiKey);
+        const searchResults = await youtubeClient.searchChannels(input.query, input.maxResults);
+        
+        const channels = searchResults.items
+          .filter(item => item.id.channelId)
+          .map(item => ({
+            channelId: item.id.channelId!,
+            channelName: item.snippet.title,
+            description: item.snippet.description,
+            thumbnailUrl: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url || "",
+          }));
+        
+        return { channels };
+      }),
+
+    // Resolve a YouTube channel from URL, handle, or ID
+    resolveYouTubeChannel: protectedProcedure
+      .input(z.object({
+        input: z.string().min(1),
+        apiKey: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        youtubeClient.setApiKey(input.apiKey);
+        const channel = await youtubeClient.resolveChannel(input.input);
+        
+        if (!channel) {
+          throw new Error("Could not find the YouTube channel. Please check the URL or handle and try again.");
+        }
+        
+        return {
+          channel: {
+            channelId: channel.id,
+            channelName: channel.snippet?.title || "Unknown",
+            channelHandle: channel.snippet?.customUrl || "",
+            description: channel.snippet?.description || "",
+            thumbnailUrl: channel.snippet?.thumbnails?.medium?.url || channel.snippet?.thumbnails?.default?.url || "",
+            subscriberCount: parseInt(channel.statistics?.subscriberCount || "0"),
+            videoCount: parseInt(channel.statistics?.videoCount || "0"),
+            viewCount: parseInt(channel.statistics?.viewCount || "0"),
+            country: channel.snippet?.country || "",
+            publishedAt: channel.snippet?.publishedAt || "",
+          },
+        };
+      }),
+
     // Add YouTube channel to competitor
     addYouTubeChannel: protectedProcedure
       .input(z.object({

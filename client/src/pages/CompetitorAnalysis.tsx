@@ -101,6 +101,14 @@ export default function CompetitorAnalysis() {
   const [showCompareDialog, setShowCompareDialog] = useState(false);
   const [comparisonName, setComparisonName] = useState("");
 
+  // Channel Linking Wizard state
+  const [wizardStep, setWizardStep] = useState<'search' | 'preview' | 'link'>('search');
+  const [channelSearchQuery, setChannelSearchQuery] = useState("");
+  const [channelSearchResults, setChannelSearchResults] = useState<any[]>([]);
+  const [selectedChannelPreview, setSelectedChannelPreview] = useState<any>(null);
+  const [isSearchingChannels, setIsSearchingChannels] = useState(false);
+  const [isResolvingChannel, setIsResolvingChannel] = useState(false);
+
   // Alerts state
   const [showCreateAlertDialog, setShowCreateAlertDialog] = useState(false);
   const [alertName, setAlertName] = useState("");
@@ -140,13 +148,36 @@ export default function CompetitorAnalysis() {
     },
   });
 
+  const searchYouTubeChannelsMutation = trpc.competitorAnalysis.searchYouTubeChannels.useMutation({
+    onSuccess: (data) => {
+      setChannelSearchResults(data.channels);
+      setIsSearchingChannels(false);
+    },
+    onError: (error) => {
+      toast.error(`Search failed: ${error.message}`);
+      setIsSearchingChannels(false);
+    },
+  });
+
+  const resolveYouTubeChannelMutation = trpc.competitorAnalysis.resolveYouTubeChannel.useMutation({
+    onSuccess: (data) => {
+      setSelectedChannelPreview(data.channel);
+      setWizardStep('preview');
+      setIsResolvingChannel(false);
+    },
+    onError: (error) => {
+      toast.error(`Could not resolve channel: ${error.message}`);
+      setIsResolvingChannel(false);
+    },
+  });
+
   const addYouTubeChannelMutation = trpc.competitorAnalysis.addYouTubeChannel.useMutation({
     onSuccess: () => {
-      toast.success("YouTube channel added!");
+      toast.success("YouTube channel linked successfully!");
       setShowAddChannelDialog(false);
-      setNewChannelId("");
-      setNewChannelName("");
+      resetWizard();
       youtubeChannelsQuery.refetch();
+      competitorsQuery.refetch();
     },
     onError: (error) => {
       toast.error(`Failed to add channel: ${error.message}`);
@@ -253,6 +284,67 @@ export default function CompetitorAnalysis() {
   });
 
   // Helper functions
+  const resetWizard = () => {
+    setWizardStep('search');
+    setChannelSearchQuery("");
+    setChannelSearchResults([]);
+    setSelectedChannelPreview(null);
+    setNewChannelId("");
+    setNewChannelName("");
+    setSelectedCompetitorId(null);
+  };
+
+  const handleChannelSearch = () => {
+    if (!channelSearchQuery.trim()) {
+      toast.error("Please enter a search query");
+      return;
+    }
+    if (!youtubeApiKey) {
+      toast.error("Please enter your YouTube API key first");
+      return;
+    }
+    setIsSearchingChannels(true);
+    searchYouTubeChannelsMutation.mutate({
+      query: channelSearchQuery,
+      apiKey: youtubeApiKey,
+      maxResults: 10,
+    });
+  };
+
+  const handleResolveChannel = (input: string) => {
+    if (!input.trim()) {
+      toast.error("Please enter a channel URL or handle");
+      return;
+    }
+    if (!youtubeApiKey) {
+      toast.error("Please enter your YouTube API key first");
+      return;
+    }
+    setIsResolvingChannel(true);
+    resolveYouTubeChannelMutation.mutate({
+      input: input,
+      apiKey: youtubeApiKey,
+    });
+  };
+
+  const handleLinkChannel = () => {
+    if (!selectedChannelPreview) {
+      toast.error("No channel selected");
+      return;
+    }
+    addYouTubeChannelMutation.mutate({
+      competitorId: selectedCompetitorId || 0,
+      channelId: selectedChannelPreview.channelId,
+      channelName: selectedChannelPreview.channelName,
+      channelHandle: selectedChannelPreview.channelHandle,
+      thumbnailUrl: selectedChannelPreview.thumbnailUrl,
+      description: selectedChannelPreview.description,
+      subscriberCount: selectedChannelPreview.subscriberCount,
+      videoCount: selectedChannelPreview.videoCount,
+      viewCount: selectedChannelPreview.viewCount,
+    });
+  };
+
   const resetAlertForm = () => {
     setAlertName("");
     setAlertType("new_content");
@@ -1040,78 +1132,281 @@ export default function CompetitorAnalysis() {
         </Tabs>
       </div>
 
-      {/* Add YouTube Channel Dialog */}
-      <Dialog open={showAddChannelDialog} onOpenChange={setShowAddChannelDialog}>
-        <DialogContent>
+      {/* YouTube Channel Linking Wizard Dialog */}
+      <Dialog open={showAddChannelDialog} onOpenChange={(open) => {
+        setShowAddChannelDialog(open);
+        if (!open) resetWizard();
+      }}>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Add YouTube Channel</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Youtube className="h-5 w-5 text-red-500" />
+              Link YouTube Channel
+            </DialogTitle>
             <DialogDescription>
-              Add a competitor's YouTube channel to track and compare
+              {wizardStep === 'search' && 'Search by name, paste a URL, or enter a channel handle (@username)'}
+              {wizardStep === 'preview' && 'Review channel details before linking'}
+              {wizardStep === 'link' && 'Select which competitor to link this channel to'}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Channel ID</Label>
-              <Input
-                placeholder="UCxxxxxxxxxxxxxxxx"
-                value={newChannelId}
-                onChange={(e) => setNewChannelId(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                Find this in the channel URL: youtube.com/channel/UCxxxxxxx
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label>Channel Name</Label>
-              <Input
-                placeholder="Channel name"
-                value={newChannelName}
-                onChange={(e) => setNewChannelName(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Link to Competitor (Optional)</Label>
-              <Select 
-                value={selectedCompetitorId?.toString() || ""} 
-                onValueChange={(v) => setSelectedCompetitorId(v ? parseInt(v) : null)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a competitor" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">None</SelectItem>
-                  {competitorsQuery.data?.map((comp) => (
-                    <SelectItem key={comp.id} value={comp.id.toString()}>
-                      {comp.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+
+          {/* Step indicator */}
+          <div className="flex items-center justify-center gap-2 py-2">
+            {(['search', 'preview', 'link'] as const).map((step, index) => (
+              <div key={step} className="flex items-center gap-2">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                  wizardStep === step ? 'bg-primary text-primary-foreground' :
+                  (['search', 'preview', 'link'] as const).indexOf(wizardStep) > index ? 'bg-green-500 text-white' :
+                  'bg-muted text-muted-foreground'
+                }`}>
+                  {(['search', 'preview', 'link'] as const).indexOf(wizardStep) > index ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    index + 1
+                  )}
+                </div>
+                {index < 2 && <div className={`w-12 h-0.5 ${
+                  (['search', 'preview', 'link'] as const).indexOf(wizardStep) > index ? 'bg-green-500' : 'bg-muted'
+                }`} />}
+              </div>
+            ))}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddChannelDialog(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                if (!newChannelId || !newChannelName) {
-                  toast.error("Please fill in all required fields");
-                  return;
-                }
-                addYouTubeChannelMutation.mutate({
-                  competitorId: selectedCompetitorId || 0,
-                  channelId: newChannelId,
-                  channelName: newChannelName,
-                });
-              }}
-              disabled={addYouTubeChannelMutation.isPending}
-            >
-              {addYouTubeChannelMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : null}
-              Add Channel
-            </Button>
+
+          {/* Step 1: Search */}
+          {wizardStep === 'search' && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Paste Channel URL or Handle</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="https://youtube.com/@channelname or @channelname or UCxxxxxxx"
+                    value={channelSearchQuery}
+                    onChange={(e) => setChannelSearchQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const input = channelSearchQuery.trim();
+                        if (input.includes('youtube.com') || input.startsWith('@') || input.startsWith('UC')) {
+                          handleResolveChannel(input);
+                        } else {
+                          handleChannelSearch();
+                        }
+                      }
+                    }}
+                  />
+                  <Button
+                    onClick={() => {
+                      const input = channelSearchQuery.trim();
+                      if (input.includes('youtube.com') || input.startsWith('@') || input.startsWith('UC')) {
+                        handleResolveChannel(input);
+                      } else {
+                        handleChannelSearch();
+                      }
+                    }}
+                    disabled={isSearchingChannels || isResolvingChannel}
+                  >
+                    {(isSearchingChannels || isResolvingChannel) ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Search className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Supports: youtube.com/@handle, youtube.com/channel/UCxxx, youtube.com/c/name, @handle, or search by name
+                </p>
+              </div>
+
+              {/* Search Results */}
+              {channelSearchResults.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Search Results ({channelSearchResults.length} found)</Label>
+                  <ScrollArea className="h-64 border rounded-lg">
+                    <div className="p-2 space-y-2">
+                      {channelSearchResults.map((channel) => (
+                        <div
+                          key={channel.channelId}
+                          className="flex items-center gap-3 p-3 rounded-lg border hover:bg-accent cursor-pointer transition-colors"
+                          onClick={() => handleResolveChannel(channel.channelId)}
+                        >
+                          {channel.thumbnailUrl ? (
+                            <img
+                              src={channel.thumbnailUrl}
+                              alt={channel.channelName}
+                              className="w-12 h-12 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+                              <Youtube className="h-6 w-6 text-muted-foreground" />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium truncate">{channel.channelName}</p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {channel.description?.slice(0, 100) || 'No description'}
+                            </p>
+                          </div>
+                          <ExternalLink className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </div>
+              )}
+
+              {!youtubeApiKey && (
+                <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                  <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                    <AlertTriangle className="h-4 w-4 inline mr-2" />
+                    Please enter your YouTube API key in the settings above to search for channels.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 2: Preview */}
+          {wizardStep === 'preview' && selectedChannelPreview && (
+            <div className="space-y-4">
+              <div className="flex items-start gap-4 p-4 bg-accent/50 rounded-lg">
+                {selectedChannelPreview.thumbnailUrl ? (
+                  <img
+                    src={selectedChannelPreview.thumbnailUrl}
+                    alt={selectedChannelPreview.channelName}
+                    className="w-20 h-20 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center">
+                    <Youtube className="h-10 w-10 text-muted-foreground" />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold">{selectedChannelPreview.channelName}</h3>
+                  {selectedChannelPreview.channelHandle && (
+                    <p className="text-sm text-muted-foreground">@{selectedChannelPreview.channelHandle.replace('@', '')}</p>
+                  )}
+                  <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                    {selectedChannelPreview.description || 'No description available'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <Card>
+                  <CardContent className="p-4 text-center">
+                    <Users className="h-5 w-5 mx-auto mb-2 text-blue-500" />
+                    <p className="text-2xl font-bold">{formatNumber(selectedChannelPreview.subscriberCount)}</p>
+                    <p className="text-xs text-muted-foreground">Subscribers</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4 text-center">
+                    <Play className="h-5 w-5 mx-auto mb-2 text-red-500" />
+                    <p className="text-2xl font-bold">{formatNumber(selectedChannelPreview.videoCount)}</p>
+                    <p className="text-xs text-muted-foreground">Videos</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4 text-center">
+                    <Eye className="h-5 w-5 mx-auto mb-2 text-green-500" />
+                    <p className="text-2xl font-bold">{formatNumber(selectedChannelPreview.viewCount)}</p>
+                    <p className="text-xs text-muted-foreground">Total Views</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {selectedChannelPreview.country && (
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-medium">Country:</span> {selectedChannelPreview.country}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Step 3: Link to Competitor */}
+          {wizardStep === 'link' && selectedChannelPreview && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 p-3 bg-accent/50 rounded-lg">
+                {selectedChannelPreview.thumbnailUrl && (
+                  <img
+                    src={selectedChannelPreview.thumbnailUrl}
+                    alt={selectedChannelPreview.channelName}
+                    className="w-10 h-10 rounded-full object-cover"
+                  />
+                )}
+                <div>
+                  <p className="font-medium">{selectedChannelPreview.channelName}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatNumber(selectedChannelPreview.subscriberCount)} subscribers
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Link to Competitor</Label>
+                <Select
+                  value={selectedCompetitorId?.toString() || "none"}
+                  onValueChange={(v) => setSelectedCompetitorId(v === "none" ? null : parseInt(v))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a competitor (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No competitor (standalone channel)</SelectItem>
+                    {competitorsQuery.data?.map((comp) => (
+                      <SelectItem key={comp.id} value={comp.id.toString()}>
+                        {comp.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Linking to a competitor helps organize your competitive analysis
+                </p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="flex justify-between">
+            <div>
+              {wizardStep !== 'search' && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (wizardStep === 'preview') setWizardStep('search');
+                    if (wizardStep === 'link') setWizardStep('preview');
+                  }}
+                >
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => {
+                setShowAddChannelDialog(false);
+                resetWizard();
+              }}>
+                Cancel
+              </Button>
+              {wizardStep === 'preview' && (
+                <Button onClick={() => setWizardStep('link')}>
+                  Continue
+                </Button>
+              )}
+              {wizardStep === 'link' && (
+                <Button
+                  onClick={handleLinkChannel}
+                  disabled={addYouTubeChannelMutation.isPending}
+                >
+                  {addYouTubeChannelMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Check className="h-4 w-4 mr-2" />
+                  )}
+                  Link Channel
+                </Button>
+              )}
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

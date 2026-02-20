@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Link } from "wouter";
 import {
   BarChart3,
   TrendingUp,
@@ -34,6 +35,8 @@ import {
   Zap,
   PieChart,
   Activity,
+  Wand2,
+  ExternalLink,
 } from "lucide-react";
 
 const CONTENT_TYPE_ICONS: Record<string, React.ElementType> = {
@@ -455,6 +458,12 @@ export default function ContentGapAnalysis() {
                                 </Badge>
                               ))}
                             </div>
+                            <Link href={`/content-generator?topic=${encodeURIComponent(gap.topic)}&source=gap-analysis&competitors=${encodeURIComponent(gap.coveredBy.join(','))}`}>
+                              <Button variant="ghost" size="sm" className="mt-2 h-7 text-xs">
+                                <Wand2 className="w-3 h-3 mr-1" />
+                                Generate Content for This Gap
+                              </Button>
+                            </Link>
                           </div>
                         </div>
                       ))}
@@ -821,6 +830,14 @@ export default function ContentGapAnalysis() {
                                   </div>
                                   <Badge variant="destructive">High</Badge>
                                 </div>
+                                <div className="mt-3 flex gap-2">
+                                  <Link href={`/content-generator?topic=${encodeURIComponent(opp.title)}&source=gap-analysis&priority=${opp.priority}&type=${opp.type}`}>
+                                    <Button variant="outline" size="sm" className="h-7 text-xs">
+                                      <Wand2 className="w-3 h-3 mr-1" />
+                                      Generate Content
+                                    </Button>
+                                  </Link>
+                                </div>
                               </div>
                             ))}
                         </div>
@@ -842,6 +859,17 @@ export default function ContentGapAnalysis() {
                                 <Badge variant="outline">{gap.coveredBy.length} competitors</Badge>
                               </div>
                               <p className="text-sm text-muted-foreground">{gap.opportunity}</p>
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {gap.coveredBy.map((name, j) => (
+                                  <Badge key={j} variant="secondary" className="text-xs">{name}</Badge>
+                                ))}
+                              </div>
+                              <Link href={`/content-generator?topic=${encodeURIComponent(gap.topic)}&source=gap-analysis&competitors=${encodeURIComponent(gap.coveredBy.join(','))}`}>
+                                <Button variant="outline" size="sm" className="mt-3 h-7 text-xs">
+                                  <Wand2 className="w-3 h-3 mr-1" />
+                                  Generate Content for This Topic
+                                </Button>
+                              </Link>
                             </div>
                           ))}
                         </div>
@@ -866,6 +894,14 @@ export default function ContentGapAnalysis() {
                                     <p className="text-sm text-muted-foreground mt-1">{opp.description}</p>
                                   </div>
                                   <Badge>Medium</Badge>
+                                </div>
+                                <div className="mt-3 flex gap-2">
+                                  <Link href={`/content-generator?topic=${encodeURIComponent(opp.title)}&source=gap-analysis&priority=${opp.priority}&type=${opp.type}`}>
+                                    <Button variant="outline" size="sm" className="h-7 text-xs">
+                                      <Wand2 className="w-3 h-3 mr-1" />
+                                      Generate Content
+                                    </Button>
+                                  </Link>
                                 </div>
                               </div>
                             ))}

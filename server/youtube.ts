@@ -587,6 +587,66 @@ class YouTubeAPIClient {
 
     return allVideos;
   }
+
+  /**
+   * Search for YouTube channels by query
+   */
+  async searchChannels(query: string, maxResults: number = 10): Promise<YouTubeSearchResponse> {
+    const response = await axios.get(`${YOUTUBE_API_BASE}/search`, {
+      params: {
+        part: "snippet",
+        q: query,
+        type: "channel",
+        maxResults,
+        key: this.apiKey,
+      },
+    });
+    return response.data;
+  }
+
+  /**
+   * Resolve a channel from various input formats (URL, handle, ID)
+   * Returns full channel details
+   */
+  async resolveChannel(input: string): Promise<YouTubeChannelItem | null> {
+    const parsed = parseYouTubeInput(input.trim());
+    
+    let channelId: string | null = null;
+    
+    if (parsed.type === 'channel_id') {
+      channelId = parsed.value;
+    } else if (parsed.type === 'channel_handle') {
+      // Search for the handle to find the channel
+      const searchResponse = await this.searchChannels(`@${parsed.value}`, 1);
+      if (searchResponse.items.length > 0 && searchResponse.items[0].id.channelId) {
+        channelId = searchResponse.items[0].id.channelId;
+      }
+    } else if (input.startsWith('@')) {
+      // Direct handle without URL
+      const handle = input.replace('@', '');
+      const searchResponse = await this.searchChannels(`@${handle}`, 1);
+      if (searchResponse.items.length > 0 && searchResponse.items[0].id.channelId) {
+        channelId = searchResponse.items[0].id.channelId;
+      }
+    } else if (input.startsWith('UC') || input.startsWith('SC')) {
+      // Direct channel ID
+      channelId = input;
+    } else {
+      // Try as a search query
+      const searchResponse = await this.searchChannels(input, 1);
+      if (searchResponse.items.length > 0 && searchResponse.items[0].id.channelId) {
+        channelId = searchResponse.items[0].id.channelId;
+      }
+    }
+    
+    if (!channelId) return null;
+    
+    // Get full channel details
+    const channelResponse = await this.getChannelById(channelId);
+    if (channelResponse.items.length === 0) return null;
+    
+    return channelResponse.items[0];
+  }
 }
 
 export interface YouTubeSearchResponse {

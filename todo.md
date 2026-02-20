@@ -787,3 +787,18 @@
 - [x] Add engagement benchmarks comparison chart
 - [x] Include AI-generated gap recommendations
 - [x] Enable filtering by competitor and time range
+
+## Competitor YouTube Channel Linking Wizard
+- [x] Search for YouTube channels by name or URL from Competitor Analysis
+- [x] Auto-detect channel ID from various URL formats (@handle, /channel/UC..., /c/name)
+- [x] Preview channel info (subscribers, video count, recent uploads) before linking
+- [x] One-click link to competitor profile
+- [x] 3-step wizard flow: Search → Preview → Link
+
+## Content Strategy Integration
+- [x] Add "Generate Content for This Gap" button on content gaps in Overview tab
+- [x] Add "Generate Content" buttons on all opportunities in Opportunities tab
+- [x] Pre-fill Content Generator with topic and competitor benchmarks via URL params
+- [x] Add "Inspired by Gap Analysis" banner in Content Generator when navigated from gaps
+- [x] Connect high-priority and medium-priority opportunities to Content Generator
+- [x] Connect topic opportunities to Content Generator with competitor context
