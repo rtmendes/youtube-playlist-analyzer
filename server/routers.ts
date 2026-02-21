@@ -17,6 +17,14 @@ import { eq, desc, and, like, or, sql } from "drizzle-orm";
 import { parseAmazonUrl, generateSampleProduct, generateSampleReviews, calculateReviewStats, analyzeReviewSentiment, fetchAmazonProduct, fetchAmazonReviews, searchAmazonProducts, compareProducts, AmazonApiConfig } from "./amazon";
 import { parseRedditUrl, fetchSubredditPosts, searchReddit, fetchPostComments, analyzeRedditComment, calculateRedditStats, getPopularResearchSubreddits, fetchSubredditPostsWithFallback, searchRedditWithFallback, fetchPostCommentsWithFallback, generateSamplePosts, generateSampleComments as generateSampleRedditComments } from "./reddit";
 import { parseTikTokUrl, generateSampleVideo, generateSampleCreator, generateSampleComments as generateSampleTikTokComments, analyzeTikTokSentiment, extractTrendingHashtags, TikTokVideoInfo } from "./tiktok";
+import { fetchTikTokVideo, fetchTikTokComments } from "./scrape-creators";
+import { ENV } from "./_core/env";
+
+function getYouTubeApiKey(inputKey?: string): string {
+  const key = ENV.youtubeApiKey || inputKey;
+  if (!key) throw new Error("YouTube API key required. Set YOUTUBE_API_KEY in .env or provide apiKey in the request.");
+  return key;
+}
 
 export const appRouter = router({
   system: systemRouter,
@@ -96,10 +104,10 @@ export const appRouter = router({
     getPlaylist: publicProcedure
       .input(z.object({ 
         playlistId: z.string(),
-        apiKey: z.string(),
+        apiKey: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
-        youtubeClient.setApiKey(input.apiKey);
+        youtubeClient.setApiKey(getYouTubeApiKey(input.apiKey));
         
         const response = await youtubeClient.getPlaylist(input.playlistId);
         
@@ -155,11 +163,11 @@ export const appRouter = router({
     getPlaylistVideos: publicProcedure
       .input(z.object({ 
         playlistId: z.string(),
-        apiKey: z.string(),
+        apiKey: z.string().optional(),
         pageToken: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
-        youtubeClient.setApiKey(input.apiKey);
+        youtubeClient.setApiKey(getYouTubeApiKey(input.apiKey));
         
         const playlistItems = await youtubeClient.getPlaylistItems(
           input.playlistId,
@@ -209,12 +217,12 @@ export const appRouter = router({
     getVideoComments: publicProcedure
       .input(z.object({ 
         videoId: z.string(),
-        apiKey: z.string(),
+        apiKey: z.string().optional(),
         pageToken: z.string().optional(),
         maxResults: z.number().min(1).max(100).default(100),
       }))
       .mutation(async ({ input }) => {
-        youtubeClient.setApiKey(input.apiKey);
+        youtubeClient.setApiKey(getYouTubeApiKey(input.apiKey));
         
         try {
           const response = await youtubeClient.getCommentThreads(
@@ -272,10 +280,10 @@ export const appRouter = router({
     getVideoDetails: publicProcedure
       .input(z.object({
         videoId: z.string(),
-        apiKey: z.string(),
+        apiKey: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
-        youtubeClient.setApiKey(input.apiKey);
+        youtubeClient.setApiKey(getYouTubeApiKey(input.apiKey));
         
         const response = await youtubeClient.getVideos([input.videoId]);
         
@@ -311,11 +319,11 @@ export const appRouter = router({
       .input(z.object({
         videoId: z.string(),
         videoTitle: z.string().optional(),
-        apiKey: z.string(),
+        apiKey: z.string().optional(),
         maxComments: z.number().min(1).max(5000).default(500),
       }))
       .mutation(async ({ input }) => {
-        youtubeClient.setApiKey(input.apiKey);
+        youtubeClient.setApiKey(getYouTubeApiKey(input.apiKey));
         
         const allComments: any[] = [];
         let pageToken: string | undefined;
@@ -383,10 +391,10 @@ export const appRouter = router({
     getChannelById: publicProcedure
       .input(z.object({
         channelId: z.string(),
-        apiKey: z.string(),
+        apiKey: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
-        youtubeClient.setApiKey(input.apiKey);
+        youtubeClient.setApiKey(getYouTubeApiKey(input.apiKey));
         
         const response = await youtubeClient.getChannelById(input.channelId);
         
@@ -415,10 +423,10 @@ export const appRouter = router({
     getChannelByHandle: publicProcedure
       .input(z.object({
         handle: z.string(),
-        apiKey: z.string(),
+        apiKey: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
-        youtubeClient.setApiKey(input.apiKey);
+        youtubeClient.setApiKey(getYouTubeApiKey(input.apiKey));
         
         const response = await youtubeClient.getChannelByHandle(input.handle);
         
@@ -860,10 +868,10 @@ export const appRouter = router({
           }
         }
 
-        // Configure API
+        // Configure API (prefer server .env keys)
         const apiConfig: AmazonApiConfig = {
-          provider: input.apiProvider,
-          apiKey: input.apiKey,
+          provider: input.apiProvider === "sample" ? ENV.amazonApiProvider : input.apiProvider,
+          apiKey: input.apiKey || ENV.amazonApiKey || undefined,
         };
 
         // Fetch product from API or generate sample
@@ -931,10 +939,10 @@ export const appRouter = router({
           }
         }
 
-        // Configure API
+        // Configure API (prefer server .env keys)
         const apiConfig: AmazonApiConfig = {
-          provider: input.apiProvider,
-          apiKey: input.apiKey,
+          provider: input.apiProvider === "sample" ? ENV.amazonApiProvider : input.apiProvider,
+          apiKey: input.apiKey || ENV.amazonApiKey || undefined,
         };
 
         // Fetch reviews from API or generate sample
@@ -1000,8 +1008,8 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const apiConfig: AmazonApiConfig = {
-          provider: input.apiProvider,
-          apiKey: input.apiKey,
+          provider: input.apiProvider === "sample" ? ENV.amazonApiProvider : input.apiProvider,
+          apiKey: input.apiKey || ENV.amazonApiKey || undefined,
         };
         return await searchAmazonProducts(input.query, apiConfig, input.marketplace);
       }),
@@ -1015,8 +1023,8 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const apiConfig: AmazonApiConfig = {
-          provider: input.apiProvider,
-          apiKey: input.apiKey,
+          provider: input.apiProvider === "sample" ? ENV.amazonApiProvider : input.apiProvider,
+          apiKey: input.apiKey || ENV.amazonApiKey || undefined,
         };
 
         // Fetch all products and their reviews
@@ -1800,15 +1808,62 @@ export const appRouter = router({
       .input(z.object({
         videoId: z.string(),
         creatorId: z.string().optional(),
+        scrapeCreatorsApiKey: z.string().optional(),
+        videoUrl: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
         const db = await getDb();
-        
+        const videoUrl = input.videoUrl ?? (input.videoId && /^\d{15,25}$/.test(input.videoId) ? `https://www.tiktok.com/video/${input.videoId}` : undefined);
+        const scrapeCreatorsApiKey = (ENV.scrapeCreatorsApiKey || input.scrapeCreatorsApiKey)?.trim();
+
+        // If Scrape Creators key and URL available, try API first
+        if (scrapeCreatorsApiKey && videoUrl) {
+          const scraped = await fetchTikTokVideo(scrapeCreatorsApiKey, videoUrl);
+          if (scraped) {
+            if (db) {
+              await db.insert(tiktokCreators).values({
+                uniqueId: scraped.creator.uniqueId,
+                nickname: scraped.creator.nickname,
+                avatarUrl: scraped.creator.avatarUrl,
+                signature: scraped.creator.signature,
+                verified: scraped.creator.verified,
+                followerCount: scraped.creator.followerCount,
+                followingCount: scraped.creator.followingCount,
+                heartCount: scraped.creator.heartCount,
+                videoCount: scraped.creator.videoCount,
+              }).onConflictDoUpdate({
+                target: tiktokCreators.uniqueId,
+                set: { updatedAt: new Date() },
+              });
+              await db.insert(tiktokVideos).values({
+                videoId: scraped.videoId,
+                creatorUniqueId: scraped.creator.uniqueId,
+                description: scraped.description,
+                coverUrl: scraped.coverUrl,
+                duration: scraped.duration,
+                playCount: scraped.playCount,
+                diggCount: scraped.diggCount,
+                shareCount: scraped.shareCount,
+                commentCount: scraped.commentCount,
+                collectCount: scraped.collectCount,
+                musicId: scraped.musicId,
+                musicTitle: scraped.musicTitle,
+                musicAuthor: scraped.musicAuthor,
+                hashtags: scraped.hashtags,
+                createTime: scraped.createTime,
+              }).onConflictDoUpdate({
+                target: tiktokVideos.videoId,
+                set: { fetchedAt: new Date() },
+              });
+            }
+            return scraped;
+          }
+        }
+
         // Check if video exists in database
         if (db) {
           const existing = await db.select().from(tiktokVideos).where(eq(tiktokVideos.videoId, input.videoId)).limit(1);
           if (existing.length > 0) {
-            // Get creator info
             let creator = null;
             if (existing[0].creatorUniqueId) {
               const creatorResult = await db.select().from(tiktokCreators).where(eq(tiktokCreators.uniqueId, existing[0].creatorUniqueId)).limit(1);
@@ -1818,12 +1873,9 @@ export const appRouter = router({
           }
         }
 
-        // Generate sample data
+        // Fallback: sample data
         const video = generateSampleVideo(input.videoId, input.creatorId);
-        
-        // Store in database
         if (db) {
-          // Store creator first
           await db.insert(tiktokCreators).values({
             uniqueId: video.creator.uniqueId,
             nickname: video.creator.nickname,
@@ -1838,8 +1890,6 @@ export const appRouter = router({
             target: tiktokCreators.uniqueId,
             set: { updatedAt: new Date() },
           });
-
-          // Store video
           await db.insert(tiktokVideos).values({
             videoId: video.videoId,
             creatorUniqueId: video.creator.uniqueId,
@@ -1861,7 +1911,6 @@ export const appRouter = router({
             set: { fetchedAt: new Date() },
           });
         }
-
         return video;
       }),
 
@@ -1869,10 +1918,54 @@ export const appRouter = router({
       .input(z.object({
         videoId: z.string(),
         count: z.number().default(20),
+        scrapeCreatorsApiKey: z.string().optional(),
+        videoUrl: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
         const db = await getDb();
-        
+        const videoUrl = input.videoUrl ?? (input.videoId && /^\d{15,25}$/.test(input.videoId) ? `https://www.tiktok.com/video/${input.videoId}` : undefined);
+        const scrapeCreatorsApiKey = (ENV.scrapeCreatorsApiKey || input.scrapeCreatorsApiKey)?.trim();
+
+        // If Scrape Creators key and URL available, try API first
+        if (scrapeCreatorsApiKey && videoUrl) {
+          const { comments: scrapedList } = await fetchTikTokComments(scrapeCreatorsApiKey, videoUrl);
+          if (scrapedList.length > 0) {
+            const analyzedComments = scrapedList.map((comment) => {
+              const { sentiment, score } = analyzeTikTokSentiment(comment.text);
+              return { ...comment, sentiment, sentimentScore: score };
+            });
+            if (db) {
+              for (const comment of analyzedComments) {
+                await db.insert(tiktokComments).values({
+                  commentId: comment.commentId,
+                  videoId: comment.videoId,
+                  authorUniqueId: comment.authorUniqueId,
+                  authorNickname: comment.authorNickname,
+                  authorAvatarUrl: comment.authorAvatarUrl,
+                  text: comment.text,
+                  diggCount: comment.diggCount,
+                  replyCount: comment.replyCount,
+                  sentiment: (comment as { sentiment?: string }).sentiment as any,
+                  sentimentScore: String((comment as { sentimentScore?: number }).sentimentScore),
+                  createTime: comment.createTime,
+                }).onConflictDoUpdate({
+                  target: [tiktokComments.videoId, tiktokComments.commentId],
+                  set: { fetchedAt: new Date() },
+                });
+              }
+            }
+            return {
+              comments: analyzedComments,
+              stats: {
+                total: analyzedComments.length,
+                positive: analyzedComments.filter((c) => (c as { sentiment?: string }).sentiment === "positive").length,
+                negative: analyzedComments.filter((c) => (c as { sentiment?: string }).sentiment === "negative").length,
+                neutral: analyzedComments.filter((c) => (c as { sentiment?: string }).sentiment === "neutral").length,
+              },
+            };
+          }
+        }
+
         // Check if comments exist in database
         if (db) {
           const existing = await db.select().from(tiktokComments).where(eq(tiktokComments.videoId, input.videoId)).limit(input.count);
@@ -1881,24 +1974,20 @@ export const appRouter = router({
               comments: existing,
               stats: {
                 total: existing.length,
-                positive: existing.filter(c => c.sentiment === 'positive').length,
-                negative: existing.filter(c => c.sentiment === 'negative').length,
-                neutral: existing.filter(c => c.sentiment === 'neutral').length,
+                positive: existing.filter((c) => c.sentiment === "positive").length,
+                negative: existing.filter((c) => c.sentiment === "negative").length,
+                neutral: existing.filter((c) => c.sentiment === "neutral").length,
               },
             };
           }
         }
 
-        // Generate sample comments
+        // Fallback: sample comments
         const comments = generateSampleTikTokComments(input.videoId, input.count);
-        
-        // Analyze sentiment and store
-        const analyzedComments = comments.map(comment => {
+        const analyzedComments = comments.map((comment) => {
           const { sentiment, score } = analyzeTikTokSentiment(comment.text);
           return { ...comment, sentiment, sentimentScore: score };
         });
-
-        // Store in database
         if (db) {
           for (const comment of analyzedComments) {
             await db.insert(tiktokComments).values({
@@ -1919,14 +2008,13 @@ export const appRouter = router({
             });
           }
         }
-
         return {
           comments: analyzedComments,
           stats: {
             total: analyzedComments.length,
-            positive: analyzedComments.filter(c => c.sentiment === 'positive').length,
-            negative: analyzedComments.filter(c => c.sentiment === 'negative').length,
-            neutral: analyzedComments.filter(c => c.sentiment === 'neutral').length,
+            positive: analyzedComments.filter((c) => c.sentiment === "positive").length,
+            negative: analyzedComments.filter((c) => c.sentiment === "negative").length,
+            neutral: analyzedComments.filter((c) => c.sentiment === "neutral").length,
           },
         };
       }),
@@ -5530,11 +5618,11 @@ Format as JSON with arrays for each category.`;
     searchYouTubeChannels: protectedProcedure
       .input(z.object({
         query: z.string().min(1),
-        apiKey: z.string(),
+        apiKey: z.string().optional(),
         maxResults: z.number().min(1).max(25).default(10),
       }))
       .mutation(async ({ input }) => {
-        youtubeClient.setApiKey(input.apiKey);
+        youtubeClient.setApiKey(getYouTubeApiKey(input.apiKey));
         const searchResults = await youtubeClient.searchChannels(input.query, input.maxResults);
         
         const channels = searchResults.items
@@ -5553,10 +5641,10 @@ Format as JSON with arrays for each category.`;
     resolveYouTubeChannel: protectedProcedure
       .input(z.object({
         input: z.string().min(1),
-        apiKey: z.string(),
+        apiKey: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
-        youtubeClient.setApiKey(input.apiKey);
+        youtubeClient.setApiKey(getYouTubeApiKey(input.apiKey));
         const channel = await youtubeClient.resolveChannel(input.input);
         
         if (!channel) {
@@ -5638,7 +5726,7 @@ Format as JSON with arrays for each category.`;
     analyzeYouTubeChannel: protectedProcedure
       .input(z.object({
         channelDbId: z.number(),
-        apiKey: z.string(),
+        apiKey: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
@@ -5655,7 +5743,7 @@ Format as JSON with arrays for each category.`;
         if (!channel) throw new Error("Channel not found");
 
         // Fetch channel data from YouTube API
-        youtubeClient.setApiKey(input.apiKey);
+        youtubeClient.setApiKey(getYouTubeApiKey(input.apiKey));
         const channelData = await youtubeClient.getChannelById(channel.channelId);
 
         if (!channelData.items || channelData.items.length === 0) {
@@ -6534,7 +6622,7 @@ Be specific and actionable.`;
     importFromYouTube: protectedProcedure
       .input(z.object({
         competitorId: z.number(),
-        apiKey: z.string(),
+        apiKey: z.string().optional(),
         maxVideos: z.number().min(1).max(100).default(50),
       }))
       .mutation(async ({ input, ctx }) => {
@@ -6555,7 +6643,7 @@ Be specific and actionable.`;
         }
 
         // Fetch videos from YouTube
-        youtubeClient.setApiKey(input.apiKey);
+        youtubeClient.setApiKey(getYouTubeApiKey(input.apiKey));
         const videos = await youtubeClient.getChannelVideos(ytChannel.channelId, input.maxVideos);
 
         // Import videos to calendar

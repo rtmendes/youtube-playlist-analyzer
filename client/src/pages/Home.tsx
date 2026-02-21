@@ -24,52 +24,23 @@ export default function Home() {
   const [bulkUrls, setBulkUrls] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [inputMode, setInputMode] = useState<"single" | "bulk">("bulk");
-  const [rememberApiKey, setRememberApiKey] = useState(false);
   const [videoLimit, setVideoLimit] = useState<string>("all");
   const [location, setLocation] = useLocation();
   const { user, isAuthenticated } = useAuth();
+
+  const { data: apiKeyStatus } = trpc.system.getApiKeyStatus.useQuery();
+  const serverHasYouTubeKey = !!apiKeyStatus?.youtube;
 
   // Check for URL parameter from YouTube browser
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlParam = params.get("url");
     if (urlParam) {
-      // Set to single URL mode and populate the URL
       setInputMode("single");
       setUrl(urlParam);
-      // Clear the URL parameter from browser history
       window.history.replaceState({}, "", location.split("?")[0]);
     }
   }, [location]);
-
-  // Load saved API key from localStorage on mount
-  useEffect(() => {
-    const savedApiKey = localStorage.getItem("youtube_api_key");
-    const savedRemember = localStorage.getItem("remember_api_key") === "true";
-    if (savedApiKey && savedRemember) {
-      setApiKey(savedApiKey);
-      setRememberApiKey(true);
-    }
-  }, []);
-
-  // Handle remember API key checkbox change
-  const handleRememberChange = (checked: boolean) => {
-    setRememberApiKey(checked);
-    if (checked && apiKey) {
-      localStorage.setItem("youtube_api_key", apiKey);
-      localStorage.setItem("remember_api_key", "true");
-    } else {
-      localStorage.removeItem("youtube_api_key");
-      localStorage.removeItem("remember_api_key");
-    }
-  };
-
-  // Save API key when it changes (if remember is checked)
-  useEffect(() => {
-    if (rememberApiKey && apiKey) {
-      localStorage.setItem("youtube_api_key", apiKey);
-    }
-  }, [apiKey, rememberApiKey]);
 
   const parseUrl = trpc.youtube.parseUrl.useQuery(
     { url },
@@ -89,10 +60,11 @@ export default function Home() {
   const bulkUrlCount = parseBulkUrls().length;
 
   const handleAnalyze = () => {
-    if (!apiKey.trim()) {
-      alert("Please enter your YouTube API key");
+    if (!serverHasYouTubeKey && !apiKey.trim()) {
+      alert("Please enter your YouTube API key or set YOUTUBE_API_KEY in the server .env file.");
       return;
     }
+    const keyToPass = serverHasYouTubeKey ? "" : apiKey;
 
     if (inputMode === "bulk") {
       const urls = parseBulkUrls();
@@ -102,14 +74,14 @@ export default function Home() {
       }
       const encodedUrls = encodeURIComponent(urls.join("\n"));
       const limitParam = videoLimit !== "all" ? `&limit=${videoLimit}` : "";
-      setLocation(`/bulk-analyze?urls=${encodedUrls}&key=${encodeURIComponent(apiKey)}${limitParam}`);
+      setLocation(`/bulk-analyze?urls=${encodedUrls}&key=${encodeURIComponent(keyToPass)}${limitParam}`);
     } else {
       if (parseUrl.data?.type === "playlist_id") {
-        setLocation(`/analyze?playlist=${parseUrl.data.value}&key=${encodeURIComponent(apiKey)}`);
+        setLocation(`/analyze?playlist=${parseUrl.data.value}&key=${encodeURIComponent(keyToPass)}`);
       } else if (parseUrl.data?.type === "video_id") {
-        setLocation(`/video?id=${parseUrl.data.value}&key=${encodeURIComponent(apiKey)}`);
+        setLocation(`/video?id=${parseUrl.data.value}&key=${encodeURIComponent(keyToPass)}`);
       } else if (parseUrl.data?.type === "channel_id" || parseUrl.data?.type === "channel_handle") {
-        setLocation(`/channel?id=${parseUrl.data.value}&key=${encodeURIComponent(apiKey)}`);
+        setLocation(`/channel?id=${parseUrl.data.value}&key=${encodeURIComponent(keyToPass)}`);
       }
     }
   };
@@ -369,10 +341,19 @@ https://youtube.com/channel/UCxxxxx`}
                   </Tabs>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">YouTube API Key</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-medium">YouTube API Key</label>
+                      <Link href="/settings">
+                        <span className="text-xs text-primary hover:underline cursor-pointer">Settings</span>
+                      </Link>
+                    </div>
+                    {serverHasYouTubeKey ? (
+                      <p className="text-sm text-muted-foreground py-2">Using server key (set in .env)</p>
+                    ) : (
+                      <>
                     <Input
                       type="password"
-                      placeholder="Your YouTube Data API v3 key"
+                      placeholder="Your YouTube Data API v3 key (or set YOUTUBE_API_KEY in .env)"
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
                       className="h-10 border-2 border-foreground"
@@ -388,18 +369,11 @@ https://youtube.com/channel/UCxxxxx`}
                         >
                           Google Cloud Console
                         </a>
+                        . For persistence across browsers/computers, set YOUTUBE_API_KEY in the server .env file.
                       </p>
-                      <div className="flex items-center gap-2">
-                        <Checkbox
-                          id="remember-api-key"
-                          checked={rememberApiKey}
-                          onCheckedChange={handleRememberChange}
-                        />
-                        <Label htmlFor="remember-api-key" className="text-xs cursor-pointer">
-                          Remember
-                        </Label>
-                      </div>
                     </div>
+                      </>
+                    )}
                   </div>
 
                   {/* Video Limit for Channels */}

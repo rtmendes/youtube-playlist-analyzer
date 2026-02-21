@@ -11,6 +11,7 @@ import Analyze from "./pages/Analyze";
 import Video from "./pages/Video";
 import BulkAnalyze from "./pages/BulkAnalyze";
 import History from "./pages/History";
+import HistoryDetail from "./pages/HistoryDetail";
 import Intelligence from "./pages/Intelligence";
 import Canvas from "./pages/Canvas";
 import Projects from "./pages/Projects";
@@ -42,6 +43,7 @@ import SystemArchitecture from "./pages/SystemArchitecture";
 import YouTubeChannelPOD from "./pages/YouTubeChannelPOD";
 import YouTubeDataPOD from "./pages/YouTubeDataPOD";
 import CommentAnalysisPOD from "./pages/CommentAnalysisPOD";
+import Settings from "./pages/Settings";
 
 function Router() {
   return (
@@ -58,9 +60,11 @@ function Router() {
       <Route path={"/youtube-channel"} component={YouTubeChannelPOD} />
       <Route path={"/youtube-data"} component={YouTubeDataPOD} />
       <Route path={"/comment-analysis"} component={CommentAnalysisPOD} />
+      <Route path={"/settings"} component={Settings} />
       <Route path={"/analyze"} component={Analyze} />
       <Route path={"/video"} component={Video} />
       <Route path={"/bulk-analyze"} component={BulkAnalyze} />
+      <Route path={"/history/:id"} component={HistoryDetail} />
       <Route path={"/history"} component={History} />
       <Route path={"/intelligence"} component={Intelligence} />
       <Route path={"/canvas"} component={Canvas} />

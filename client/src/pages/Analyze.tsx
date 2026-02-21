@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useLocation, useSearch, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { trpc } from "@/lib/trpc";
 import { 
   ArrowLeft, 
@@ -40,7 +41,8 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { SplitPaneComments } from "@/components/SplitPaneComments";
-import { LayoutGrid } from "lucide-react";
+import { LayoutGrid, Square, BarChart2 } from "lucide-react";
+import { getCommentCategories, getCategoryLabel, filterByCategory } from "@/lib/commentTags";
 
 interface Video {
   id: string;
@@ -117,6 +119,9 @@ export default function Analyze() {
   const [videoFilter, setVideoFilter] = useState<string>("all");
   const [commentSort, setCommentSort] = useState<string>("newest");
   const [allCommentSort, setAllCommentSort] = useState<string>("newest");
+  const [reportCategory, setReportCategory] = useState<string>("all");
+  const [reportSort, setReportSort] = useState<string>("most-liked");
+  const [selectedCommentIds, setSelectedCommentIds] = useState<Set<string>>(new Set());
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(() => {
@@ -125,6 +130,7 @@ export default function Analyze() {
     return saved === "true";
   });
   const [hasAutoSaved, setHasAutoSaved] = useState(false);
+  const fetchCommentsAbortRef = useRef(false);
 
   // Fetch playlist info
   const playlistMutation = trpc.youtube.getPlaylist.useMutation();
@@ -330,10 +336,11 @@ export default function Analyze() {
     }
   };
 
-  // Batch fetch all comments from all videos
+  // Batch fetch all comments from all videos (can be stopped to save API cost)
   const fetchAllComments = useCallback(async () => {
     if (videos.length === 0) return;
 
+    fetchCommentsAbortRef.current = false;
     setLoadingBatchComments(true);
     setAllComments([]);
     setActiveTab("all-comments");
@@ -352,6 +359,11 @@ export default function Analyze() {
     const fetchedComments: Comment[] = [];
 
     for (let i = 0; i < videos.length; i++) {
+      if (fetchCommentsAbortRef.current) {
+        toast.info("Comment fetch stopped. You can export what was collected so far.");
+        break;
+      }
+
       const video = videos[i];
       progress.currentVideo = i + 1;
       progress.currentVideoTitle = video.title;
@@ -362,7 +374,7 @@ export default function Analyze() {
           videoId: video.id,
           videoTitle: video.title,
           apiKey,
-          maxComments: 200, // Limit per video to avoid quota issues
+          maxComments: 200,
         });
 
         if (result.commentsDisabled) {
@@ -383,6 +395,10 @@ export default function Analyze() {
 
     setLoadingBatchComments(false);
   }, [videos, apiKey, batchCommentsMutation]);
+
+  const stopFetchComments = useCallback(() => {
+    fetchCommentsAbortRef.current = true;
+  }, []);
 
   // Filter videos by search
   const filteredVideos = useMemo(() => {
@@ -414,7 +430,6 @@ export default function Analyze() {
       );
     }
     
-    // Sort comments
     const sorted = [...filtered].sort((a, b) => {
       switch (commentSort) {
         case "newest":
@@ -425,11 +440,12 @@ export default function Analyze() {
           return b.likeCount - a.likeCount;
         case "most-replies":
           return b.replyCount - a.replyCount;
+        case "most-engagement":
+          return b.likeCount + b.replyCount - (a.likeCount + a.replyCount);
         default:
           return 0;
       }
     });
-    
     return sorted;
   }, [comments, commentSearchQuery, commentSort]);
 
@@ -451,7 +467,6 @@ export default function Analyze() {
       filtered = filtered.filter((c) => c.videoId === videoFilter);
     }
     
-    // Sort comments
     const sorted = [...filtered].sort((a, b) => {
       switch (allCommentSort) {
         case "newest":
@@ -462,6 +477,8 @@ export default function Analyze() {
           return b.likeCount - a.likeCount;
         case "most-replies":
           return b.replyCount - a.replyCount;
+        case "most-engagement":
+          return b.likeCount + b.replyCount - (a.likeCount + a.replyCount);
         default:
           return 0;
       }
@@ -470,14 +487,47 @@ export default function Analyze() {
     return sorted;
   }, [allComments, commentSearchQuery, videoFilter, allCommentSort]);
 
-  // Calculate stats
+  // Report view: category filter + sort (for analyst / media buyer / eCommerce)
+  const reportComments = useMemo(() => {
+    let list = filterByCategory(allComments, reportCategory, 5);
+    if (commentSearchQuery) {
+      const query = commentSearchQuery.toLowerCase();
+      list = list.filter(
+        (c) =>
+          c.textOriginal.toLowerCase().includes(query) ||
+          c.authorDisplayName.toLowerCase().includes(query) ||
+          (c.videoTitle && c.videoTitle.toLowerCase().includes(query))
+      );
+    }
+    if (videoFilter !== "all") list = list.filter((c) => c.videoId === videoFilter);
+    return [...list].sort((a, b) => {
+      switch (reportSort) {
+        case "newest":
+          return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+        case "oldest":
+          return new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime();
+        case "most-liked":
+          return b.likeCount - a.likeCount;
+        case "most-replies":
+          return b.replyCount - a.replyCount;
+        case "most-engagement":
+          return b.likeCount + b.replyCount - (a.likeCount + a.replyCount);
+        default:
+          return 0;
+      }
+    });
+  }, [allComments, reportCategory, reportSort, commentSearchQuery, videoFilter]);
+
+  // Calculate stats (for analyst / media buyer)
   const stats = useMemo(() => {
     const totalViews = videos.reduce((sum, v) => sum + v.viewCount, 0);
     const totalLikes = videos.reduce((sum, v) => sum + v.likeCount, 0);
     const totalComments = videos.reduce((sum, v) => sum + v.commentCount, 0);
     const avgViews = videos.length ? Math.round(totalViews / videos.length) : 0;
-    
-    return { totalViews, totalLikes, totalComments, avgViews };
+    const publishedDates = videos.map((v) => new Date(v.publishedAt).getTime()).filter(Boolean);
+    const oldestPublished = publishedDates.length ? new Date(Math.min(...publishedDates)).toLocaleDateString(undefined, { month: "short", year: "numeric" }) : "—";
+    const newestPublished = publishedDates.length ? new Date(Math.max(...publishedDates)).toLocaleDateString(undefined, { month: "short", year: "numeric" }) : "—";
+    return { totalViews, totalLikes, totalComments, avgViews, oldestPublished, newestPublished };
   }, [videos]);
 
   // Export functions
@@ -519,27 +569,40 @@ export default function Analyze() {
     URL.revokeObjectURL(url);
   };
 
-  const exportCommentsCSV = () => {
-    const commentsToExport = allComments.length > 0 ? allComments : comments;
-    const headers = ["Comment ID", "Video ID", "Video Title", "Author", "Text", "Likes", "Replies", "Published"];
-    const rows = commentsToExport.map((c) => [
-      c.id,
-      c.videoId,
-      `"${(c.videoTitle || "").replace(/"/g, '""')}"`,
-      `"${c.authorDisplayName.replace(/"/g, '""')}"`,
-      `"${c.textOriginal.replace(/"/g, '""').replace(/\n/g, " ")}"`,
-      c.likeCount,
-      c.replyCount,
-      c.publishedAt,
-    ]);
+  const exportCommentsCSV = (selectedOnly: boolean = false) => {
+    const list = selectedOnly && selectedCommentIds.size > 0
+      ? (allComments.length > 0 ? allComments : comments).filter((c) => selectedCommentIds.has(c.id))
+      : allComments.length > 0 ? allComments : comments;
+    const headers = ["Comment ID", "Video ID", "Video Title", "Author", "Text", "Likes", "Replies", "Published", "Tags"];
+    const rows = list.map((c) => {
+      const tags = getCommentCategories(c.textOriginal).map(getCategoryLabel).join("; ");
+      return [
+        c.id,
+        c.videoId,
+        `"${(c.videoTitle || "").replace(/"/g, '""')}"`,
+        `"${c.authorDisplayName.replace(/"/g, '""')}"`,
+        `"${c.textOriginal.replace(/"/g, '""').replace(/\n/g, " ")}"`,
+        c.likeCount,
+        c.replyCount,
+        c.publishedAt,
+        `"${tags.replace(/"/g, '""')}"`,
+      ];
+    });
     const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `playlist-${playlistId}-comments.csv`;
+    a.download = `playlist-${playlistId}-comments${selectedOnly && selectedCommentIds.size > 0 ? "-selected" : ""}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+    if (list.length > 0) {
+      toast.success(
+        selectedOnly && selectedCommentIds.size > 0
+          ? `Exported ${list.length} selected comments. Import in Google Sheets: File → Import → Upload.`
+          : `Exported ${list.length} comments. To use in Google Sheets: File → Import → Upload the CSV.`
+      );
+    }
   };
 
   const formatNumber = (num: number) => {
@@ -638,7 +701,7 @@ export default function Analyze() {
             </Button>
             <Button 
               variant="outline" 
-              onClick={exportCommentsCSV} 
+              onClick={() => exportCommentsCSV(false)} 
               disabled={allComments.length === 0 && comments.length === 0}
             >
               <Download className="h-4 w-4 mr-2" />
@@ -674,9 +737,21 @@ export default function Analyze() {
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="font-medium">Fetching comments from all videos...</span>
-                <span className="text-muted-foreground">
-                  Video {batchProgress.currentVideo} of {batchProgress.totalVideos}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">
+                    Video {batchProgress.currentVideo} of {batchProgress.totalVideos}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={stopFetchComments}
+                    className="gap-1"
+                  >
+                    <Square className="h-3 w-3" />
+                    Stop (save API cost)
+                  </Button>
+                </div>
               </div>
               <Progress 
                 value={(batchProgress.currentVideo / batchProgress.totalVideos) * 100} 
@@ -707,7 +782,7 @@ export default function Analyze() {
       {/* Stats Bar */}
       <div className="border-b border-border bg-secondary/30">
         <div className="container py-4">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-7 gap-4">
             <div>
               <p className="text-sm text-muted-foreground">Videos</p>
               <p className="text-2xl font-bold">{videos.length}</p>
@@ -727,6 +802,20 @@ export default function Analyze() {
             <div>
               <p className="text-sm text-muted-foreground">Fetched Comments</p>
               <p className="text-2xl font-bold">{formatNumber(allComments.length)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Engagement Rate</p>
+              <p className="text-2xl font-bold">
+                {stats.totalViews > 0
+                  ? `${((stats.totalLikes + stats.totalComments) / stats.totalViews * 100).toFixed(2)}%`
+                  : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Published range</p>
+              <p className="text-lg font-bold">
+                {stats.oldestPublished} – {stats.newestPublished}
+              </p>
             </div>
           </div>
         </div>
@@ -748,6 +837,10 @@ export default function Analyze() {
               <TabsTrigger value="all-comments" className="gap-2">
                 <MessageSquareDashed className="h-4 w-4" />
                 All Comments ({allComments.length})
+              </TabsTrigger>
+              <TabsTrigger value="report" className="gap-2">
+                <BarChart2 className="h-4 w-4" />
+                Report ({reportComments.length})
               </TabsTrigger>
               <TabsTrigger value="split-view" className="gap-2">
                 <LayoutGrid className="h-4 w-4" />
@@ -917,6 +1010,11 @@ export default function Analyze() {
                           <MessageSquare className="h-3 w-3" /> Most Replies
                         </span>
                       </SelectItem>
+                      <SelectItem value="most-engagement">
+                        <span className="flex items-center gap-2">
+                          <ThumbsUp className="h-3 w-3" /> Most Engagement
+                        </span>
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1068,6 +1166,11 @@ export default function Analyze() {
                           <MessageSquare className="h-3 w-3" /> Most Replies
                         </span>
                       </SelectItem>
+                      <SelectItem value="most-engagement">
+                        <span className="flex items-center gap-2">
+                          <ThumbsUp className="h-3 w-3" /> Most Engagement (likes + replies)
+                        </span>
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1159,6 +1262,157 @@ export default function Analyze() {
                 <p className="text-sm mt-4">
                   This will fetch comments from all {videos.length} videos in the playlist.
                 </p>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="report" className="space-y-4">
+            {allComments.length > 0 ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Analyst report: filter by intent (POD, course, merch, product) or engagement. Select rows and export to CSV for Google Sheets (File → Import → Upload).
+                </p>
+                <div className="flex flex-wrap gap-4">
+                  <div className="relative flex-1 max-w-md">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search comments..."
+                      value={commentSearchQuery}
+                      onChange={(e) => setCommentSearchQuery(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                  <Select value={reportCategory} onValueChange={setReportCategory}>
+                    <SelectTrigger className="w-[200px]">
+                      <Filter className="h-4 w-4 mr-2" />
+                      <SelectValue placeholder="Category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All comments</SelectItem>
+                      <SelectItem value="pod">POD / Intent</SelectItem>
+                      <SelectItem value="course">Course / Training</SelectItem>
+                      <SelectItem value="merch">Merch / T-shirt</SelectItem>
+                      <SelectItem value="product">Product / Buy</SelectItem>
+                      <SelectItem value="high_engagement">High engagement (5+ likes+replies)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={videoFilter} onValueChange={setVideoFilter}>
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue placeholder="Video" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Videos</SelectItem>
+                      {videos.map((v) => (
+                        <SelectItem key={v.id} value={v.id}>{v.title.substring(0, 35)}...</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={reportSort} onValueChange={setReportSort}>
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue placeholder="Sort" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="most-liked">Most liked</SelectItem>
+                      <SelectItem value="most-replies">Most replies</SelectItem>
+                      <SelectItem value="most-engagement">Most engagement</SelectItem>
+                      <SelectItem value="newest">Newest</SelectItem>
+                      <SelectItem value="oldest">Oldest</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-4 flex-wrap">
+                  <Button variant="outline" size="sm" onClick={() => {
+                    const ids = new Set(reportComments.slice(0, 500).map((c) => c.id));
+                    setSelectedCommentIds(ids);
+                    toast.info(`Selected ${ids.size} comments (max 500 in view)`);
+                  }}>
+                    Select all in view
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setSelectedCommentIds(new Set())}>
+                    Clear selection
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => exportCommentsCSV(true)} disabled={selectedCommentIds.size === 0}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Export selected ({selectedCommentIds.size}) CSV
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => exportCommentsCSV(false)}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Export all CSV
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    {reportComments.length} comments · {selectedCommentIds.size} selected
+                  </span>
+                </div>
+                <ScrollArea className="h-[60vh] rounded-md border">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted/50">
+                        <th className="text-left p-2 w-10">
+                          <Checkbox
+                            checked={reportComments.length > 0 && reportComments.slice(0, 100).every((c) => selectedCommentIds.has(c.id))}
+                            onCheckedChange={(checked) => {
+                              const slice = reportComments.slice(0, 100);
+                              if (checked) {
+                                setSelectedCommentIds((prev) => { const s = new Set(prev); slice.forEach((c) => s.add(c.id)); return s; });
+                              } else {
+                                setSelectedCommentIds((prev) => { const s = new Set(prev); slice.forEach((c) => s.delete(c.id)); return s; });
+                              }
+                            }}
+                          />
+                        </th>
+                        <th className="text-left p-2">Video</th>
+                        <th className="text-left p-2">Author</th>
+                        <th className="text-left p-2 min-w-[200px]">Text</th>
+                        <th className="text-right p-2">Likes</th>
+                        <th className="text-right p-2">Replies</th>
+                        <th className="text-left p-2">Date</th>
+                        <th className="text-left p-2">Tags</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reportComments.slice(0, 500).map((c) => {
+                        const tags = getCommentCategories(c.textOriginal).map(getCategoryLabel);
+                        return (
+                          <tr key={c.id} className="border-b hover:bg-muted/30">
+                            <td className="p-2">
+                              <Checkbox
+                                checked={selectedCommentIds.has(c.id)}
+                                onCheckedChange={(checked) => {
+                                  setSelectedCommentIds((prev) => {
+                                    const s = new Set(prev);
+                                    if (checked) s.add(c.id); else s.delete(c.id);
+                                    return s;
+                                  });
+                                }}
+                              />
+                            </td>
+                            <td className="p-2 max-w-[120px] truncate" title={c.videoTitle}>{c.videoTitle?.substring(0, 25)}...</td>
+                            <td className="p-2">{c.authorDisplayName}</td>
+                            <td className="p-2 max-w-[280px] line-clamp-2" title={c.textOriginal}>{c.textOriginal.replace(/\n/g, " ").substring(0, 150)}</td>
+                            <td className="p-2 text-right">{c.likeCount}</td>
+                            <td className="p-2 text-right">{c.replyCount}</td>
+                            <td className="p-2 text-muted-foreground">{new Date(c.publishedAt).toLocaleDateString()}</td>
+                            <td className="p-2">
+                              {tags.length > 0 ? tags.map((t) => <Badge key={t} variant="secondary" className="mr-1 text-xs">{t}</Badge>) : "—"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </ScrollArea>
+                {reportComments.length > 500 && (
+                  <p className="text-sm text-muted-foreground">Showing first 500. Use filters or export all to get full data.</p>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-12 text-muted-foreground">
+                <BarChart2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>Fetch comments first to see the Report view.</p>
+                <Button onClick={fetchAllComments} disabled={loadingBatchComments || videos.length === 0} className="mt-4 gap-2">
+                  {loadingBatchComments ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
+                  Fetch All Comments
+                </Button>
               </div>
             )}
           </TabsContent>

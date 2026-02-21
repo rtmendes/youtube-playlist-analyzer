@@ -1,0 +1,313 @@
+import { useState, useEffect } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { toast } from "sonner";
+import {
+  Settings as SettingsIcon,
+  Youtube,
+  ShoppingCart,
+  MessageCircle,
+  Play,
+  BarChart3,
+  Palette,
+  User,
+  ExternalLink,
+} from "lucide-react";
+import { trpc } from "@/lib/trpc";
+import { API_KEY_STORAGE } from "@/lib/apiKeys";
+
+export default function Settings() {
+  const [youtubeApiKey, setYoutubeApiKey] = useState("");
+  const [amazonApiKey, setAmazonApiKey] = useState("");
+  const [amazonProvider, setAmazonProvider] = useState("sample");
+  const [geminiApiKey, setGeminiApiKey] = useState("");
+  const [redditClientId, setRedditClientId] = useState("");
+  const [redditClientSecret, setRedditClientSecret] = useState("");
+  const [tiktokToken, setTiktokToken] = useState("");
+  const [composioApiKey, setComposioApiKey] = useState("");
+  const [scrapecreatorsApiKey, setScrapecreatorsApiKey] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  const { data: apiKeyStatus } = trpc.system.getApiKeyStatus.useQuery();
+
+  useEffect(() => {
+    setYoutubeApiKey(localStorage.getItem(API_KEY_STORAGE.YOUTUBE_API_KEY) ?? "");
+    setAmazonApiKey(localStorage.getItem(API_KEY_STORAGE.AMAZON_API_KEY) ?? "");
+    setAmazonProvider(localStorage.getItem(API_KEY_STORAGE.AMAZON_API_PROVIDER) ?? "sample");
+    setGeminiApiKey(localStorage.getItem(API_KEY_STORAGE.GEMINI_API_KEY) ?? "");
+    setRedditClientId(localStorage.getItem(API_KEY_STORAGE.REDDIT_CLIENT_ID) ?? "");
+    setRedditClientSecret(localStorage.getItem(API_KEY_STORAGE.REDDIT_CLIENT_SECRET) ?? "");
+    setTiktokToken(localStorage.getItem(API_KEY_STORAGE.TIKTOK_ACCESS_TOKEN) ?? "");
+    setComposioApiKey(localStorage.getItem(API_KEY_STORAGE.COMPOSIO_API_KEY) ?? "");
+    setScrapecreatorsApiKey(localStorage.getItem(API_KEY_STORAGE.SCRAPECREATORS_API_KEY) ?? "");
+  }, []);
+
+  const saveAll = () => {
+    setSaved(true);
+    toast.success("Keys are not stored in the browser. For persistence across computers and browsers, set them in the server .env file (see .env.example).");
+    setTimeout(() => setSaved(false), 3000);
+  };
+
+  return (
+    <div className="p-6 space-y-6 max-w-3xl">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <SettingsIcon className="h-8 w-8" />
+            Settings
+          </h1>
+          <p className="text-muted-foreground">
+            For persistence across computers and browsers, set API keys in the server <strong>.env</strong> file (see .env.example). Keys are not stored in the browser. See{" "}
+            <a href="https://github.com/rtmendes/youtube-playlist-analyzer/blob/main/docs/API-KEYS.md" target="_blank" rel="noopener noreferrer" className="text-primary underline inline-flex items-center gap-1">
+              docs/API-KEYS.md <ExternalLink className="h-3 w-3" />
+            </a>
+            {" "}for where to get each key.
+          </p>
+        </div>
+        <Button onClick={saveAll} disabled={saved}>
+          {saved ? "Saved" : "Save all"}
+        </Button>
+      </div>
+
+      {/* Account / Sign-in note */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <User className="h-4 w-4" />
+            Account
+          </CardTitle>
+          <CardDescription>
+            You’re the only user. Sign in once; your session is stored in a cookie so you don’t have to sign in every time. If you’re asked to sign in again, the session may have expired or cookies were cleared.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
+      <Separator />
+
+      {/* YouTube */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Youtube className="h-4 w-4 text-red-500" />
+            YouTube Data API v3
+          </CardTitle>
+          <CardDescription>
+            Required for analysis, playlists, channels, and comments. Get a key from{" "}
+            <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-primary underline inline-flex items-center gap-1">
+              Google Cloud Console <ExternalLink className="h-3 w-3" />
+            </a>
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {apiKeyStatus?.youtube ? (
+            <p className="text-sm text-muted-foreground">Using server key (YOUTUBE_API_KEY in .env)</p>
+          ) : (
+            <div className="space-y-2">
+              <Label>API Key (or set YOUTUBE_API_KEY in .env)</Label>
+              <Input
+                type="password"
+                placeholder="Your YouTube Data API v3 key"
+                value={youtubeApiKey}
+                onChange={(e) => setYoutubeApiKey(e.target.value)}
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Amazon / Competitor data source */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ShoppingCart className="h-4 w-4" />
+            Amazon Reviews & Competitor Analysis
+          </CardTitle>
+          <CardDescription>
+            For Amazon product/review data and competitor product comparison. Use Rainforest API or ScraperAPI, or leave blank for sample data.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Data source</Label>
+            <Select value={amazonProvider} onValueChange={setAmazonProvider}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="sample">Sample Data (no key)</SelectItem>
+                <SelectItem value="rainforest">Rainforest API</SelectItem>
+                <SelectItem value="scraperapi">ScraperAPI</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {amazonProvider !== "sample" && (
+            <div className="space-y-2">
+              <Label>API Key</Label>
+              <Input
+                type="password"
+                placeholder={amazonProvider === "rainforest" ? "Rainforest API key" : "ScraperAPI key"}
+                value={amazonApiKey}
+                onChange={(e) => setAmazonApiKey(e.target.value)}
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Gemini */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Palette className="h-4 w-4" />
+            Google Gemini (Canvas / AI)
+          </CardTitle>
+          <CardDescription>
+            For AI content generation in Canvas. Get a key from{" "}
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-primary underline inline-flex items-center gap-1">
+              Google AI Studio <ExternalLink className="h-3 w-3" />
+            </a>
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <Label>Gemini API Key</Label>
+            <Input
+              type="password"
+              placeholder="AIzaSy..."
+              value={geminiApiKey}
+              onChange={(e) => setGeminiApiKey(e.target.value)}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Reddit */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <MessageCircle className="h-4 w-4" />
+            Reddit Research
+          </CardTitle>
+          <CardDescription>
+            Optional. Get credentials: go to{" "}
+            <a href="https://www.reddit.com/prefs/apps" target="_blank" rel="noopener noreferrer" className="text-primary underline inline-flex items-center gap-1">
+              reddit.com/prefs/apps <ExternalLink className="h-3 w-3" />
+            </a>
+            , click &quot;create app&quot; or &quot;create another app&quot;, choose &quot;script&quot;, set redirect to <code className="text-xs bg-muted px-1 rounded">http://localhost</code>. Use the string under the app name as Client ID and the &quot;secret&quot; as Client Secret.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Client ID</Label>
+            <Input
+              type="text"
+              placeholder="Reddit app client ID (under app name)"
+              value={redditClientId}
+              onChange={(e) => setRedditClientId(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Client Secret</Label>
+            <Input
+              type="password"
+              placeholder="Reddit app secret"
+              value={redditClientSecret}
+              onChange={(e) => setRedditClientSecret(e.target.value)}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* TikTok */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Play className="h-4 w-4" />
+            TikTok Intelligence
+          </CardTitle>
+          <CardDescription>
+            Optional. TikTok uses <strong>OAuth2</strong> (no simple API key). Options: (1) Use <strong>Composio</strong> (API key below) to connect TikTok via their toolkit —{" "}
+            <a href="https://docs.composio.dev/toolkits/tiktok" target="_blank" rel="noopener noreferrer" className="text-primary underline inline-flex items-center gap-1">
+              Composio TikTok docs <ExternalLink className="h-3 w-3" />
+            </a>
+            . (2) Use <strong>Scrape Creators</strong> for social data extraction —{" "}
+            <a href="https://docs.scrapecreators.com/" target="_blank" rel="noopener noreferrer" className="text-primary underline inline-flex items-center gap-1">
+              Scrape Creators API <ExternalLink className="h-3 w-3" />
+            </a>
+            . Store an access token here if your integration provides one.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <Label>TikTok access token (or use Composio / Scrape Creators below)</Label>
+            <Input
+              type="password"
+              placeholder="OAuth access token if applicable"
+              value={tiktokToken}
+              onChange={(e) => setTiktokToken(e.target.value)}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Composio */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Composio API</CardTitle>
+          <CardDescription>
+            Use Composio to connect TikTok, Gmail, and other tools via OAuth2. Get your API key from the Composio dashboard. With this key you can use their toolkits (e.g. TikTok: list videos, user info, publish status).{" "}
+            <a href="https://docs.composio.dev/toolkits/tiktok" target="_blank" rel="noopener noreferrer" className="text-primary underline inline-flex items-center gap-1">
+              TikTok toolkit <ExternalLink className="h-3 w-3" />
+            </a>
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <Label>Composio API Key</Label>
+            <Input
+              type="password"
+              placeholder="ak_..."
+              value={composioApiKey}
+              onChange={(e) => setComposioApiKey(e.target.value)}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Scrape Creators */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Scrape Creators API</CardTitle>
+          <CardDescription>
+            Optional. For social media data extraction (TikTok, etc.) without OAuth.{" "}
+            <a href="https://docs.scrapecreators.com/" target="_blank" rel="noopener noreferrer" className="text-primary underline inline-flex items-center gap-1">
+              Scrape Creators docs <ExternalLink className="h-3 w-3" />
+            </a>
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <Label>Scrape Creators API Key</Label>
+            <Input
+              type="password"
+              placeholder="Your Scrape Creators API key"
+              value={scrapecreatorsApiKey}
+              onChange={(e) => setScrapecreatorsApiKey(e.target.value)}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="flex justify-end">
+        <Button onClick={saveAll} disabled={saved}>
+          {saved ? "Saved" : "Save all"}
+        </Button>
+      </div>
+    </div>
+  );
+}

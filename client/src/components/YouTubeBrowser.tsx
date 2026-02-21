@@ -92,8 +92,9 @@ export function YouTubeBrowser({ isOpen, onClose, onAnalyzeUrl, className }: You
   };
 
   const refresh = () => {
-    if (iframeRef.current) {
-      iframeRef.current.src = url;
+    const embed = getEmbedUrl(url);
+    if (iframeRef.current && embed) {
+      iframeRef.current.src = embed;
     }
   };
 
@@ -114,7 +115,6 @@ export function YouTubeBrowser({ isOpen, onClose, onAnalyzeUrl, className }: You
       /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/)([^&\n?#]+)/,
       /youtube\.com\/shorts\/([^&\n?#]+)/,
     ];
-    
     for (const pattern of patterns) {
       const match = videoUrl.match(pattern);
       if (match) return match[1];
@@ -122,6 +122,26 @@ export function YouTubeBrowser({ isOpen, onClose, onAnalyzeUrl, className }: You
     return null;
   };
 
+  const extractPlaylistId = (pageUrl: string): string | null => {
+    const listMatch = pageUrl.match(/[?&]list=([^&\n?#]+)/);
+    return listMatch ? listMatch[1] : null;
+  };
+
+  // YouTube allows embedding only via their embed URLs. Use these so the iframe works.
+  const getEmbedUrl = (pageUrl: string): string | null => {
+    const videoId = extractVideoId(pageUrl);
+    const playlistId = extractPlaylistId(pageUrl);
+    if (playlistId) {
+      return `https://www.youtube.com/embed/videoseries?list=${playlistId}`;
+    }
+    if (videoId) {
+      return `https://www.youtube.com/embed/${videoId}`;
+    }
+    return null;
+  };
+
+  const embedUrl = getEmbedUrl(url);
+  const isEmbeddable = embedUrl !== null;
   const isVideoUrl = extractVideoId(url) !== null;
 
   if (!isOpen) return null;
@@ -278,31 +298,58 @@ export function YouTubeBrowser({ isOpen, onClose, onAnalyzeUrl, className }: You
         </div>
       </div>
 
-      {/* Current URL Display */}
-      <div className="px-3 py-1.5 bg-muted/20 border-b text-xs text-muted-foreground truncate flex items-center gap-2">
+      {/* Current URL Display + Open in new tab (sign in there) */}
+      <div className="px-3 py-1.5 bg-muted/20 border-b text-xs text-muted-foreground flex flex-wrap items-center gap-2">
         <Youtube className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
-        <span className="truncate">{url}</span>
+        <span className="truncate flex-1 min-w-0">{url}</span>
         <Button
-          variant="ghost"
+          variant="default"
           size="sm"
-          className="h-5 px-1.5 ml-auto text-xs"
-          onClick={() => window.open(url, "_blank")}
+          className="h-7 px-2 text-xs gap-1 shrink-0"
+          onClick={() => window.open(url, "_blank", "noopener,noreferrer")}
         >
-          <ExternalLink className="h-3 w-3 mr-1" />
-          Open
+          <ExternalLink className="h-3 w-3" />
+          Open in new tab
         </Button>
       </div>
 
-      {/* Iframe Container */}
-      <div className="flex-1 relative">
-        <iframe
-          ref={iframeRef}
-          src={url}
-          className="absolute inset-0 w-full h-full border-0"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowFullScreen
-          sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-presentation"
-        />
+      {/* Hint: only when not embeddable */}
+      {!isEmbeddable && (
+        <div className="px-3 py-2 bg-muted/50 border-b text-xs text-muted-foreground">
+          <span>
+            Paste a <strong>video</strong> or <strong>playlist</strong> URL above to embed it here. For the full YouTube site (home, search), use <strong>Open in new tab</strong>.
+          </span>
+        </div>
+      )}
+
+      {/* Iframe: use official embed URL so YouTube allows it */}
+      <div className="flex-1 relative min-h-0">
+        {embedUrl ? (
+          <iframe
+            ref={iframeRef}
+            key={embedUrl}
+            src={embedUrl}
+            title="YouTube embed"
+            className="absolute inset-0 w-full h-full border-0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+          />
+        ) : (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 bg-muted/30 text-center text-sm text-muted-foreground">
+            <Youtube className="h-12 w-12 text-red-500 opacity-70" />
+            <p>Enter a video or playlist URL in the bar above to watch it here.</p>
+            <p className="text-xs">Example: youtube.com/watch?v=... or youtube.com/playlist?list=...</p>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="gap-1"
+              onClick={() => window.open("https://www.youtube.com", "_blank", "noopener,noreferrer")}
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Open YouTube in new tab
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -318,7 +318,18 @@ export default function History() {
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2 flex-shrink-0">
+                        <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+                          <Button
+                            variant="default"
+                            size="sm"
+                            asChild
+                            className="gap-2"
+                          >
+                            <Link href={`/history/${analysis.id}`}>
+                              <Eye className="h-4 w-4" />
+                              View
+                            </Link>
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"

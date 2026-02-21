@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { getStoredScrapeCreatorsApiKey } from "@/lib/apiKeys";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -123,13 +124,24 @@ export default function TikTokIntelligence() {
       }
 
       const videoId = result.id;
+      const videoUrl = /tiktok\.com|vm\.tiktok/i.test(urlInput.trim()) ? urlInput.trim() : `https://www.tiktok.com/video/${videoId}`;
+      const scrapeCreatorsApiKey = getStoredScrapeCreatorsApiKey();
 
-      // Fetch video details
-      const videoResult = await getVideoMutation.mutateAsync({ videoId });
+      // Fetch video details (uses Scrape Creators when key is set in Settings)
+      const videoResult = await getVideoMutation.mutateAsync({
+        videoId,
+        scrapeCreatorsApiKey: scrapeCreatorsApiKey || undefined,
+        videoUrl: scrapeCreatorsApiKey ? videoUrl : undefined,
+      });
       setVideo(videoResult as TikTokVideo);
 
-      // Fetch comments
-      const commentsResult = await getCommentsMutation.mutateAsync({ videoId, count: 30 });
+      // Fetch comments (uses Scrape Creators when key is set)
+      const commentsResult = await getCommentsMutation.mutateAsync({
+        videoId,
+        count: 30,
+        scrapeCreatorsApiKey: scrapeCreatorsApiKey || undefined,
+        videoUrl: scrapeCreatorsApiKey ? videoUrl : undefined,
+      });
       setComments(commentsResult.comments as TikTokComment[]);
       setStats(commentsResult.stats as CommentStats);
 

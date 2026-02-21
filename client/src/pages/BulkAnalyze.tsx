@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useLocation, useSearch, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,6 +36,7 @@ import {
   Table,
   Save,
   History,
+  Square,
 } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
@@ -115,6 +116,7 @@ export default function BulkAnalyze() {
   const [allComments, setAllComments] = useState<Comment[]>([]);
   const [processingStatuses, setProcessingStatuses] = useState<ProcessingStatus[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const abortRequestedRef = useRef(false);
   const [currentUrlIndex, setCurrentUrlIndex] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [commentSearchQuery, setCommentSearchQuery] = useState("");
@@ -128,9 +130,9 @@ export default function BulkAnalyze() {
   // Mutations
   const saveAnalysisMutation = trpc.analysis.save.useMutation({
     onSuccess: () => {
-      toast.success("Analysis saved to history!");
       setHasSaved(true);
       setIsSaving(false);
+      toast.success("Saved to History. View, export, or delete anytime from History.");
     },
     onError: (error) => {
       toast.error(`Failed to save: ${error.message}`);
@@ -206,12 +208,24 @@ export default function BulkAnalyze() {
     }
   }, [processingStatuses]);
 
+  const stopRun = useCallback(() => {
+    abortRequestedRef.current = true;
+    toast.info("Stopping run after current item…");
+  }, []);
+
   const startProcessing = async () => {
     setIsProcessing(true);
+    abortRequestedRef.current = false;
     const allFetchedVideos: Video[] = [];
     const allFetchedComments: Comment[] = [];
 
     for (let i = 0; i < urls.length; i++) {
+      if (abortRequestedRef.current) {
+        setProcessingStatuses(prev => prev.map((s, idx) =>
+          idx === i ? { ...s, status: "error", error: "Stopped by user" } : s
+        ));
+        break;
+      }
       setCurrentUrlIndex(i);
       const url = urls[i];
 
@@ -249,6 +263,7 @@ export default function BulkAnalyze() {
           const playlistVideos: Video[] = [];
           
           do {
+            if (abortRequestedRef.current) break;
             const result = await videosMutation.mutateAsync({
               playlistId: parsed.value,
               apiKey,
@@ -269,6 +284,12 @@ export default function BulkAnalyze() {
             ));
           } while (pageToken);
 
+          if (abortRequestedRef.current) {
+            setProcessingStatuses(prev => prev.map((s, idx) => 
+              idx === i ? { ...s, status: "error", error: "Stopped by user" } : s
+            ));
+            break;
+          }
           allFetchedVideos.push(...playlistVideos);
           setVideos([...allFetchedVideos]);
 
@@ -460,6 +481,24 @@ export default function BulkAnalyze() {
 
     setIsProcessing(false);
     setActiveTab("videos");
+
+    // Auto-save to History so your data is always kept (unless you delete it)
+    if (isAuthenticated && allFetchedVideos.length > 0) {
+      const firstVideo = allFetchedVideos[0];
+      const name = firstVideo?.playlistTitle || firstVideo?.channelTitle || `Analysis of ${allFetchedVideos.length} videos`;
+      const totalViews = allFetchedVideos.reduce((sum, v) => sum + v.viewCount, 0);
+      const totalLikes = allFetchedVideos.reduce((sum, v) => sum + v.likeCount, 0);
+      saveAnalysisMutation.mutate({
+        name,
+        inputUrls: urls.join("\n"),
+        videosFetched: allFetchedVideos.length,
+        commentsFetched: allFetchedComments.length,
+        totalViews,
+        totalLikes,
+        videosData: allFetchedVideos,
+        commentsData: allFetchedComments,
+      });
+    }
   };
 
   // Filter and sort comments
@@ -657,14 +696,9 @@ export default function BulkAnalyze() {
       }
     });
     
-    // Create CSV content
-    const csvContent = [headers.join(","), ...rows.map(r => r.map(cell => `"${cell.replace(/"/g, '""')}"`).join(","))].join("\n");
-    
-    // Download as CSV first (Google Sheets can import CSV)
+    const csvContent = [headers.join(","), ...rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))].join("\n");
     downloadFile(csvContent, "youtube-analysis-for-sheets.csv", "text/csv");
-    
-    // Open Google Sheets import page
-    window.open("https://sheets.google.com/create", "_blank");
+    toast.success("CSV downloaded. To view in Google Sheets: open sheets.google.com → File → Import → Upload the CSV file.");
   };
 
   const saveAnalysis = () => {

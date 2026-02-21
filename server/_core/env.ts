@@ -10,4 +10,14 @@ export const ENV = {
   /** Supabase (optional): URL and service key for server-side Supabase usage */
   supabaseUrl: process.env.SUPABASE_URL ?? "",
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+
+  /** API keys from .env – use these so keys persist across computers/browsers */
+  youtubeApiKey: process.env.YOUTUBE_API_KEY ?? "",
+  redditClientId: process.env.REDDIT_CLIENT_ID ?? "",
+  redditClientSecret: process.env.REDDIT_CLIENT_SECRET ?? "",
+  amazonApiKey: process.env.AMAZON_API_KEY ?? "",
+  amazonApiProvider: (process.env.AMAZON_API_PROVIDER ?? "rainforest") as "rainforest" | "scraperapi",
+  geminiApiKey: process.env.GEMINI_API_KEY ?? "",
+  scrapeCreatorsApiKey: process.env.SCRAPECREATORS_API_KEY ?? "",
+  composioApiKey: process.env.COMPOSIO_API_KEY ?? "",
 };

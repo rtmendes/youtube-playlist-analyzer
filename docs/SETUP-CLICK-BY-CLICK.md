@@ -8,8 +8,11 @@ This guide tells you exactly what to click and type, step by step. Do the steps 
 
 To view the app in your browser on your computer:
 
-1. **Open Cursor** and open your project folder: **youtube-playlist-analyzer**.
-2. **Open the terminal:** at the top menu click **Terminal** → **New Terminal**.
+1. **Open the terminal** (in Cursor: **Terminal** → **New Terminal**, or the Mac **Terminal** app).
+2. **Go into the project folder** (you must be inside the project, not your home folder). Type this and press **Enter** (adjust the path if your project is elsewhere):
+   ```text
+   cd "/Users/rmmakeithappen/Cursor Apps Dec 2025/YouTube POD Analytics/youtube-playlist-analyzer"
+   ```
 3. **Install dependencies** (only needed the first time or after pulling new code):
    - Type: `pnpm install`
    - Press **Enter** and wait until it finishes.

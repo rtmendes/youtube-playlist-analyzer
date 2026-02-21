@@ -246,10 +246,8 @@ export function ExportTemplates({ dataType, data, trigger, onExport }: ExportTem
   };
 
   const exportToGoogleSheets = (data: any[], columns: string[]) => {
-    // Create CSV and open Google Sheets import
     exportToCSV(data, columns);
-    window.open("https://sheets.google.com/create", "_blank");
-    toast.info("CSV downloaded. Import it into the new Google Sheet.");
+    toast.success("CSV downloaded. To use in Google Sheets: File → Import → Upload the CSV.");
   };
 
   const downloadFile = (content: string, filename: string, mimeType: string) => {

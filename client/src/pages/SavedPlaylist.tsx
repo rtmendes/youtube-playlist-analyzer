@@ -153,16 +153,15 @@ export default function SavedPlaylist() {
     return formatDate(date);
   };
 
+  const { data: apiKeyStatus } = trpc.system.getApiKeyStatus.useQuery();
   const handleRefresh = () => {
     if (!playlist) return;
-    // Navigate to analyze page with the playlist ID
-    const savedApiKey = localStorage.getItem("youtube_api_key");
-    if (savedApiKey) {
-      setLocation(`/analyze?playlist=${playlist.youtubePlaylistId}&key=${encodeURIComponent(savedApiKey)}`);
-    } else {
-      toast.error("Please set your YouTube API key first");
-      setLocation("/");
+    const key = apiKeyStatus?.youtube ? "" : (localStorage.getItem("youtube_api_key") ?? "");
+    if (!key && !apiKeyStatus?.youtube) {
+      toast.error("Set YOUTUBE_API_KEY in .env or enter your API key on the Home page.");
+      return;
     }
+    setLocation(`/analyze?playlist=${playlist.youtubePlaylistId}&key=${encodeURIComponent(key)}`);
   };
 
   const handleDelete = async () => {
