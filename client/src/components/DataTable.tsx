@@ -1,8 +1,98 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Copy, Check } from "lucide-react";
-import { useState } from "react";
+import { Copy, Check, LayoutList, LayoutGrid } from "lucide-react";
+
+// Helper cells and toggles for use with DataTable or custom tables
+export function LinkCell({
+  href,
+  external,
+  children,
+}: { href: string; external?: boolean; children: React.ReactNode }) {
+  if (external) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-primary hover:underline"
+      >
+        {children}
+      </a>
+    );
+  }
+  return (
+    <a href={href} className="text-primary hover:underline">
+      {children}
+    </a>
+  );
+}
+
+export function ThumbnailCell({
+  src,
+  alt,
+  size = "sm",
+}: { src: string; alt: string; size?: "sm" | "md" }) {
+  const dim = size === "sm" ? "w-16 h-9" : "w-24 h-14";
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={cn("rounded object-cover bg-muted", dim)}
+    />
+  );
+}
+
+export function NumberCell({ value }: { value: number }) {
+  return <span className="tabular-nums">{(value ?? 0).toLocaleString()}</span>;
+}
+
+export function DateCell({
+  value,
+  format = "date",
+}: { value: Date | string; format?: "date" | "relative" }) {
+  const d = typeof value === "string" ? new Date(value) : value;
+  if (format === "relative") {
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return <span>Today</span>;
+    if (diffDays === 1) return <span>Yesterday</span>;
+    if (diffDays < 7) return <span>{diffDays} days ago</span>;
+    if (diffDays < 30) return <span>{Math.floor(diffDays / 7)} weeks ago</span>;
+    return <span>{d.toLocaleDateString()}</span>;
+  }
+  return <span>{d.toLocaleDateString()}</span>;
+}
+
+export function ViewToggle({
+  view,
+  onViewChange,
+}: {
+  view: "list" | "grid";
+  onViewChange: (v: "list" | "grid") => void;
+}) {
+  return (
+    <div className="flex rounded-lg border border-border p-0.5">
+      <Button
+        variant={view === "list" ? "secondary" : "ghost"}
+        size="sm"
+        className="h-8 px-2"
+        onClick={() => onViewChange("list")}
+      >
+        <LayoutList className="h-4 w-4" />
+      </Button>
+      <Button
+        variant={view === "grid" ? "secondary" : "ghost"}
+        size="sm"
+        className="h-8 px-2"
+        onClick={() => onViewChange("grid")}
+      >
+        <LayoutGrid className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+}
 
 export interface Column<T> {
   key: string;

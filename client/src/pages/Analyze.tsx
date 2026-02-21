@@ -226,7 +226,7 @@ export default function Analyze() {
   // Save playlist to library
   const handleSavePlaylist = async () => {
     if (!isAuthenticated) {
-      toast.error("Please sign in to save playlists");
+      toast.info("Saved on this device. Sign in to save playlists to the cloud.");
       return;
     }
     if (!playlistMutation.data) {

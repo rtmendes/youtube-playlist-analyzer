@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useLocation, Link } from "wouter";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +21,9 @@ import {
   Loader2,
   History as HistoryIcon,
   AlertCircle,
-  Brain
+  Brain,
+  Search,
+  FileText
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
@@ -63,6 +66,7 @@ export default function History() {
   const [, setLocation] = useLocation();
   const { user, isAuthenticated } = useAuth();
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const analysisListQuery = trpc.analysis.list.useQuery(undefined, {
     enabled: isAuthenticated,
@@ -171,6 +175,18 @@ export default function History() {
   };
 
   const lastRun = getLastRun();
+
+  const filteredAnalyses = useMemo(() => {
+    if (!analysisListQuery.data) return [];
+    if (!searchQuery.trim()) return analysisListQuery.data;
+    const q = searchQuery.toLowerCase().trim();
+    return analysisListQuery.data.filter(
+      (a) =>
+        (a.name || "").toLowerCase().includes(q) ||
+        (a.inputUrls || "").toLowerCase().includes(q) ||
+        new Date(a.startedAt).toLocaleDateString().toLowerCase().includes(q)
+    );
+  }, [analysisListQuery.data, searchQuery]);
 
   if (!isAuthenticated) {
     return (
@@ -304,12 +320,25 @@ export default function History() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
         >
-          <div className="flex items-center gap-3 mb-8">
-            <HistoryIcon className="h-8 w-8 text-primary" />
-            <div>
-              <h1 className="text-3xl font-bold">Analysis History</h1>
-              <p className="text-muted-foreground">View and download your past analyses</p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+            <div className="flex items-center gap-3">
+              <HistoryIcon className="h-8 w-8 text-primary" />
+              <div>
+                <h1 className="text-3xl font-bold">Analysis History</h1>
+                <p className="text-muted-foreground">View, search, and open past analyses in Report or Comment Intelligence</p>
+              </div>
             </div>
+            {analysisListQuery.data && analysisListQuery.data.length > 0 && (
+              <div className="relative max-w-xs w-full">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by name, URL, or date..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            )}
           </div>
 
           {analysisListQuery.isLoading ? (
@@ -329,9 +358,22 @@ export default function History() {
                 </Button>
               </CardContent>
             </Card>
+          ) : filteredAnalyses.length === 0 ? (
+            <Card className="border-2 border-dashed">
+              <CardContent className="py-12 text-center">
+                <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No matches</h3>
+                <p className="text-muted-foreground mb-4">
+                  No analyses match &quot;{searchQuery}&quot;. Try a different search or clear the search box.
+                </p>
+                <Button variant="outline" onClick={() => setSearchQuery("")}>
+                  Clear search
+                </Button>
+              </CardContent>
+            </Card>
           ) : (
             <div className="space-y-4">
-              {analysisListQuery.data?.map((analysis, index) => (
+              {filteredAnalyses.map((analysis, index) => (
                 <motion.div
                   key={analysis.id}
                   initial={{ opacity: 0, y: 20 }}
@@ -391,6 +433,28 @@ export default function History() {
                             asChild
                             className="gap-2"
                           >
+                            <Link href={`/analysis?analysisId=${analysis.id}`}>
+                              <FileText className="h-4 w-4" />
+                              Report
+                            </Link>
+                          </Button>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            asChild
+                            className="gap-2"
+                          >
+                            <Link href={`/intelligence?analysisId=${analysis.id}`}>
+                              <Brain className="h-4 w-4" />
+                              Comment Intelligence
+                            </Link>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            asChild
+                            className="gap-2"
+                          >
                             <Link href={`/history/${analysis.id}`}>
                               <Eye className="h-4 w-4" />
                               View
@@ -423,17 +487,6 @@ export default function History() {
                               <Download className="h-4 w-4" />
                             )}
                             Comments
-                          </Button>
-                          <Button
-                            variant="default"
-                            size="sm"
-                            asChild
-                            className="gap-2"
-                          >
-                            <Link href={`/intelligence?analysisId=${analysis.id}`}>
-                              <Brain className="h-4 w-4" />
-                              Analyze
-                            </Link>
                           </Button>
                           
                           <AlertDialog>

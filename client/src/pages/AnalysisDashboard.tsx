@@ -1,9 +1,11 @@
 import { useMemo } from "react";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { getLastRun } from "@/lib/lastRunStorage";
 import { DynamicLayout } from "@/components/DynamicLayout";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { trpc } from "@/lib/trpc";
 import {
   FileText,
   Brain,
@@ -27,9 +29,39 @@ interface VideoLike {
 }
 
 export default function AnalysisDashboard() {
+  const search = useSearch();
+  const params = new URLSearchParams(search);
+  const analysisIdParam = params.get("analysisId");
+  const analysisId = analysisIdParam ? parseInt(analysisIdParam, 10) : null;
+  const { isAuthenticated } = useAuth();
+
+  const analysisQuery = trpc.analysis.getById.useQuery(
+    { id: analysisId! },
+    { enabled: !!analysisId && isAuthenticated }
+  );
+
   const lastRun = getLastRun();
-  const videos = (lastRun?.videosData ?? []) as VideoLike[];
-  const comments = (lastRun?.commentsData ?? []) as unknown[];
+  const serverRun = analysisQuery.data;
+
+  const sourceRun = useMemo(() => {
+    if (serverRun && Array.isArray(serverRun.videosData) && (serverRun.videosData as unknown[]).length > 0) {
+      return {
+        name: serverRun.name || `Analysis #${serverRun.id}`,
+        completedAt: serverRun.completedAt ? new Date(serverRun.completedAt).toISOString() : new Date().toISOString(),
+        videosFetched: serverRun.videosFetched ?? 0,
+        commentsFetched: serverRun.commentsFetched ?? 0,
+        totalViews: serverRun.totalViews ?? 0,
+        totalLikes: serverRun.totalLikes ?? 0,
+        videosData: serverRun.videosData ?? [],
+        commentsData: serverRun.commentsData ?? [],
+      };
+    }
+    return lastRun;
+  }, [serverRun, lastRun]);
+
+  const videos = (sourceRun?.videosData ?? []) as VideoLike[];
+  const comments = (sourceRun?.commentsData ?? []) as unknown[];
+  const fromHistory = !!analysisId && !!serverRun;
 
   const reportMarkdown = useMemo(() => {
     if (videos.length === 0 && comments.length === 0) return "";
@@ -52,13 +84,50 @@ export default function AnalysisDashboard() {
       md += `| ${i + 1} | ${title}${title.length >= 50 ? "…" : ""} | ${v.channelTitle ?? ""} | ${(v.viewCount ?? 0).toLocaleString()} | ${(v.likeCount ?? 0).toLocaleString()} | ${(v.commentCount ?? 0).toLocaleString()} |\n`;
     });
     md += `\n### Next steps\n\n`;
-    md += `For **sentiment analysis**, **product ideas**, and **copywriting insights** from comments, open [Comment Intelligence](/intelligence?source=local). For raw data and exports, use [Saved run (list view)](/history/local).\n`;
+    const intelLink = fromHistory ? `/intelligence?analysisId=${analysisId}` : "/intelligence?source=local";
+    const listLink = fromHistory ? `/history/${analysisId}` : "/history/local";
+    md += `For **sentiment analysis**, **product ideas**, and **copywriting insights** from comments, open [Comment Intelligence](${intelLink}). For raw data and exports, use [List view](${listLink}).\n`;
     return md;
-  }, [videos, comments]);
+  }, [videos, comments, fromHistory, analysisId]);
 
-  const hasData = lastRun && (videos.length > 0 || comments.length > 0);
+  const hasData = sourceRun && (videos.length > 0 || comments.length > 0);
 
-  if (!lastRun || !hasData) {
+  if (analysisId && isAuthenticated && analysisQuery.isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Card className="max-w-md">
+          <CardContent className="py-12 text-center">
+            <p className="text-muted-foreground">Loading analysis…</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (analysisId && isAuthenticated && !analysisQuery.isLoading && !serverRun) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Card className="max-w-md">
+          <CardHeader>
+            <CardTitle>Analysis not found</CardTitle>
+            <CardDescription>
+              This analysis may have been deleted or you don&apos;t have access to it.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2">
+            <Button asChild>
+              <Link href="/history">Go to History</Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/analysis">Use last run</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!sourceRun || !hasData) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Card className="max-w-md">
@@ -87,9 +156,10 @@ export default function AnalysisDashboard() {
     );
   }
 
-  const completedAt = lastRun.completedAt
-    ? new Date(lastRun.completedAt).toLocaleDateString("en-US", { dateStyle: "medium", timeStyle: "short" })
+  const completedAt = sourceRun.completedAt
+    ? new Date(sourceRun.completedAt).toLocaleDateString("en-US", { dateStyle: "medium", timeStyle: "short" })
     : "";
+  const runName = sourceRun.name || "Last run";
 
   return (
     <div className="min-h-screen bg-background">
@@ -102,19 +172,33 @@ export default function AnalysisDashboard() {
                 Analysis & Report
               </h1>
               <p className="text-sm text-muted-foreground mt-0.5">
-                {lastRun.name} · {completedAt}
-                <span className="ml-2 text-muted-foreground/80">(this device)</span>
+                {runName} · {completedAt}
+                {fromHistory ? (
+                  <span className="ml-2 text-muted-foreground/80">(from History)</span>
+                ) : (
+                  <span className="ml-2 text-muted-foreground/80">(this device)</span>
+                )}
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" asChild>
-                <Link href="/history/local">
-                  <List className="h-4 w-4 mr-1" />
-                  List view
-                </Link>
-              </Button>
+              {fromHistory && (
+                <Button variant="outline" size="sm" asChild>
+                  <Link href={`/history/${analysisId}`}>
+                    <List className="h-4 w-4 mr-1" />
+                    View in History
+                  </Link>
+                </Button>
+              )}
+              {!fromHistory && (
+                <Button variant="outline" size="sm" asChild>
+                  <Link href="/history/local">
+                    <List className="h-4 w-4 mr-1" />
+                    List view
+                  </Link>
+                </Button>
+              )}
               <Button size="sm" asChild>
-                <Link href="/intelligence?source=local">
+                <Link href={fromHistory ? `/intelligence?analysisId=${analysisId}` : "/intelligence?source=local"}>
                   <Brain className="h-4 w-4 mr-1" />
                   Comment Intelligence
                   <ArrowRight className="h-4 w-4 ml-1" />
@@ -135,7 +219,7 @@ export default function AnalysisDashboard() {
                   <Video className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{lastRun.videosFetched}</p>
+                  <p className="text-2xl font-bold">{sourceRun.videosFetched}</p>
                   <p className="text-xs text-muted-foreground">Videos</p>
                 </div>
               </div>
@@ -148,7 +232,7 @@ export default function AnalysisDashboard() {
                   <MessageSquare className="h-4 w-4 text-blue-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{lastRun.commentsFetched}</p>
+                  <p className="text-2xl font-bold">{sourceRun.commentsFetched}</p>
                   <p className="text-xs text-muted-foreground">Comments</p>
                 </div>
               </div>
@@ -161,7 +245,7 @@ export default function AnalysisDashboard() {
                   <TrendingUp className="h-4 w-4 text-green-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{lastRun.totalViews.toLocaleString()}</p>
+                  <p className="text-2xl font-bold">{(sourceRun.totalViews ?? 0).toLocaleString()}</p>
                   <p className="text-xs text-muted-foreground">Total views</p>
                 </div>
               </div>
@@ -174,7 +258,7 @@ export default function AnalysisDashboard() {
                   <ThumbsUp className="h-4 w-4 text-amber-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{lastRun.totalLikes.toLocaleString()}</p>
+                  <p className="text-2xl font-bold">{(sourceRun.totalLikes ?? 0).toLocaleString()}</p>
                   <p className="text-xs text-muted-foreground">Total likes</p>
                 </div>
               </div>
@@ -211,7 +295,7 @@ export default function AnalysisDashboard() {
           </CardHeader>
           <CardContent>
             <Button asChild className="gap-2">
-              <Link href="/intelligence?source=local">
+                <Link href={fromHistory ? `/intelligence?analysisId=${analysisId}` : "/intelligence?source=local"}>
                 Open Comment Intelligence
                 <ArrowRight className="h-4 w-4" />
               </Link>
@@ -232,7 +316,9 @@ export default function AnalysisDashboard() {
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             <Button variant="outline" asChild>
-              <Link href="/history/local">Saved run (list view)</Link>
+              <Link href={fromHistory ? `/history/${analysisId}` : "/history/local"}>
+                {fromHistory ? "View in History" : "Saved run (list view)"}
+              </Link>
             </Button>
             <Button variant="ghost" asChild>
               <Link href="/">Run a new analysis</Link>

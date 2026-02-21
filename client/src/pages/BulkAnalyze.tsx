@@ -128,7 +128,7 @@ export default function BulkAnalyze() {
   const [commentSearchQuery, setCommentSearchQuery] = useState("");
   const [commentSort, setCommentSort] = useState<string>("newest");
   const [videoFilter, setVideoFilter] = useState<string>("all");
-  const [videoSort, setVideoSort] = useState<string>("newest");
+  const [videoSort, setVideoSort] = useState<string>("comments-desc");
   const [selectedVideoIds, setSelectedVideoIds] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState("progress");
   const [isSaving, setIsSaving] = useState(false);
@@ -776,7 +776,7 @@ export default function BulkAnalyze() {
 
   const saveAnalysis = () => {
     if (!isAuthenticated) {
-      toast.error("Please sign in to save your analysis");
+      toast.info("This run is saved on this device. Sign in to save to the cloud and see it in History.");
       return;
     }
     
@@ -982,6 +982,33 @@ export default function BulkAnalyze() {
         </div>
       </div>
 
+      {/* Link results to Analysis & Report and Comment Intelligence */}
+      {videos.length > 0 && (
+        <div className="border-b border-border bg-primary/5">
+          <div className="container py-3 flex flex-wrap items-center gap-3">
+            <span className="text-sm font-medium text-muted-foreground">Use this run in:</span>
+            <Link href="/analysis">
+              <Button variant="secondary" size="sm" className="gap-2">
+                <FileText className="h-4 w-4" />
+                Analysis & Report
+              </Button>
+            </Link>
+            <Link href="/intelligence?source=local">
+              <Button variant="secondary" size="sm" className="gap-2">
+                <Brain className="h-4 w-4" />
+                Comment Intelligence
+              </Button>
+            </Link>
+            <Link href="/history/local">
+              <Button variant="outline" size="sm" className="gap-2">
+                <History className="h-4 w-4" />
+                List view / Export
+              </Button>
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <div className="container py-6">
         <Tabs defaultValue="progress" value={activeTab} onValueChange={setActiveTab}>
@@ -1108,13 +1135,13 @@ export default function BulkAnalyze() {
                   <SelectValue placeholder="Sort by" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="comments-desc">Most comments</SelectItem>
+                  <SelectItem value="likes-desc">Most likes</SelectItem>
+                  <SelectItem value="views-desc">Most views</SelectItem>
                   <SelectItem value="newest">Newest first</SelectItem>
                   <SelectItem value="oldest">Oldest first</SelectItem>
-                  <SelectItem value="views-desc">Most views</SelectItem>
                   <SelectItem value="views-asc">Fewest views</SelectItem>
-                  <SelectItem value="likes-desc">Most likes</SelectItem>
                   <SelectItem value="likes-asc">Fewest likes</SelectItem>
-                  <SelectItem value="comments-desc">Most comments</SelectItem>
                   <SelectItem value="comments-asc">Fewest comments</SelectItem>
                 </SelectContent>
               </Select>
