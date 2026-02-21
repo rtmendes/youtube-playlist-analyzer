@@ -62,8 +62,10 @@ To view the app in your browser on your computer:
 4. **Start the app:**
    - Type: `pnpm dev`
    - Press **Enter**.
-5. **Open your browser:** when you see a message like “Local: http://localhost:5173”, click that link or type **http://localhost:5173** in your browser’s address bar.
+5. **Open your browser:** when the terminal shows "Server running on http://localhost:3000/" (or 3001, 3002 if 3000 is busy), open that URL—or type “Local: http://localhost:3000”, click that link or type **http://localhost:3000** in your browser’s address bar.
 6. The app will load. Use the **sidebar** (left side) to open **POD** and other sections. To stop the app, go back to the terminal and press **Ctrl+C** (or **Cmd+C** on Mac).
+
+**If the browser says "This site can't be reached":** the dev server is likely not running. In the terminal, ensure you're in the project folder (step 2), then run **pnpm dev** (step 4) and wait for "Server running on http://localhost:XXXX/". To force port 3001, run: **PORT=3001 pnpm dev**.
 
 ---
 
