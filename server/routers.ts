@@ -30,6 +30,61 @@ export const appRouter = router({
     }),
   }),
 
+  dashboard: router({
+    getStats: protectedProcedure.query(async ({ ctx }) => {
+      const db = await getDb();
+      if (!db || !ctx.user) {
+        return { videosAnalyzed: 0, commentsCollected: 0, channelsTracked: 0, projectsSaved: 0 };
+      }
+      const sessions = await db.select({
+        videosFetched: analysisSessions.videosFetched,
+        commentsFetched: analysisSessions.commentsFetched,
+        videosData: analysisSessions.videosData,
+      }).from(analysisSessions).where(eq(analysisSessions.userId, ctx.user.id));
+
+      let videosAnalyzed = 0;
+      let commentsCollected = 0;
+      const channelIds = new Set<string>();
+      for (const s of sessions) {
+        videosAnalyzed += s.videosFetched ?? 0;
+        commentsCollected += s.commentsFetched ?? 0;
+        if (s.videosData) {
+          try {
+            const data = typeof s.videosData === "string" ? JSON.parse(s.videosData) : s.videosData;
+            if (Array.isArray(data)) for (const v of data as { channelId?: string }[]) { if (v?.channelId) channelIds.add(v.channelId); }
+          } catch { /* ignore */ }
+        }
+      }
+
+      const projectsResult = await db.select({ count: sql<number>`count(*)` })
+        .from(projects).where(eq(projects.userId, ctx.user.id));
+      const projectsSaved = Number(projectsResult[0]?.count ?? 0);
+
+      return {
+        videosAnalyzed,
+        commentsCollected,
+        channelsTracked: channelIds.size,
+        projectsSaved,
+      };
+    }),
+
+    getArchived: protectedProcedure.query(async ({ ctx }) => {
+      const db = await getDb();
+      if (!db || !ctx.user) {
+        return { playlists: [], projects: [] };
+      }
+      const [archivedPlaylists, archivedProjects] = await Promise.all([
+        db.select().from(savedPlaylists)
+          .where(and(eq(savedPlaylists.userId, ctx.user.id), eq(savedPlaylists.status, "archived")))
+          .orderBy(desc(savedPlaylists.lastRunAt)),
+        db.select().from(projects)
+          .where(and(eq(projects.userId, ctx.user.id), eq(projects.status, "archived")))
+          .orderBy(desc(projects.updatedAt)),
+      ]);
+      return { playlists: archivedPlaylists, projects: archivedProjects };
+    }),
+  }),
+
   youtube: router({
     parseUrl: publicProcedure
       .input(z.object({ url: z.string() }))
@@ -72,7 +127,8 @@ export const appRouter = router({
             publishedAt: new Date(playlist.snippet.publishedAt),
             rawData: playlist,
             userId: ctx.user.id,
-          }).onDuplicateKeyUpdate({
+          }).onConflictDoUpdate({
+            target: playlists.youtubeId,
             set: {
               title: playlist.snippet.title,
               description: playlist.snippet.description,
@@ -448,7 +504,7 @@ export const appRouter = router({
         const db = await getDb();
         if (!db) throw new Error("Database not available");
 
-        const result = await db.insert(analysisSessions).values({
+        const [row] = await db.insert(analysisSessions).values({
           userId: ctx.user.id,
           name: input.name,
           inputUrls: input.inputUrls,
@@ -460,9 +516,9 @@ export const appRouter = router({
           videosData: input.videosData,
           commentsData: input.commentsData,
           completedAt: new Date(),
-        });
+        }).returning({ id: analysisSessions.id });
 
-        return { id: Number((result as any)[0]?.insertId || 0), success: true };
+        return { id: Number(row?.id ?? 0), success: true };
       }),
 
     delete: protectedProcedure
@@ -514,8 +570,8 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
-        const result = await db.insert(folders).values({ userId: ctx.user.id, ...input });
-        return { id: Number((result as any)[0]?.insertId || 0), success: true };
+        const [row] = await db.insert(folders).values({ userId: ctx.user.id, ...input }).returning({ id: folders.id });
+        return { id: Number(row?.id ?? 0), success: true };
       }),
 
     update: protectedProcedure
@@ -551,8 +607,8 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
-        const result = await db.insert(tags).values({ userId: ctx.user.id, ...input });
-        return { id: Number((result as any)[0]?.insertId || 0), success: true };
+        const [row] = await db.insert(tags).values({ userId: ctx.user.id, ...input }).returning({ id: tags.id });
+        return { id: Number(row?.id ?? 0), success: true };
       }),
 
     delete: protectedProcedure
@@ -602,8 +658,8 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
-        const result = await db.insert(projects).values({ userId: ctx.user.id, ...input });
-        return { id: Number((result as any)[0]?.insertId || 0), success: true };
+        const [row] = await db.insert(projects).values({ userId: ctx.user.id, ...input }).returning({ id: projects.id });
+        return { id: Number(row?.id ?? 0), success: true };
       }),
 
     update: protectedProcedure
@@ -746,8 +802,8 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
-        const result = await db.insert(generatedAssets).values(input);
-        return { id: Number((result as any)[0]?.insertId || 0), success: true };
+        const [row] = await db.insert(generatedAssets).values(input).returning({ id: generatedAssets.id });
+        return { id: Number(row?.id ?? 0), success: true };
       }),
 
     getByProject: protectedProcedure
@@ -831,7 +887,8 @@ export const appRouter = router({
             productUrl: product.productUrl,
             category: product.category,
             features: product.features,
-          }).onDuplicateKeyUpdate({
+          }).onConflictDoUpdate({
+            target: [amazonProducts.asin, amazonProducts.userId],
             set: { updatedAt: new Date() },
           });
         }
@@ -904,7 +961,8 @@ export const appRouter = router({
                 themes: analysis.themes,
                 painPoints: analysis.painPoints,
                 praises: analysis.praises,
-              }).onDuplicateKeyUpdate({
+              }).onConflictDoUpdate({
+                target: [amazonReviews.productId, amazonReviews.reviewId],
                 set: { createdAt: new Date() },
               });
             }
@@ -1022,7 +1080,8 @@ export const appRouter = router({
               flair: post.flair,
               mediaUrl: post.mediaUrl,
               postedAt: post.postedAt,
-            }).onDuplicateKeyUpdate({
+            }).onConflictDoUpdate({
+              target: [redditPosts.userId, redditPosts.postId],
               set: { score: post.score, commentCount: post.commentCount, updatedAt: new Date() },
             });
           }
@@ -1069,7 +1128,8 @@ export const appRouter = router({
               flair: post.flair,
               mediaUrl: post.mediaUrl,
               postedAt: post.postedAt,
-            }).onDuplicateKeyUpdate({
+            }).onConflictDoUpdate({
+              target: [redditPosts.userId, redditPosts.postId],
               set: { score: post.score, commentCount: post.commentCount, updatedAt: new Date() },
             });
           }
@@ -1139,7 +1199,8 @@ export const appRouter = router({
               postedAt: comment.postedAt,
               sentiment: analysis.sentiment,
               themes: analysis.themes,
-            }).onDuplicateKeyUpdate({
+            }).onConflictDoUpdate({
+              target: [redditComments.postId, redditComments.commentId],
               set: { score: comment.score, createdAt: new Date() },
             });
           }
@@ -1314,7 +1375,7 @@ export const appRouter = router({
         }
 
         // Create new
-        const result = await db.insert(savedPlaylists).values({
+        const [row] = await db.insert(savedPlaylists).values({
           userId: ctx.user.id,
           youtubePlaylistId: input.youtubePlaylistId,
           title: input.title,
@@ -1324,9 +1385,9 @@ export const appRouter = router({
           videoCount: input.videoCount,
           lastRunAt: new Date(),
           status: "active",
-        });
+        }).returning({ id: savedPlaylists.id });
 
-        return { id: Number((result as any)[0]?.insertId || 0), isNew: true };
+        return { id: Number(row?.id ?? 0), isNew: true };
       }),
 
     // Get all saved playlists for user
@@ -1576,13 +1637,13 @@ export const appRouter = router({
         const db = await getDb();
         if (!db) throw new Error("Database not available");
 
-        const result = await db.insert(playlistRuns).values({
+        const [row] = await db.insert(playlistRuns).values({
           savedPlaylistId: input.savedPlaylistId,
           status: "running",
           startedAt: new Date(),
-        });
+        }).returning({ id: playlistRuns.id });
 
-        return { id: Number((result as any)[0]?.insertId || 0) };
+        return { id: Number(row?.id ?? 0) };
       }),
 
     // Update run with results
@@ -1773,7 +1834,10 @@ export const appRouter = router({
             followingCount: video.creator.followingCount,
             heartCount: video.creator.heartCount,
             videoCount: video.creator.videoCount,
-          }).onDuplicateKeyUpdate({ set: { updatedAt: new Date() } });
+          }).onConflictDoUpdate({
+            target: tiktokCreators.uniqueId,
+            set: { updatedAt: new Date() },
+          });
 
           // Store video
           await db.insert(tiktokVideos).values({
@@ -1792,7 +1856,10 @@ export const appRouter = router({
             musicAuthor: video.musicAuthor,
             hashtags: video.hashtags,
             createTime: video.createTime,
-          }).onDuplicateKeyUpdate({ set: { fetchedAt: new Date() } });
+          }).onConflictDoUpdate({
+            target: tiktokVideos.videoId,
+            set: { fetchedAt: new Date() },
+          });
         }
 
         return video;
@@ -1846,7 +1913,10 @@ export const appRouter = router({
               sentiment: comment.sentiment as any,
               sentimentScore: String(comment.sentimentScore),
               createTime: comment.createTime,
-            }).onDuplicateKeyUpdate({ set: { fetchedAt: new Date() } });
+            }).onConflictDoUpdate({
+              target: [tiktokComments.videoId, tiktokComments.commentId],
+              set: { fetchedAt: new Date() },
+            });
           }
         }
 
@@ -1975,7 +2045,7 @@ export const appRouter = router({
         if (!db) throw new Error("Database not available");
         if (!ctx.user) throw new Error("Not authenticated");
 
-        const result = await db.insert(savedComments).values({
+        const [row] = await db.insert(savedComments).values({
           userId: ctx.user.id,
           sourceType: input.sourceType,
           sourceId: input.sourceId,
@@ -1986,9 +2056,9 @@ export const appRouter = router({
           notes: input.notes,
           tags: input.tags,
           collectionName: input.collectionName,
-        });
+        }).returning({ id: savedComments.id });
 
-        return { id: result[0].insertId, success: true };
+        return { id: Number(row?.id ?? 0), success: true };
       }),
 
     list: protectedProcedure
@@ -2105,15 +2175,15 @@ export const appRouter = router({
         if (!db) throw new Error("Database not available");
         if (!ctx.user) throw new Error("Not authenticated");
 
-        const result = await db.insert(commentCollections).values({
+        const [row] = await db.insert(commentCollections).values({
           userId: ctx.user.id,
           name: input.name,
           description: input.description,
           color: input.color || "#6366f1",
           icon: input.icon || "folder",
-        });
+        }).returning({ id: commentCollections.id });
 
-        return { success: true, id: Number(result[0].insertId) };
+        return { success: true, id: Number(row?.id ?? 0) };
       }),
 
     update: protectedProcedure
@@ -2648,7 +2718,7 @@ export const appRouter = router({
         // Save to database
         let savedId: number | null = null;
         if (db) {
-          const result = await db.insert(contentTemplates).values({
+          const [row] = await db.insert(contentTemplates).values({
             userId: ctx.user.id,
             contentType: input.contentType,
             title: `${prompt.name} - ${new Date().toLocaleDateString()}`,
@@ -2665,8 +2735,8 @@ export const appRouter = router({
             tone: input.tone,
             targetAudience: input.targetAudience,
             wordCount,
-          });
-          savedId = Number(result[0].insertId);
+          }).returning({ id: contentTemplates.id });
+          savedId = Number(row?.id ?? 0);
         }
 
         return {
@@ -3000,7 +3070,7 @@ Provide insights that can be directly used in marketing copy.`
           }));
         }
 
-        const result = await db.insert(savedTemplates).values({
+        const [row] = await db.insert(savedTemplates).values({
           userId: ctx.user.id,
           name: input.name,
           description: input.description || null,
@@ -3014,9 +3084,9 @@ Provide insights that can be directly used in marketing copy.`
           useCount: 0,
           isPublic: false,
           isFavorite: false,
-        });
+        }).returning({ id: savedTemplates.id });
 
-        return { success: true, id: result[0].insertId };
+        return { success: true, id: Number(row?.id ?? 0) };
       }),
 
     // Get all saved templates
@@ -3198,7 +3268,7 @@ Provide insights that can be directly used in marketing copy.`
 
         const nextVersion = (existingVersions[0]?.versionNumber || 0) + 1;
 
-        const result = await db.insert(contentVersions).values({
+        const [row] = await db.insert(contentVersions).values({
           contentTemplateId: input.contentTemplateId,
           userId: ctx.user.id,
           versionNumber: nextVersion,
@@ -3212,9 +3282,9 @@ Provide insights that can be directly used in marketing copy.`
           status: "draft",
           metrics: null,
           annotations: null,
-        });
+        }).returning({ id: contentVersions.id });
 
-        return { success: true, id: result[0].insertId, versionNumber: nextVersion };
+        return { success: true, id: Number(row?.id ?? 0), versionNumber: nextVersion };
       }),
 
     // Get all versions for a content template
@@ -3465,7 +3535,7 @@ Provide insights that can be directly used in marketing copy.`
         // For now, we'll create a downloadable link and track the export
         // In production, this would integrate with Google Docs API
         
-        const result = await db.insert(exportHistory).values({
+        const [row] = await db.insert(exportHistory).values({
           userId: ctx.user.id,
           contentTemplateId: input.contentTemplateId || null,
           contentVersionId: input.contentVersionId || null,
@@ -3478,7 +3548,7 @@ Provide insights that can be directly used in marketing copy.`
           // In production, this would be the actual Google Docs URL
           externalUrl: null,
           externalId: null,
-        });
+        }).returning({ id: exportHistory.id });
 
         // Return the content formatted for Google Docs copy-paste
         let formattedContent = input.content;
@@ -3488,7 +3558,7 @@ Provide insights that can be directly used in marketing copy.`
 
         return {
           success: true,
-          exportId: result[0].insertId,
+          exportId: Number(row?.id ?? 0),
           formattedContent,
           message: "Content ready to paste into Google Docs. Copy the content below.",
         };
@@ -3509,7 +3579,7 @@ Provide insights that can be directly used in marketing copy.`
         if (!ctx.user) throw new Error("Not authenticated");
 
         // Track the export
-        const result = await db.insert(exportHistory).values({
+        const [row] = await db.insert(exportHistory).values({
           userId: ctx.user.id,
           contentTemplateId: input.contentTemplateId || null,
           contentVersionId: input.contentVersionId || null,
@@ -3521,12 +3591,12 @@ Provide insights that can be directly used in marketing copy.`
           status: "success",
           externalUrl: null,
           externalId: null,
-        });
+        }).returning({ id: exportHistory.id });
 
         // Format content for Notion (Notion accepts markdown)
         return {
           success: true,
-          exportId: result[0].insertId,
+          exportId: Number(row?.id ?? 0),
           formattedContent: input.content,
           message: "Content formatted for Notion. Copy and paste into a new Notion page.",
         };

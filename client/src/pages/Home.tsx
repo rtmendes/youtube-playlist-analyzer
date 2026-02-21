@@ -76,6 +76,10 @@ export default function Home() {
     { enabled: url.length > 5 && inputMode === "single" }
   );
 
+  const { data: dashboardStats } = trpc.dashboard.getStats.useQuery(undefined, {
+    enabled: !!isAuthenticated,
+  });
+
   // Parse bulk URLs to count valid entries
   const parseBulkUrls = () => {
     const lines = bulkUrls.split("\n").filter(line => line.trim().length > 0);
@@ -162,12 +166,16 @@ export default function Home() {
     },
   ];
 
-  // Quick stats (placeholder values - would be real data in production)
+  // Quick stats from dashboard API (real data when authenticated)
+  const videosCount = dashboardStats?.videosAnalyzed ?? 0;
+  const commentsCount = dashboardStats?.commentsCollected ?? 0;
+  const channelsCount = dashboardStats?.channelsTracked ?? 0;
+  const projectsCount = dashboardStats?.projectsSaved ?? 0;
   const quickStats = [
-    { label: "Videos Analyzed", value: "0", icon: Video, trend: "+0 this week" },
-    { label: "Comments Collected", value: "0", icon: MessageSquare, trend: "+0 this week" },
-    { label: "Channels Tracked", value: "0", icon: Users, trend: "+0 this week" },
-    { label: "Projects Saved", value: "0", icon: Folder, trend: "+0 this week" },
+    { label: "Videos Analyzed", value: String(videosCount), icon: Video, trend: "" },
+    { label: "Comments Collected", value: String(commentsCount), icon: MessageSquare, trend: "" },
+    { label: "Channels Tracked", value: String(channelsCount), icon: Users, trend: "" },
+    { label: "Projects Saved", value: String(projectsCount), icon: Folder, trend: "" },
   ];
 
   // Workflow steps

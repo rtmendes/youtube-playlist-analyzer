@@ -216,6 +216,19 @@
       max-width: 1280px;
     }
   }
+
+  /* Page content area: consistent vertical rhythm */
+  .page-content {
+    padding-top: 1.5rem;
+    padding-bottom: 2rem;
+  }
+
+  @media (min-width: 640px) {
+    .page-content {
+      padding-top: 2rem;
+      padding-bottom: 2.5rem;
+    }
+  }
   
   /* Swiss Style Divider */
   .swiss-divider {

@@ -85,8 +85,10 @@ export function AppLayout({ children }: AppLayoutProps) {
           onToggleYouTube={() => handleToggleYouTubeBrowser(!youtubeBrowserOpen)}
           isYouTubeOpen={youtubeBrowserOpen}
         />
-        <main className="flex-1 overflow-auto">
-          {children}
+        <main className="flex-1 overflow-auto min-h-0 flex flex-col">
+          <div className="flex-1 page-content">
+            {children}
+          </div>
         </main>
         <YouTubeBrowser
           isOpen={youtubeBrowserOpen}

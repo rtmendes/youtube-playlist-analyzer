@@ -29,6 +29,8 @@ import SharedCollection from "./pages/SharedCollection";
 import ContentGenerator from "./pages/ContentGenerator";
 import CompetitorCalendar from "./pages/CompetitorCalendar";
 import ContentGapAnalysis from "./pages/ContentGapAnalysis";
+import Playlists from "./pages/Playlists";
+import Trash from "./pages/Trash";
 
 function Router() {
   return (
@@ -56,8 +58,8 @@ function Router() {
       <Route path={"/content-generator"} component={ContentGenerator} />
       <Route path={"/competitor-calendar"} component={CompetitorCalendar} />
       <Route path={"/content-gap-analysis"} component={ContentGapAnalysis} />
-      <Route path={"/playlists"} component={NotFound} />
-      <Route path={"/trash"} component={NotFound} />
+      <Route path={"/playlists"} component={Playlists} />
+      <Route path={"/trash"} component={Trash} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
