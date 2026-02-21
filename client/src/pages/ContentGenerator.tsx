@@ -733,26 +733,6 @@ export default function ContentGenerator() {
     );
   }
 
-  if (!isAuthenticated) {
-    return (
-      <div className="container max-w-4xl py-12">
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Sparkles className="h-12 w-12 text-muted-foreground mb-4" />
-            <h2 className="text-xl font-semibold mb-2">Sign in to Create Content</h2>
-            <p className="text-muted-foreground text-center mb-6 max-w-md">
-              Access AI-powered content generation tools to create advertorials, VSL scripts, 
-              UGC scenarios, and more from your research data.
-            </p>
-            <Button onClick={() => window.location.href = getLoginUrl()}>
-              Sign In to Continue
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="container max-w-7xl py-6">
       {/* Header */}

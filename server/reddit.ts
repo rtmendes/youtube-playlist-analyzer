@@ -35,6 +35,7 @@ export interface RedditComment {
   isOp: boolean;
   depth: number;
   postedAt: Date;
+  commentUrl?: string;
   replies?: RedditComment[];
 }
 
@@ -243,6 +244,70 @@ export async function searchReddit(
 }
 
 /**
+ * Fetch posts by author (user)
+ * Mimics "Discover posts by author" – post id, URL, user, title, description, num comments, date, community name.
+ */
+export async function fetchUserPosts(
+  username: string,
+  sort: "hot" | "new" | "top" | "rising" = "hot",
+  limit: number = 25,
+  after?: string,
+  timeframe: "hour" | "day" | "week" | "month" | "year" | "all" = "week"
+): Promise<RedditSearchResult> {
+  try {
+    let url = `https://www.reddit.com/user/${username}/submitted.json?sort=${sort}&limit=${limit}`;
+    if (after) url += `&after=${after}`;
+    if (sort === "top") url += `&t=${timeframe}`;
+
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "YT-Analyzer-Research/1.0",
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error(`User u/${username} not found`);
+      }
+      throw new Error(`Reddit API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    const posts: RedditPost[] = (data.data?.children || [])
+      .filter((child: any) => child.kind === "t3")
+      .map((child: any) => {
+        const post = child.data;
+        return {
+          postId: post.id,
+          subreddit: post.subreddit,
+          title: post.title,
+          body: post.selftext || undefined,
+          author: post.author,
+          score: post.score,
+          upvoteRatio: post.upvote_ratio,
+          commentCount: post.num_comments,
+          postUrl: `https://reddit.com${post.permalink}`,
+          isNsfw: post.over_18,
+          flair: post.link_flair_text || undefined,
+          mediaUrl: post.url_overridden_by_dest || post.url || undefined,
+          postedAt: new Date(post.created_utc * 1000),
+          permalink: post.permalink,
+        };
+      });
+
+    return {
+      posts,
+      after: data.data?.after || undefined,
+      hasMore: !!data.data?.after,
+    };
+  } catch (error: any) {
+    console.error("[Reddit API] Error fetching user posts:", error.message);
+    throw error;
+  }
+}
+
+/**
  * Fetch comments for a specific post
  */
 export async function fetchPostComments(
@@ -285,7 +350,8 @@ export async function fetchPostComments(
       permalink: postData.permalink,
     };
 
-    const comments = parseCommentTree(data[1].data.children, postData.author, postId);
+    const baseUrl = `https://reddit.com${postData.permalink}`;
+    const comments = parseCommentTree(data[1].data.children, postData.author, postId, undefined, 0, baseUrl);
 
     return { post, comments };
   } catch (error: any) {
@@ -302,7 +368,8 @@ function parseCommentTree(
   opAuthor: string,
   postId: string,
   parentId?: string,
-  depth: number = 0
+  depth: number = 0,
+  postPermalinkBase?: string
 ): RedditComment[] {
   const comments: RedditComment[] = [];
 
@@ -320,6 +387,7 @@ function parseCommentTree(
       isOp: comment.author === opAuthor,
       depth,
       postedAt: new Date(comment.created_utc * 1000),
+      commentUrl: postPermalinkBase ? `${postPermalinkBase.replace(/\/?$/, "")}/${comment.id}` : undefined,
     };
 
     comments.push(parsedComment);
@@ -331,7 +399,8 @@ function parseCommentTree(
         opAuthor,
         postId,
         comment.id,
-        depth + 1
+        depth + 1,
+        postPermalinkBase
       );
       comments.push(...nestedComments);
     }
@@ -673,6 +742,29 @@ export async function searchRedditWithFallback(
     console.error(`[Reddit] Falling back to sample data due to error: ${error.message}`);
     return {
       posts: generateSamplePosts(query, limit),
+      after: undefined,
+      hasMore: false,
+    };
+  }
+}
+
+/**
+ * Fetch user posts with fallback to sample data
+ */
+export async function fetchUserPostsWithFallback(
+  username: string,
+  sort: "hot" | "new" | "top" | "rising" = "hot",
+  limit: number = 25,
+  after?: string,
+  timeframe: "hour" | "day" | "week" | "month" | "year" | "all" = "week"
+): Promise<RedditSearchResult> {
+  try {
+    return await fetchUserPosts(username, sort, limit, after, timeframe);
+  } catch (error: any) {
+    console.error(`[Reddit] Falling back to sample data for user ${username}:`, error.message);
+    const sample = generateSamplePosts(username, limit);
+    return {
+      posts: sample.map((p) => ({ ...p, author: username })),
       after: undefined,
       hasMore: false,
     };

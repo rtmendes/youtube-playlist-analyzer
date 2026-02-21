@@ -436,19 +436,6 @@ export default function CompetitorAnalysis() {
     );
   };
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Card className="max-w-md">
-          <CardHeader>
-            <CardTitle>Sign In Required</CardTitle>
-            <CardDescription>Please sign in to access Competitor Analysis</CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}

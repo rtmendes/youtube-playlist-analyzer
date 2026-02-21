@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
+import { getStoredYouTubeApiKey } from "@/lib/apiKeys";
 import { 
   ArrowRight, Play, MessageSquare, BarChart3, Download, Search, Loader2, 
   List, FileText, History, Folder, Video, Users, Brain, Palette, 
@@ -30,6 +31,8 @@ export default function Home() {
 
   const { data: apiKeyStatus } = trpc.system.getApiKeyStatus.useQuery();
   const serverHasYouTubeKey = !!apiKeyStatus?.youtube;
+  const storedKey = getStoredYouTubeApiKey().trim();
+  const hasYouTubeKey = serverHasYouTubeKey || storedKey.length > 0;
 
   // Check for URL parameter from YouTube browser
   useEffect(() => {
@@ -60,11 +63,12 @@ export default function Home() {
   const bulkUrlCount = parseBulkUrls().length;
 
   const handleAnalyze = () => {
-    if (!serverHasYouTubeKey && !apiKey.trim()) {
-      alert("Please enter your YouTube API key or set YOUTUBE_API_KEY in the server .env file.");
+    const keyToUse = apiKey.trim() || storedKey;
+    if (!serverHasYouTubeKey && !keyToUse) {
+      alert("Please enter your YouTube API key here, or add it in Settings and click Save, or set YOUTUBE_API_KEY in the server .env file.");
       return;
     }
-    const keyToPass = serverHasYouTubeKey ? "" : apiKey;
+    const keyToPass = serverHasYouTubeKey ? "" : keyToUse;
 
     if (inputMode === "bulk") {
       const urls = parseBulkUrls();
@@ -347,31 +351,28 @@ https://youtube.com/channel/UCxxxxx`}
                         <span className="text-xs text-primary hover:underline cursor-pointer">Settings</span>
                       </Link>
                     </div>
-                    {serverHasYouTubeKey ? (
-                      <p className="text-sm text-muted-foreground py-2">Using server key (set in .env)</p>
+                    {hasYouTubeKey ? (
+                      <p className="text-sm text-muted-foreground py-2">
+                        {serverHasYouTubeKey
+                          ? "Using server key (set in .env). No need to enter a key here."
+                          : "Using key from Settings. No need to enter a key here."}
+                      </p>
                     ) : (
                       <>
-                    <Input
-                      type="password"
-                      placeholder="Your YouTube Data API v3 key (or set YOUTUBE_API_KEY in .env)"
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      className="h-10 border-2 border-foreground"
-                    />
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs text-muted-foreground">
-                        Get your API key from the{" "}
-                        <a 
-                          href="https://console.cloud.google.com/apis/credentials" 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-primary underline"
-                        >
-                          Google Cloud Console
-                        </a>
-                        . For persistence across browsers/computers, set YOUTUBE_API_KEY in the server .env file.
-                      </p>
-                    </div>
+                        <Input
+                          type="password"
+                          placeholder="Paste your YouTube Data API v3 key, or add it in Settings"
+                          value={apiKey}
+                          onChange={(e) => setApiKey(e.target.value)}
+                          className="h-10 border-2 border-foreground"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Get a key from{" "}
+                          <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                            Google Cloud Console
+                          </a>
+                          . Or add it in <Link href="/settings" className="text-primary underline">Settings</Link> and click Save to avoid entering it here. For all devices, set <strong>YOUTUBE_API_KEY</strong> in the server <strong>.env</strong> file (see setup guide).
+                        </p>
                       </>
                     )}
                   </div>

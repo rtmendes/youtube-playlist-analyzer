@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
+import { getLastRun } from "@/lib/lastRunStorage";
 import { 
   ArrowLeft, 
   Download, 
@@ -169,37 +170,102 @@ export default function History() {
     setTimeout(checkData, 500);
   };
 
+  const lastRun = getLastRun();
+
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex flex-col">
+      <div className="min-h-screen flex flex-col bg-background">
         <header className="border-b-2 border-foreground">
           <div className="container py-4 flex items-center justify-between">
             <Link href="/" className="flex items-center gap-2">
-              <img 
-                src="/images/logo-placeholder.png" 
-                alt="YouTube Playlist Analyzer" 
-                className="h-10 w-10"
-              />
+              <ArrowLeft className="h-5 w-5" />
               <span className="font-bold text-xl tracking-tight">Playlist Analyzer</span>
             </Link>
           </div>
         </header>
 
-        <main className="flex-1 flex items-center justify-center">
-          <Card className="max-w-md mx-auto border-2 border-foreground">
-            <CardHeader className="text-center">
-              <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <CardTitle>Sign In Required</CardTitle>
-              <CardDescription>
-                You need to sign in to view your analysis history.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="text-center">
-              <Button asChild>
-                <a href={getLoginUrl()}>Sign In</a>
-              </Button>
-            </CardContent>
-          </Card>
+        <main className="flex-1 container py-8">
+          <div className="flex items-center gap-3 mb-6">
+            <HistoryIcon className="h-8 w-8 text-primary" />
+            <div>
+              <h1 className="text-2xl font-bold">Saved & Recent</h1>
+              <p className="text-muted-foreground">Your last run is saved on this device. Sign in to save to the cloud and see runs on any device.</p>
+            </div>
+          </div>
+
+          {lastRun ? (
+            <Card className="border-2 border-foreground max-w-2xl">
+              <CardContent className="p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="font-semibold text-lg">{lastRun.name}</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {new Date(lastRun.completedAt).toLocaleDateString("en-US", { dateStyle: "medium" })} · {lastRun.videosFetched} videos · {lastRun.commentsFetched} comments
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button asChild>
+                      <Link href="/history/local">View</Link>
+                    </Button>
+                    <Button variant="default" asChild className="gap-2">
+                      <Link href="/intelligence?source=local">
+                        <Brain className="h-4 w-4" />
+                        Comment Intelligence
+                      </Link>
+                    </Button>
+                    <Button variant="outline" onClick={() => {
+                      const v = lastRun.videosData as Video[];
+                      const headers = ["Video ID", "Title", "Channel", "Views", "Likes", "Comments", "Duration", "Published", "Playlist"];
+                      const rows = v.map((vid: Video) => [
+                        vid.id,
+                        `"${(vid.title || "").replace(/"/g, '""')}"`,
+                        `"${(vid.channelTitle || "").replace(/"/g, '""')}"`,
+                        vid.viewCount,
+                        vid.likeCount,
+                        vid.commentCount,
+                        vid.durationFormatted || "",
+                        vid.publishedAt ? new Date(vid.publishedAt).toISOString().split("T")[0] : "",
+                        vid.playlistTitle ? `"${(vid.playlistTitle || "").replace(/"/g, '""')}"` : "",
+                      ]);
+                      const csv = [headers.join(","), ...rows.map((r: (string | number)[]) => r.join(","))].join("\n");
+                      const blob = new Blob([csv], { type: "text/csv" });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `videos_${lastRun.name.replace(/[^a-z0-9]/gi, "_")}.csv`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                      toast.success("Videos CSV downloaded");
+                    }}>
+                      <Download className="h-4 w-4 mr-2" />
+                      Videos CSV
+                    </Button>
+                    <Button variant="ghost" size="sm" asChild>
+                      <a href={getLoginUrl()}>Sign in to save to cloud</a>
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="max-w-md border-2 border-dashed">
+              <CardHeader className="text-center">
+                <HistoryIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <CardTitle>No saved run yet</CardTitle>
+                <CardDescription>
+                  Run a bulk analysis from Home. Your last run will appear here (on this device). Sign in to save to the cloud.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2 items-center">
+                <Button asChild>
+                  <Link href="/">Start analysis</Link>
+                </Button>
+                <Button variant="ghost" asChild>
+                  <a href={getLoginUrl()}>Sign In</a>
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </main>
       </div>
     );

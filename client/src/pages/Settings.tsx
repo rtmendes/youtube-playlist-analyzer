@@ -48,8 +48,17 @@ export default function Settings() {
   }, []);
 
   const saveAll = () => {
+    if (youtubeApiKey) localStorage.setItem(API_KEY_STORAGE.YOUTUBE_API_KEY, youtubeApiKey);
+    if (amazonApiKey) localStorage.setItem(API_KEY_STORAGE.AMAZON_API_KEY, amazonApiKey);
+    localStorage.setItem(API_KEY_STORAGE.AMAZON_API_PROVIDER, amazonProvider);
+    if (geminiApiKey) localStorage.setItem(API_KEY_STORAGE.GEMINI_API_KEY, geminiApiKey);
+    if (redditClientId) localStorage.setItem(API_KEY_STORAGE.REDDIT_CLIENT_ID, redditClientId);
+    if (redditClientSecret) localStorage.setItem(API_KEY_STORAGE.REDDIT_CLIENT_SECRET, redditClientSecret);
+    if (tiktokToken) localStorage.setItem(API_KEY_STORAGE.TIKTOK_ACCESS_TOKEN, tiktokToken);
+    if (composioApiKey) localStorage.setItem(API_KEY_STORAGE.COMPOSIO_API_KEY, composioApiKey);
+    if (scrapecreatorsApiKey) localStorage.setItem(API_KEY_STORAGE.SCRAPECREATORS_API_KEY, scrapecreatorsApiKey);
     setSaved(true);
-    toast.success("Keys are not stored in the browser. For persistence across computers and browsers, set them in the server .env file (see .env.example).");
+    toast.success("Settings saved for this browser. For persistence across computers, set keys in the server .env file.");
     setTimeout(() => setSaved(false), 3000);
   };
 
@@ -62,7 +71,7 @@ export default function Settings() {
             Settings
           </h1>
           <p className="text-muted-foreground">
-            For persistence across computers and browsers, set API keys in the server <strong>.env</strong> file (see .env.example). Keys are not stored in the browser. See{" "}
+            For persistence across computers and browsers, set API keys in the server <strong>.env</strong> file (see .env.example). Keys saved here work in this browser only. See{" "}
             <a href="https://github.com/rtmendes/youtube-playlist-analyzer/blob/main/docs/API-KEYS.md" target="_blank" rel="noopener noreferrer" className="text-primary underline inline-flex items-center gap-1">
               docs/API-KEYS.md <ExternalLink className="h-3 w-3" />
             </a>
@@ -73,6 +82,29 @@ export default function Settings() {
           {saved ? "Saved" : "Save all"}
         </Button>
       </div>
+
+      {/* What to update - plain checklist */}
+      <Card className="border-primary/30 bg-primary/5">
+        <CardHeader>
+          <CardTitle className="text-base">What to update</CardTitle>
+          <CardDescription>
+            Fill in only what you use. Click <strong>Save all</strong> when done.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="text-sm space-y-2">
+          <p><strong>Required for core app:</strong></p>
+          <ul className="list-disc list-inside text-muted-foreground space-y-1 ml-2">
+            <li><strong>YouTube Data API v3</strong> — needed for playlists, videos, channels, comments. Get it from Google Cloud Console (link below).</li>
+          </ul>
+          <p className="pt-2"><strong>Optional (unlock more features):</strong></p>
+          <ul className="list-disc list-inside text-muted-foreground space-y-1 ml-2">
+            <li><strong>Gemini</strong> — AI content in Marketing Canvas.</li>
+            <li><strong>Amazon</strong> — Amazon Reviews & Competitor Analysis (Rainforest or ScraperAPI).</li>
+            <li><strong>Reddit</strong> — Reddit Research (client ID + secret from reddit.com/prefs/apps).</li>
+            <li><strong>TikTok</strong> — Composio API key or Scrape Creators key, or an OAuth token.</li>
+          </ul>
+        </CardContent>
+      </Card>
 
       {/* Account / Sign-in note */}
       <Card>

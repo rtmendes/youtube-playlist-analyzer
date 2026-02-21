@@ -4,6 +4,49 @@ This guide tells you exactly what to click and type, step by step. Do the steps 
 
 ---
 
+## Where to add the server .env (API keys so the app stops asking)
+
+The app can use your **YouTube API key** (and other keys) from a file called **.env** on the **server**. Once you add it there, the app will **not** ask for the key on the home screen.
+
+### Step 1 – Open your project folder
+
+1. In **Cursor**, in the left sidebar, click your project folder (e.g. **youtube-playlist-analyzer**).
+2. You should see folders like **client**, **server**, **docs** and files like **package.json**. The **.env** file must live in the **same folder as package.json** (the project root).
+
+### Step 2 – Create or open the .env file
+
+1. In the left sidebar, look for a file named **.env** in the project root (same level as **package.json**).
+2. **If you see .env:** click it to open it.
+3. **If you do not see .env:**
+   - Right‑click in the sidebar on the project root (the folder name at the top).
+   - Click **“New File”**.
+   - Type exactly: **.env** and press **Enter**.
+   - Click the new **.env** file to open it.
+
+### Step 3 – Add your YouTube API key
+
+1. In the **.env** file, click at the end of the file (or in an empty line).
+2. Type or paste this on its own line (replace the placeholder with your real key):
+   ```text
+   YOUTUBE_API_KEY=your_actual_key_here
+   ```
+   Example (fake key): `YOUTUBE_API_KEY=AIzaSyB1234567890abcdef`
+3. Do **not** put quotes around the key. Do **not** leave a space before or after the `=`.
+4. Save the file (**File → Save**, or **Ctrl+S** / **Cmd+S**).
+
+### Step 4 – Restart the server
+
+1. Go to the **Terminal** (bottom panel in Cursor, or **Terminal → New Terminal**).
+2. If the app is running (**pnpm dev** or **npm run dev**), stop it: press **Ctrl+C** (or **Cmd+C** on Mac).
+3. Start it again: type **pnpm dev** (or **npm run dev**) and press **Enter**.
+4. Open the app in your browser again. The home page should now say **“Using server key (set in .env). No need to enter a key here.”** and the API key box will be hidden.
+
+### Optional – Other keys in .env
+
+You can add more keys in the same **.env** file, one per line. See the **.env.example** file in the project for names (e.g. `GEMINI_API_KEY=`, `REDDIT_CLIENT_ID=`, etc.). The app uses these so you don’t have to type them in the interface.
+
+---
+
 ## How to see the app rendered (run it locally)
 
 To view the app in your browser on your computer:

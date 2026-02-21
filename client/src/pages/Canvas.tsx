@@ -403,19 +403,6 @@ Create content that:
     URL.revokeObjectURL(url);
   };
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Card className="max-w-md">
-          <CardHeader>
-            <CardTitle>Sign In Required</CardTitle>
-            <CardDescription>Please sign in to access the Marketing Canvas</CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}

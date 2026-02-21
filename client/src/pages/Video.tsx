@@ -21,6 +21,7 @@ import {
   User,
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { getStoredYouTubeApiKey } from "@/lib/apiKeys";
 
 interface Comment {
   id: string;
@@ -48,7 +49,7 @@ export default function Video() {
   const searchParams = useSearch();
   const params = new URLSearchParams(searchParams);
   const videoId = params.get("id") || "";
-  const apiKey = params.get("key") || "";
+  const apiKey = params.get("key") || getStoredYouTubeApiKey();
 
   const [comments, setComments] = useState<Comment[]>([]);
   const [searchQuery, setSearchQuery] = useState("");

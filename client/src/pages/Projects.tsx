@@ -156,37 +156,6 @@ export default function Projects() {
     p.description?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen flex flex-col">
-        <header className="border-b-2 border-foreground">
-          <div className="container py-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <img src="/images/logo-placeholder.png" alt="Logo" className="h-10 w-10" />
-              <span className="font-bold text-xl">Playlist Analyzer</span>
-            </div>
-            <Button variant="outline" asChild>
-              <a href={getLoginUrl()}>Sign In</a>
-            </Button>
-          </div>
-        </header>
-        <div className="flex-1 flex items-center justify-center">
-          <Card className="max-w-md">
-            <CardHeader>
-              <CardTitle>Sign In Required</CardTitle>
-              <CardDescription>Please sign in to access your projects</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button asChild className="w-full">
-                <a href={getLoginUrl()}>Sign In to Continue</a>
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}

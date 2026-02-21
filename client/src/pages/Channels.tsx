@@ -2,7 +2,6 @@ import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { getLoginUrl } from "@/const";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -177,21 +176,6 @@ export default function Channels() {
     );
   }
 
-  if (!user) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <Users className="h-16 w-16 text-muted-foreground" />
-        <h2 className="text-2xl font-bold">Sign in to view your channels</h2>
-        <p className="text-muted-foreground">
-          Channels from your analyzed videos will appear here after you sign in.
-        </p>
-        <Button onClick={() => (window.location.href = getLoginUrl())}>
-          Sign In
-        </Button>
-      </div>
-    );
-  }
-
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -200,7 +184,7 @@ export default function Channels() {
           <div>
             <h1 className="text-2xl font-bold">All Channels</h1>
             <p className="text-muted-foreground">
-              {filteredChannels.length} channels from your analyses
+              {user ? `${filteredChannels.length} channels from your analyses` : "Run a bulk analysis from Home to pull in channels. Sign in to save and see them here."}
             </p>
           </div>
           <div className="flex items-center gap-2">

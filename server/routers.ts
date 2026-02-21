@@ -15,7 +15,7 @@ import { allPrompts, getPromptsForType, getPromptById, copywritingFrameworks as 
 import { invokeLLM } from "./_core/llm";
 import { eq, desc, and, like, or, sql } from "drizzle-orm";
 import { parseAmazonUrl, generateSampleProduct, generateSampleReviews, calculateReviewStats, analyzeReviewSentiment, fetchAmazonProduct, fetchAmazonReviews, searchAmazonProducts, compareProducts, AmazonApiConfig } from "./amazon";
-import { parseRedditUrl, fetchSubredditPosts, searchReddit, fetchPostComments, analyzeRedditComment, calculateRedditStats, getPopularResearchSubreddits, fetchSubredditPostsWithFallback, searchRedditWithFallback, fetchPostCommentsWithFallback, generateSamplePosts, generateSampleComments as generateSampleRedditComments } from "./reddit";
+import { parseRedditUrl, fetchSubredditPosts, searchReddit, fetchPostComments, analyzeRedditComment, calculateRedditStats, getPopularResearchSubreddits, fetchSubredditPostsWithFallback, searchRedditWithFallback, fetchPostCommentsWithFallback, fetchUserPostsWithFallback, generateSamplePosts, generateSampleComments as generateSampleRedditComments } from "./reddit";
 import { parseTikTokUrl, generateSampleVideo, generateSampleCreator, generateSampleComments as generateSampleTikTokComments, analyzeTikTokSentiment, extractTrendingHashtags, TikTokVideoInfo } from "./tiktok";
 import { fetchTikTokVideo, fetchTikTokComments } from "./scrape-creators";
 import { ENV } from "./_core/env";
@@ -1070,6 +1070,51 @@ export const appRouter = router({
         );
 
         // Save posts to database
+        const db = await getDb();
+        if (db && ctx.user) {
+          for (const post of result.posts) {
+            await db.insert(redditPosts).values({
+              userId: ctx.user.id,
+              postId: post.postId,
+              subreddit: post.subreddit,
+              title: post.title,
+              body: post.body,
+              author: post.author,
+              score: post.score,
+              upvoteRatio: String(post.upvoteRatio),
+              commentCount: post.commentCount,
+              postUrl: post.postUrl,
+              isNsfw: post.isNsfw ? 1 : 0,
+              flair: post.flair,
+              mediaUrl: post.mediaUrl,
+              postedAt: post.postedAt,
+            }).onConflictDoUpdate({
+              target: [redditPosts.userId, redditPosts.postId],
+              set: { score: post.score, commentCount: post.commentCount, updatedAt: new Date() },
+            });
+          }
+        }
+
+        return result;
+      }),
+
+    getUserPosts: publicProcedure
+      .input(z.object({
+        username: z.string(),
+        sort: z.enum(["hot", "new", "top", "rising"]).default("hot"),
+        limit: z.number().min(1).max(100).default(25),
+        after: z.string().optional(),
+        timeframe: z.enum(["hour", "day", "week", "month", "year", "all"]).default("week"),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const result = await fetchUserPostsWithFallback(
+          input.username,
+          input.sort,
+          input.limit,
+          input.after,
+          input.timeframe
+        );
+
         const db = await getDb();
         if (db && ctx.user) {
           for (const post of result.posts) {

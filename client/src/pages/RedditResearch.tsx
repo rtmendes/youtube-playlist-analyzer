@@ -67,6 +67,7 @@ interface RedditComment {
   isOp: boolean;
   depth: number;
   postedAt: Date;
+  commentUrl?: string;
   sentiment?: "positive" | "neutral" | "negative";
   themes?: string[];
 }
@@ -97,7 +98,8 @@ export default function RedditResearch() {
   // State
   const [searchInput, setSearchInput] = useState("");
   const [subredditInput, setSubredditInput] = useState("");
-  const [searchType, setSearchType] = useState<"subreddit" | "search">("subreddit");
+  const [authorInput, setAuthorInput] = useState("");
+  const [searchType, setSearchType] = useState<"subreddit" | "search" | "author">("subreddit");
   const [isLoading, setIsLoading] = useState(false);
   const [posts, setPosts] = useState<RedditPost[]>([]);
   const [selectedPost, setSelectedPost] = useState<RedditPost | null>(null);
@@ -105,12 +107,14 @@ export default function RedditResearch() {
   const [stats, setStats] = useState<RedditStats | null>(null);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<string>("hot");
+  const [searchSortBy, setSearchSortBy] = useState<string>("relevance");
   const [timeframe, setTimeframe] = useState<string>("week");
   const [activeTab, setActiveTab] = useState("posts");
   const [popularSubreddits, setPopularSubreddits] = useState<PopularSubreddit[]>([]);
 
   // TRPC mutations
   const getSubredditPostsMutation = trpc.reddit.getSubredditPosts.useMutation();
+  const getUserPostsMutation = trpc.reddit.getUserPosts.useMutation();
   const searchPostsMutation = trpc.reddit.searchPosts.useMutation();
   const getPostCommentsMutation = trpc.reddit.getPostComments.useMutation();
   const getPopularSubredditsQuery = trpc.reddit.getPopularSubreddits.useQuery();
@@ -162,7 +166,7 @@ export default function RedditResearch() {
       const result = await searchPostsMutation.mutateAsync({
         query: searchInput,
         subreddit: subredditInput ? subredditInput.replace(/^r\//, "") : undefined,
-        sort: sortBy as "relevance" | "hot" | "top" | "new" | "comments",
+        sort: searchSortBy as "relevance" | "hot" | "top" | "new" | "comments",
         limit: 25,
         timeframe: timeframe as "hour" | "day" | "week" | "month" | "year" | "all",
       });
@@ -174,6 +178,35 @@ export default function RedditResearch() {
       setActiveTab("posts");
     } catch (error: any) {
       toast.error(error.message || "Failed to search Reddit");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle author search (posts by user)
+  const handleAuthorSearch = async () => {
+    const username = authorInput.replace(/^u\//, "").trim();
+    if (!username) {
+      toast.error("Please enter a Reddit username");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const result = await getUserPostsMutation.mutateAsync({
+        username,
+        sort: sortBy as "hot" | "new" | "top" | "rising",
+        limit: 25,
+        timeframe: timeframe as "hour" | "day" | "week" | "month" | "year" | "all",
+      });
+
+      setPosts(result.posts as RedditPost[]);
+      setSelectedPost(null);
+      setComments([]);
+      toast.success(`Found ${result.posts.length} posts by u/${username}`);
+      setActiveTab("posts");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to fetch user posts");
     } finally {
       setIsLoading(false);
     }
@@ -287,10 +320,11 @@ export default function RedditResearch() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Tabs value={searchType} onValueChange={(v) => setSearchType(v as "subreddit" | "search")}>
+            <Tabs value={searchType} onValueChange={(v) => setSearchType(v as "subreddit" | "search" | "author")}>
               <TabsList className="mb-4">
                 <TabsTrigger value="subreddit">Browse Subreddit</TabsTrigger>
                 <TabsTrigger value="search">Search Keywords</TabsTrigger>
+                <TabsTrigger value="author">By Author</TabsTrigger>
               </TabsList>
 
               <TabsContent value="subreddit">
@@ -337,8 +371,8 @@ export default function RedditResearch() {
               </TabsContent>
 
               <TabsContent value="search">
-                <div className="flex gap-4">
-                  <div className="flex-1">
+                <div className="flex flex-wrap gap-4 items-end">
+                  <div className="flex-1 min-w-[200px]">
                     <Input
                       placeholder="Search keywords (e.g., best headphones, product recommendations)"
                       value={searchInput}
@@ -352,6 +386,18 @@ export default function RedditResearch() {
                     onChange={(e) => setSubredditInput(e.target.value)}
                     className="w-48"
                   />
+                  <Select value={searchSortBy} onValueChange={setSearchSortBy}>
+                    <SelectTrigger className="w-36">
+                      <SelectValue placeholder="Sort" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="relevance">Relevance</SelectItem>
+                      <SelectItem value="hot">Hot</SelectItem>
+                      <SelectItem value="top">Top</SelectItem>
+                      <SelectItem value="new">New</SelectItem>
+                      <SelectItem value="comments">Most Comments</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <Select value={timeframe} onValueChange={setTimeframe}>
                     <SelectTrigger className="w-32">
                       <SelectValue placeholder="Time" />
@@ -367,6 +413,49 @@ export default function RedditResearch() {
                   <Button onClick={handleKeywordSearch} disabled={isLoading} className="gap-2">
                     {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
                     Search
+                  </Button>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="author">
+                <div className="flex gap-4 flex-wrap items-end">
+                  <div className="flex-1 min-w-[200px]">
+                    <Input
+                      placeholder="Reddit username (e.g., spez or u/spez)"
+                      value={authorInput}
+                      onChange={(e) => setAuthorInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleAuthorSearch()}
+                    />
+                  </div>
+                  <Select value={sortBy} onValueChange={setSortBy}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue placeholder="Sort by" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="hot">Hot</SelectItem>
+                      <SelectItem value="new">New</SelectItem>
+                      <SelectItem value="top">Top</SelectItem>
+                      <SelectItem value="rising">Rising</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {sortBy === "top" && (
+                    <Select value={timeframe} onValueChange={setTimeframe}>
+                      <SelectTrigger className="w-32">
+                        <SelectValue placeholder="Time" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="hour">Past Hour</SelectItem>
+                        <SelectItem value="day">Today</SelectItem>
+                        <SelectItem value="week">This Week</SelectItem>
+                        <SelectItem value="month">This Month</SelectItem>
+                        <SelectItem value="year">This Year</SelectItem>
+                        <SelectItem value="all">All Time</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <Button onClick={handleAuthorSearch} disabled={isLoading} className="gap-2">
+                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                    Get posts
                   </Button>
                 </div>
               </TabsContent>
@@ -547,6 +636,18 @@ export default function RedditResearch() {
                                           <Badge className={`${SENTIMENT_COLORS[comment.sentiment]} text-white text-xs`}>
                                             {comment.sentiment}
                                           </Badge>
+                                        )}
+                                        {comment.commentUrl && (
+                                          <a
+                                            href={comment.commentUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-xs text-primary hover:underline flex items-center gap-0.5 ml-auto"
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            <ExternalLink className="h-3 w-3" />
+                                            View on Reddit
+                                          </a>
                                         )}
                                       </div>
                                       <p className="text-sm whitespace-pre-wrap">{comment.body}</p>

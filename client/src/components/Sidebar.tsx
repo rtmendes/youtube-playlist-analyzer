@@ -184,14 +184,16 @@ export function Sidebar({ isCollapsed, onToggle, onOpenSearch, onToggleYouTube, 
     { enabled: !!user }
   );
 
-  // Recent analysis runs (for Sidebar "Recent")
+  // Recent analysis runs (for Sidebar "Recent") — from server when signed in
   const { data: recentAnalysesData } = trpc.analysis.list.useQuery(
     undefined,
     { enabled: !!user }
   );
-  const recentAnalyses = recentAnalysesData?.analyses ?? [];
+  const recentAnalyses = Array.isArray(recentAnalysesData) ? recentAnalysesData : [];
   const recentCount = 5;
   const recentToShow = recentAnalyses.slice(0, recentCount);
+  // When not signed in, show last run from this device if any
+  const lastRunLocal = typeof window !== "undefined" ? (() => { try { const raw = localStorage.getItem("youtube_analyzer_last_run"); return raw ? JSON.parse(raw) : null; } catch { return null; } })() : null;
 
   // Folder mutations
   const createFolderMutation = trpc.folders.create.useMutation({
@@ -590,7 +592,7 @@ export function Sidebar({ isCollapsed, onToggle, onOpenSearch, onToggleYouTube, 
               </div>
               {recentToShow.length > 0 ? (
                 <div className="mt-1 space-y-0.5">
-                  {recentToShow.map((a) => (
+                  {recentToShow.map((a: { id: number; name?: string }) => (
                     <Link key={a.id} href={`/history/${a.id}`}>
                       <div
                         className={cn(
@@ -611,9 +613,30 @@ export function Sidebar({ isCollapsed, onToggle, onOpenSearch, onToggleYouTube, 
                     </div>
                   </Link>
                 </div>
+              ) : lastRunLocal ? (
+                <div className="mt-1 space-y-0.5">
+                  <Link href="/history/local">
+                    <div
+                      className={cn(
+                        "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors text-xs truncate",
+                        "hover:bg-accent text-muted-foreground hover:text-foreground",
+                        location === "/history/local" && "bg-accent text-accent-foreground"
+                      )}
+                      title={lastRunLocal.name}
+                    >
+                      <History className="h-3.5 w-3.5 flex-shrink-0" />
+                      <span className="truncate">{lastRunLocal.name || "Last run"}</span>
+                    </div>
+                  </Link>
+                  <Link href="/history">
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors">
+                      Saved & recent →
+                    </div>
+                  </Link>
+                </div>
               ) : (
                 <div className="px-2 py-2 text-xs text-muted-foreground/60 italic">
-                  No recent items. Bulk runs are saved automatically.
+                  No recent items. Run a bulk analysis from Home; your last run will appear here.
                 </div>
               )}
             </div>

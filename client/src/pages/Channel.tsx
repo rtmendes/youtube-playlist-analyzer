@@ -2,7 +2,6 @@ import { useState, useMemo, useCallback } from "react";
 import { useParams, Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { getLoginUrl } from "@/const";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -293,21 +292,6 @@ export default function Channel() {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <Video className="h-16 w-16 text-muted-foreground" />
-        <h2 className="text-2xl font-bold">Sign in to view channel details</h2>
-        <p className="text-muted-foreground">
-          Channel data will appear here after you sign in.
-        </p>
-        <Button onClick={() => (window.location.href = getLoginUrl())}>
-          Sign In
-        </Button>
       </div>
     );
   }

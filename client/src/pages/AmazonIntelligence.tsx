@@ -49,6 +49,10 @@ interface AmazonProduct {
   description?: string;
   brand?: string;
   price?: string;
+  initialPrice?: string;
+  currency?: string;
+  availability?: string;
+  sellerName?: string;
   rating?: string;
   reviewCount?: number;
   imageUrl?: string;
@@ -89,7 +93,10 @@ export default function AmazonIntelligence() {
   
   // State
   const [urlInput, setUrlInput] = useState("");
+  const [keywordInput, setKeywordInput] = useState("");
+  const [searchResults, setSearchResults] = useState<AmazonProduct[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [product, setProduct] = useState<AmazonProduct | null>(null);
   const [reviews, setReviews] = useState<AmazonReview[]>([]);
   const [stats, setStats] = useState<ReviewStats | null>(null);
@@ -99,6 +106,7 @@ export default function AmazonIntelligence() {
   const [filterVerified, setFilterVerified] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("overview");
+  const [searchMode, setSearchMode] = useState<"url" | "keyword">("url");
 
   // TRPC mutations
   const parseUrlMutation = trpc.amazon.parseUrl.useQuery(
@@ -107,6 +115,7 @@ export default function AmazonIntelligence() {
   );
   const getProductMutation = trpc.amazon.getProduct.useMutation();
   const getReviewsMutation = trpc.amazon.getReviews.useMutation();
+  const searchProductsMutation = trpc.amazon.searchProducts.useMutation();
 
   // Handle URL submission
   const handleAnalyze = async () => {
@@ -146,6 +155,50 @@ export default function AmazonIntelligence() {
       setActiveTab("reviews");
     } catch (error: any) {
       toast.error(error.message || "Failed to analyze product");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Search products by keyword
+  const handleSearchProducts = async () => {
+    if (!keywordInput.trim()) {
+      toast.error("Enter a search term");
+      return;
+    }
+    setSearchLoading(true);
+    try {
+      const result = await searchProductsMutation.mutateAsync({
+        query: keywordInput.trim(),
+        apiProvider: "sample",
+        marketplace: "com",
+      });
+      setSearchResults(result.products || []);
+      setProduct(null);
+      setReviews([]);
+      setStats(null);
+      toast.success(`Found ${result.products?.length ?? 0} products`);
+    } catch (error: any) {
+      toast.error(error.message || "Search failed");
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  // Load product detail and reviews from search result (by ASIN)
+  const handleSelectProductFromSearch = async (p: AmazonProduct) => {
+    setIsLoading(true);
+    try {
+      const [productResult, reviewsResult] = await Promise.all([
+        getProductMutation.mutateAsync({ asin: p.asin }),
+        getReviewsMutation.mutateAsync({ asin: p.asin, count: 20 }),
+      ]);
+      setProduct(productResult as AmazonProduct);
+      setReviews(reviewsResult.reviews as AmazonReview[]);
+      setStats(reviewsResult.stats as ReviewStats);
+      setActiveTab("reviews");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to load product or reviews");
     } finally {
       setIsLoading(false);
     }
@@ -250,29 +303,102 @@ export default function AmazonIntelligence() {
               Product Search
             </CardTitle>
             <CardDescription>
-              Enter an Amazon product URL or ASIN to analyze reviews
+              Analyze by URL/ASIN or search by keyword (title, seller, brand, price, availability, reviews)
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex gap-4">
-              <Input
-                placeholder="https://www.amazon.com/dp/B08N5WRWNW or B08N5WRWNW"
-                value={urlInput}
-                onChange={(e) => setUrlInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
-                className="flex-1"
-              />
-              <Button onClick={handleAnalyze} disabled={isLoading} className="gap-2">
-                {isLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Search className="h-4 w-4" />
+            <Tabs value={searchMode} onValueChange={(v) => setSearchMode(v as "url" | "keyword")}>
+              <TabsList className="mb-4">
+                <TabsTrigger value="url">URL or ASIN</TabsTrigger>
+                <TabsTrigger value="keyword">Search by keyword</TabsTrigger>
+              </TabsList>
+              <TabsContent value="url">
+                <div className="flex gap-4">
+                  <Input
+                    placeholder="https://www.amazon.com/dp/B08N5WRWNW or B08N5WRWNW"
+                    value={urlInput}
+                    onChange={(e) => setUrlInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
+                    className="flex-1"
+                  />
+                  <Button onClick={handleAnalyze} disabled={isLoading} className="gap-2">
+                    {isLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Search className="h-4 w-4" />
+                    )}
+                    Analyze
+                  </Button>
+                </div>
+              </TabsContent>
+              <TabsContent value="keyword">
+                <div className="flex gap-4">
+                  <Input
+                    placeholder="e.g. wireless headphones, fitness tracker"
+                    value={keywordInput}
+                    onChange={(e) => setKeywordInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSearchProducts()}
+                    className="flex-1"
+                  />
+                  <Button onClick={handleSearchProducts} disabled={searchLoading} className="gap-2">
+                    {searchLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Search className="h-4 w-4" />
+                    )}
+                    Search products
+                  </Button>
+                </div>
+                {searchResults.length > 0 && (
+                  <div className="mt-4">
+                    <p className="text-sm text-muted-foreground mb-2">Click a product to load reviews</p>
+                    <ScrollArea className="h-[280px] rounded-md border p-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <AnimatePresence>
+                          {searchResults.map((p, i) => (
+                            <motion.div
+                              key={p.asin}
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: i * 0.03 }}
+                            >
+                              <Card
+                                className="cursor-pointer hover:shadow-md transition-shadow"
+                                onClick={() => handleSelectProductFromSearch(p)}
+                              >
+                                <CardContent className="p-3 flex gap-3">
+                                  <div className="w-14 h-14 rounded bg-muted flex-shrink-0 overflow-hidden">
+                                    {p.imageUrl ? (
+                                      <img src={p.imageUrl} alt="" className="w-full h-full object-cover" />
+                                    ) : (
+                                      <div className="w-full h-full flex items-center justify-center">
+                                        <Package className="h-6 w-6 text-muted-foreground" />
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-medium text-sm line-clamp-2">{p.title}</p>
+                                    <div className="flex flex-wrap gap-1 mt-1 text-xs text-muted-foreground">
+                                      {p.brand && <span>{p.brand}</span>}
+                                      {p.price && <span> · {p.price}</span>}
+                                      {p.sellerName && <span> · {p.sellerName}</span>}
+                                      {p.availability && <span> · {p.availability}</span>}
+                                      {p.reviewCount != null && <span> · {p.reviewCount} reviews</span>}
+                                    </div>
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            </motion.div>
+                          ))}
+                        </AnimatePresence>
+                      </div>
+                    </ScrollArea>
+                  </div>
                 )}
-                Analyze
-              </Button>
-            </div>
+              </TabsContent>
+            </Tabs>
             <p className="text-xs text-muted-foreground mt-2">
-              Note: This uses sample data for demonstration. In production, integrate with Amazon Product Advertising API or a third-party service.
+              Uses sample data when no API key is set. Set Amazon API in Settings for live data.
             </p>
           </CardContent>
         </Card>
@@ -296,12 +422,23 @@ export default function AmazonIntelligence() {
                   </div>
                   <div className="flex-1">
                     <h2 className="text-xl font-semibold mb-2">{product.title}</h2>
-                    <div className="flex items-center gap-4 mb-3">
+                    <div className="flex flex-wrap items-center gap-3 mb-3">
                       {product.brand && (
                         <Badge variant="outline">{product.brand}</Badge>
                       )}
-                      {product.price && (
-                        <span className="font-bold text-lg">{product.price}</span>
+                      {(product.price ?? product.initialPrice) && (
+                        <span className="font-bold text-lg">
+                          {product.price ?? product.initialPrice}
+                          {product.currency && product.currency !== "USD" && (
+                            <span className="text-sm font-normal text-muted-foreground ml-1">{product.currency}</span>
+                          )}
+                        </span>
+                      )}
+                      {product.sellerName && (
+                        <span className="text-sm text-muted-foreground">Sold by {product.sellerName}</span>
+                      )}
+                      {product.availability && (
+                        <Badge variant="secondary" className="text-xs">{product.availability}</Badge>
                       )}
                       {product.rating && (
                         <div className="flex items-center gap-1">

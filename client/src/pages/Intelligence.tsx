@@ -47,6 +47,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { getLastRun } from "@/lib/lastRunStorage";
 
 // Comment category definitions with icons and colors
 const CATEGORIES = {
@@ -96,6 +97,9 @@ export default function Intelligence() {
   const search = useSearch();
   const params = new URLSearchParams(search);
   const analysisId = params.get("analysisId");
+  const sourceLocal = params.get("source") === "local";
+  const lastRun = getLastRun();
+  const useLocalRun = sourceLocal || (!analysisId && lastRun && Array.isArray(lastRun.commentsData) && lastRun.commentsData.length > 0);
   
   const { isAuthenticated } = useAuth();
   
@@ -110,7 +114,7 @@ export default function Intelligence() {
   const [showCreateProject, setShowCreateProject] = useState(false);
   const [selectedCount, setSelectedCount] = useState(0);
   
-  // Load analysis data
+  // Load analysis data from server (when signed in and analysisId provided)
   const analysisQuery = trpc.analysis.getById.useQuery(
     { id: parseInt(analysisId || "0") },
     { enabled: !!analysisId && isAuthenticated }
@@ -127,14 +131,18 @@ export default function Intelligence() {
     },
   });
 
-  // Load comments from analysis
+  // Load comments from analysis (server or local last run)
   useEffect(() => {
     if (analysisQuery.data?.commentsData) {
       const commentsData = analysisQuery.data.commentsData as Comment[];
       setComments(commentsData);
       analyzeComments(commentsData);
+    } else if (useLocalRun && lastRun?.commentsData && Array.isArray(lastRun.commentsData)) {
+      const commentsData = lastRun.commentsData as Comment[];
+      setComments(commentsData);
+      analyzeComments(commentsData);
     }
-  }, [analysisQuery.data]);
+  }, [analysisQuery.data, useLocalRun, lastRun?.commentsData]);
 
   // Analyze comments with pattern detection
   const analyzeComments = (commentsToAnalyze: Comment[]) => {
@@ -322,30 +330,29 @@ export default function Intelligence() {
     toast.success(`Exported ${selected.length} comments`);
   };
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Card className="max-w-md">
-          <CardHeader>
-            <CardTitle>Sign In Required</CardTitle>
-            <CardDescription>Please sign in to access Comment Intelligence</CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-    );
-  }
+  const analysisName = analysisQuery.data?.name ?? (useLocalRun ? lastRun?.name : null);
 
-  if (!analysisId) {
+  if (!analysisId && !useLocalRun) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Card className="max-w-md">
           <CardHeader>
             <CardTitle>No Analysis Selected</CardTitle>
-            <CardDescription>Please select an analysis from your history to analyze comments</CardDescription>
+            <CardDescription>
+              Use your last run from this device, or pick a saved run from History (when signed in).
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <Button asChild>
+          <CardContent className="flex flex-col gap-2">
+            {lastRun && Array.isArray(lastRun.commentsData) && lastRun.commentsData.length > 0 ? (
+              <Button asChild>
+                <Link href="/intelligence?source=local">Use last run (this device)</Link>
+              </Button>
+            ) : null}
+            <Button variant="outline" asChild>
               <Link href="/history">Go to History</Link>
+            </Button>
+            <Button variant="ghost" asChild>
+              <Link href="/">Run bulk analysis from Home</Link>
             </Button>
           </CardContent>
         </Card>
@@ -370,7 +377,8 @@ export default function Intelligence() {
                 Comment Intelligence
               </h1>
               <p className="text-sm text-muted-foreground">
-                {analysisQuery.data?.name || "Loading..."}
+                {analysisName || "Loading..."}
+                {useLocalRun && " (this device)"}
               </p>
             </div>
           </div>

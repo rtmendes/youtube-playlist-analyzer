@@ -39,6 +39,8 @@ import {
   Square,
 } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { getStoredYouTubeApiKey } from "@/lib/apiKeys";
+import { setLastRun } from "@/lib/lastRunStorage";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -102,7 +104,8 @@ export default function BulkAnalyze() {
   const searchParams = useSearch();
   const params = new URLSearchParams(searchParams);
   const urlsParam = params.get("urls") || "";
-  const apiKey = params.get("key") || "";
+  const apiKeyFromUrl = params.get("key") || "";
+  const apiKey = apiKeyFromUrl || getStoredYouTubeApiKey();
   const videoLimitParam = params.get("limit");
   const videoLimit = videoLimitParam ? parseInt(videoLimitParam) : null;
   const [, setLocation] = useLocation();
@@ -122,6 +125,8 @@ export default function BulkAnalyze() {
   const [commentSearchQuery, setCommentSearchQuery] = useState("");
   const [commentSort, setCommentSort] = useState<string>("newest");
   const [videoFilter, setVideoFilter] = useState<string>("all");
+  const [videoSort, setVideoSort] = useState<string>("newest");
+  const [selectedVideoIds, setSelectedVideoIds] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState("progress");
   const [isSaving, setIsSaving] = useState(false);
   const [hasSaved, setHasSaved] = useState(false);
@@ -135,8 +140,8 @@ export default function BulkAnalyze() {
       toast.success("Saved to History. View, export, or delete anytime from History.");
     },
     onError: (error) => {
-      toast.error(`Failed to save: ${error.message}`);
       setIsSaving(false);
+      toast.error(`Could not save to cloud: ${error.message}. Your run is still saved on this device — see Saved & Recent.`);
     },
   });
   // Use the parseYouTubeInput function directly on the client side
@@ -482,7 +487,26 @@ export default function BulkAnalyze() {
     setIsProcessing(false);
     setActiveTab("videos");
 
-    // Auto-save to History so your data is always kept (unless you delete it)
+    // Always save to localStorage so Saved/Recent show this run (even without sign-in)
+    if (allFetchedVideos.length > 0) {
+      const firstVideo = allFetchedVideos[0];
+      const name = firstVideo?.playlistTitle || firstVideo?.channelTitle || `Analysis of ${allFetchedVideos.length} videos`;
+      const totalViews = allFetchedVideos.reduce((sum, v) => sum + v.viewCount, 0);
+      const totalLikes = allFetchedVideos.reduce((sum, v) => sum + v.likeCount, 0);
+      setLastRun({
+        name,
+        completedAt: new Date().toISOString(),
+        videosFetched: allFetchedVideos.length,
+        commentsFetched: allFetchedComments.length,
+        totalViews,
+        totalLikes,
+        videosData: allFetchedVideos,
+        commentsData: allFetchedComments,
+        inputUrls: urls.join("\n"),
+      });
+    }
+
+    // Also save to server when signed in
     if (isAuthenticated && allFetchedVideos.length > 0) {
       const firstVideo = allFetchedVideos[0];
       const name = firstVideo?.playlistTitle || firstVideo?.channelTitle || `Analysis of ${allFetchedVideos.length} videos`;
@@ -538,16 +562,44 @@ export default function BulkAnalyze() {
     return sorted;
   }, [allComments, commentSearchQuery, videoFilter, commentSort]);
 
-  // Filter videos
+  // Filter and sort videos
   const filteredVideos = useMemo(() => {
-    if (!searchQuery) return videos;
-    const query = searchQuery.toLowerCase();
-    return videos.filter(
-      (v) =>
-        v.title.toLowerCase().includes(query) ||
-        v.channelTitle.toLowerCase().includes(query)
-    );
-  }, [videos, searchQuery]);
+    let list = videos;
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      list = list.filter(
+        (v) =>
+          v.title.toLowerCase().includes(query) ||
+          v.channelTitle.toLowerCase().includes(query)
+      );
+    }
+    const sorted = [...list].sort((a, b) => {
+      switch (videoSort) {
+        case "views-desc": return b.viewCount - a.viewCount;
+        case "views-asc": return a.viewCount - b.viewCount;
+        case "likes-desc": return b.likeCount - a.likeCount;
+        case "likes-asc": return a.likeCount - b.likeCount;
+        case "comments-desc": return b.commentCount - a.commentCount;
+        case "comments-asc": return a.commentCount - b.commentCount;
+        case "newest": return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+        case "oldest": return new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime();
+        default: return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+      }
+    });
+    return sorted;
+  }, [videos, searchQuery, videoSort]);
+
+  const toggleVideoSelection = (id: string) => {
+    setSelectedVideoIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const selectAllVideos = () => setSelectedVideoIds(new Set(filteredVideos.map((v) => v.id)));
+  const deselectAllVideos = () => setSelectedVideoIds(new Set());
+  const selectedVideos = useMemo(() => videos.filter((v) => selectedVideoIds.has(v.id)), [videos, selectedVideoIds]);
 
   // Export functions
   const exportVideosCSV = () => {
@@ -837,13 +889,19 @@ export default function BulkAnalyze() {
 
       {/* Overall Progress */}
       <div className="border-b border-border bg-secondary/30">
-        <div className="container py-4">
-          <div className="flex items-center justify-between mb-2">
+        <div className="container py-3">
+          <div className="flex items-center justify-between gap-4 mb-2">
             <span className="font-medium">Overall Progress</span>
             <span className="text-sm text-muted-foreground">
               {completedCount} of {urls.length} completed
               {errorCount > 0 && <span className="text-destructive ml-2">({errorCount} errors)</span>}
             </span>
+            {isProcessing && (
+              <Button variant="destructive" size="sm" onClick={stopRun} className="gap-2 shrink-0">
+                <Square className="h-4 w-4" />
+                Stop run
+              </Button>
+            )}
           </div>
           <Progress value={overallProgress} className="h-2" />
         </div>
@@ -966,9 +1024,9 @@ export default function BulkAnalyze() {
           </TabsContent>
 
           {/* Videos Tab */}
-          <TabsContent value="videos" className="space-y-4">
-            <div className="flex flex-wrap gap-4 mb-4">
-              <div className="relative flex-1 max-w-md">
+          <TabsContent value="videos" className="space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative flex-1 min-w-[200px] max-w-sm">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search videos..."
@@ -977,63 +1035,112 @@ export default function BulkAnalyze() {
                   className="pl-10"
                 />
               </div>
+              <Select value={videoSort} onValueChange={setVideoSort}>
+                <SelectTrigger className="w-[200px]">
+                  <ArrowUpDown className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="newest">Newest first</SelectItem>
+                  <SelectItem value="oldest">Oldest first</SelectItem>
+                  <SelectItem value="views-desc">Most views</SelectItem>
+                  <SelectItem value="views-asc">Fewest views</SelectItem>
+                  <SelectItem value="likes-desc">Most likes</SelectItem>
+                  <SelectItem value="likes-asc">Fewest likes</SelectItem>
+                  <SelectItem value="comments-desc">Most comments</SelectItem>
+                  <SelectItem value="comments-asc">Fewest comments</SelectItem>
+                </SelectContent>
+              </Select>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={selectAllVideos}>
+                  Select all
+                </Button>
+                <Button variant="outline" size="sm" onClick={deselectAllVideos}>
+                  Deselect all
+                </Button>
+                {selectedVideoIds.size > 0 && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      const headers = ["Video ID", "Title", "Channel", "Views", "Likes", "Comments", "Duration", "Published", "Playlist"];
+                      const rows = selectedVideos.map((v) => [
+                        v.id,
+                        `"${v.title.replace(/"/g, '""')}"`,
+                        `"${v.channelTitle.replace(/"/g, '""')}"`,
+                        v.viewCount,
+                        v.likeCount,
+                        v.commentCount,
+                        v.durationFormatted,
+                        new Date(v.publishedAt).toISOString().split("T")[0],
+                        v.playlistTitle ? `"${(v.playlistTitle || "").replace(/"/g, '""')}"` : "",
+                      ]);
+                      const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+                      downloadFile(csv, "selected-videos.csv", "text/csv");
+                      toast.success(`Exported ${selectedVideoIds.size} videos`);
+                    }}
+                  >
+                    <Download className="h-4 w-4 mr-1" />
+                    Export selected ({selectedVideoIds.size})
+                  </Button>
+                )}
+              </div>
             </div>
 
-            <div className="space-y-3">
+            <div className="max-w-4xl space-y-2">
               {filteredVideos.map((video) => (
-                <Card key={video.id} className="border hover:border-primary transition-colors">
-                  <CardContent className="p-4">
-                    <div className="flex gap-4">
+                <Card key={video.id} className="border hover:border-primary/50 transition-colors">
+                  <CardContent className="p-2 sm:p-3">
+                    <div className="flex gap-3">
+                      <label className="flex items-center shrink-0 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedVideoIds.has(video.id)}
+                          onChange={() => toggleVideoSelection(video.id)}
+                          className="rounded border-input h-4 w-4"
+                        />
+                      </label>
                       <img
                         src={video.thumbnailUrl}
                         alt={video.title}
-                        className="w-40 h-24 object-cover rounded flex-shrink-0"
+                        className="w-32 h-20 object-cover rounded shrink-0"
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <div>
-                            <h3 className="font-semibold line-clamp-2 mb-1">
+                            <h3 className="font-semibold text-sm line-clamp-2 mb-0.5">
                               {video.title}
                             </h3>
-                            <p className="text-sm text-muted-foreground mb-2">
+                            <p className="text-xs text-muted-foreground">
                               {video.channelTitle}
                             </p>
                           </div>
-                          <a
-                            href={`https://youtube.com/watch?v=${video.id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex-shrink-0"
-                          >
-                            <Button variant="ghost" size="icon">
-                              <ExternalLink className="h-4 w-4" />
-                            </Button>
-                          </a>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Link href={`/video?id=${video.id}`}>
+                              <Button variant="default" size="sm" className="h-8">
+                                View in app
+                              </Button>
+                            </Link>
+                            <a
+                              href={`https://youtube.com/watch?v=${video.id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </Button>
+                            </a>
+                          </div>
                         </div>
-                        <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <Eye className="h-3.5 w-3.5" />
-                            {video.viewCountFormatted}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <ThumbsUp className="h-3.5 w-3.5" />
-                            {video.likeCountFormatted}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <MessageSquare className="h-3.5 w-3.5" />
-                            {video.commentCountFormatted}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3.5 w-3.5" />
-                            {video.durationFormatted}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Calendar className="h-3.5 w-3.5" />
-                            {new Date(video.publishedAt).toLocaleDateString()}
-                          </span>
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground mt-1">
+                          <span className="flex items-center gap-0.5"><Eye className="h-3 w-3" />{video.viewCountFormatted}</span>
+                          <span className="flex items-center gap-0.5"><ThumbsUp className="h-3 w-3" />{video.likeCountFormatted}</span>
+                          <span className="flex items-center gap-0.5"><MessageSquare className="h-3 w-3" />{video.commentCountFormatted}</span>
+                          <span className="flex items-center gap-0.5"><Clock className="h-3 w-3" />{video.durationFormatted}</span>
+                          <span className="flex items-center gap-0.5"><Calendar className="h-3 w-3" />{new Date(video.publishedAt).toLocaleDateString()}</span>
                         </div>
                         {video.playlistTitle && (
-                          <Badge variant="outline" className="mt-2">
+                          <Badge variant="outline" className="mt-1.5 text-xs">
                             {video.playlistTitle}
                           </Badge>
                         )}
@@ -1102,13 +1209,13 @@ export default function BulkAnalyze() {
             </div>
 
             <p className="text-sm text-muted-foreground">
-              Showing {filteredComments.length} of {allComments.length} comments
+              Showing {filteredComments.length} of {allComments.length} comments. For sentiment & copywriting insights, save this run to History, then open <Link href="/history" className="text-primary underline">Comment Intelligence</Link> from that run.
             </p>
 
-            <div className="space-y-3">
+            <div className="max-w-4xl space-y-2">
               {filteredComments.slice(0, 200).map((comment) => (
                 <Card key={comment.id} className="border">
-                  <CardContent className="p-4">
+                  <CardContent className="p-2 sm:p-3">
                     <div className="flex gap-3">
                       <img
                         src={comment.authorProfileImageUrl}

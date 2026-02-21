@@ -17,6 +17,14 @@ export interface AmazonProduct {
   description?: string;
   brand?: string;
   price?: string;
+  /** Display-friendly initial/current price (may include currency) */
+  initialPrice?: string;
+  /** Currency code (e.g. USD, EUR) */
+  currency?: string;
+  /** Availability (e.g. In Stock, Out of Stock) */
+  availability?: string;
+  /** Seller name (buybox or primary seller) */
+  sellerName?: string;
   rating?: string;
   reviewCount?: number;
   imageUrl?: string;
@@ -116,12 +124,17 @@ async function fetchProductFromRainforest(asin: string, apiKey: string, marketpl
     }
     
     const product = data.product;
+    const priceRaw = product.buybox_winner?.price?.raw || product.price?.raw;
     return {
       asin: product.asin,
       title: product.title,
       description: product.description,
       brand: product.brand,
-      price: product.buybox_winner?.price?.raw || product.price?.raw,
+      price: priceRaw,
+      initialPrice: priceRaw ?? product.buybox_winner?.price?.value?.toString(),
+      currency: product.buybox_winner?.price?.currency || product.price?.currency || "USD",
+      availability: product.availability?.raw ?? product.availability?.type ?? (product.buybox_winner ? "In Stock" : undefined),
+      sellerName: product.buybox_winner?.seller_name,
       rating: product.rating?.toString(),
       reviewCount: product.ratings_total,
       imageUrl: product.main_image?.link,
@@ -194,12 +207,17 @@ async function fetchProductFromScraperAPI(asin: string, apiKey: string, marketpl
     
     const data = await response.json();
     
+    const priceStr = typeof data.pricing === "string" ? data.pricing : data.pricing?.price ?? data.price;
     return {
       asin: data.asin || asin,
       title: data.name,
       description: data.product_information?.description,
       brand: data.brand,
-      price: data.pricing,
+      price: priceStr,
+      initialPrice: priceStr,
+      currency: data.pricing?.currency || data.currency || "USD",
+      availability: data.availability ?? data.in_stock ? "In Stock" : undefined,
+      sellerName: data.seller ?? data.sold_by,
       rating: data.rating?.toString(),
       reviewCount: data.reviews_count,
       imageUrl: data.images?.[0],
@@ -371,6 +389,10 @@ export async function searchAmazonProducts(
         title: result.title,
         brand: result.brand,
         price: result.price?.raw,
+        initialPrice: result.price?.raw,
+        currency: result.price?.currency || "USD",
+        availability: result.availability?.raw ?? result.availability?.type,
+        sellerName: result.seller?.name ?? result.seller_name,
         rating: result.rating?.toString(),
         reviewCount: result.ratings_total,
         imageUrl: result.image,
@@ -651,6 +673,10 @@ export function generateSampleProduct(asin: string): AmazonProduct {
     description: defaultProduct.description || "This is a sample product for demonstration purposes.",
     brand: defaultProduct.brand || "Sample Brand",
     price: defaultProduct.price || "$29.99",
+    initialPrice: defaultProduct.initialPrice ?? defaultProduct.price ?? "$29.99",
+    currency: defaultProduct.currency || "USD",
+    availability: defaultProduct.availability || "In Stock",
+    sellerName: defaultProduct.sellerName || "Amazon",
     rating: defaultProduct.rating || "4.2",
     reviewCount: defaultProduct.reviewCount || 1247,
     imageUrl: `https://via.placeholder.com/300x300?text=${asin}`,

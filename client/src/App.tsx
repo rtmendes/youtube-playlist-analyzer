@@ -12,6 +12,7 @@ import Video from "./pages/Video";
 import BulkAnalyze from "./pages/BulkAnalyze";
 import History from "./pages/History";
 import HistoryDetail from "./pages/HistoryDetail";
+import HistoryLocal from "./pages/HistoryLocal";
 import Intelligence from "./pages/Intelligence";
 import Canvas from "./pages/Canvas";
 import Projects from "./pages/Projects";
@@ -64,6 +65,7 @@ function Router() {
       <Route path={"/analyze"} component={Analyze} />
       <Route path={"/video"} component={Video} />
       <Route path={"/bulk-analyze"} component={BulkAnalyze} />
+      <Route path={"/history/local"} component={HistoryLocal} />
       <Route path={"/history/:id"} component={HistoryDetail} />
       <Route path={"/history"} component={History} />
       <Route path={"/intelligence"} component={Intelligence} />
