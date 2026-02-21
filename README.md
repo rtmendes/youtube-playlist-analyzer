@@ -14,6 +14,8 @@ Transform YouTube comments into marketing insights. Extract stories, pain points
 
 ## Setup with Supabase (Postgres)
 
+**Not a developer?** Use the **[click-by-click setup guide](docs/SETUP-CLICK-BY-CLICK.md)** — it tells you exactly what to click and type, step by step.
+
 1. **Clone and install:**
    ```bash
    pnpm install
