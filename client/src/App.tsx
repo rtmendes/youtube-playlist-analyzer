@@ -14,6 +14,7 @@ import History from "./pages/History";
 import HistoryDetail from "./pages/HistoryDetail";
 import HistoryLocal from "./pages/HistoryLocal";
 import Intelligence from "./pages/Intelligence";
+import AnalysisDashboard from "./pages/AnalysisDashboard";
 import Canvas from "./pages/Canvas";
 import Projects from "./pages/Projects";
 import Videos from "./pages/Videos";
@@ -69,6 +70,7 @@ function Router() {
       <Route path={"/history/:id"} component={HistoryDetail} />
       <Route path={"/history"} component={History} />
       <Route path={"/intelligence"} component={Intelligence} />
+      <Route path={"/analysis"} component={AnalysisDashboard} />
       <Route path={"/canvas"} component={Canvas} />
       <Route path={"/projects"} component={Projects} />
       <Route path={"/videos"} component={Videos} />

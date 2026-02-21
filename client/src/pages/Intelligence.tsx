@@ -99,9 +99,20 @@ export default function Intelligence() {
   const analysisId = params.get("analysisId");
   const sourceLocal = params.get("source") === "local";
   const lastRun = getLastRun();
-  const useLocalRun = sourceLocal || (!analysisId && lastRun && Array.isArray(lastRun.commentsData) && lastRun.commentsData.length > 0);
+  const lastRunHasComments = lastRun && Array.isArray(lastRun.commentsData) && lastRun.commentsData.length > 0;
+  const lastRunHasVideos = lastRun && Array.isArray(lastRun.videosData) && lastRun.videosData.length > 0;
+  const useLocalRun = sourceLocal || (!analysisId && lastRun && (lastRunHasComments || lastRunHasVideos));
   
   const { isAuthenticated } = useAuth();
+
+  // Auto-use last run when user lands on Intelligence with no selection (so they don't see "No Analysis Selected" after a bulk run)
+  useEffect(() => {
+    if (analysisId || sourceLocal) return;
+    const run = getLastRun();
+    if (!run) return;
+    const hasData = Array.isArray(run.commentsData) && run.commentsData.length > 0 || Array.isArray(run.videosData) && run.videosData.length > 0;
+    if (hasData) setLocation("/intelligence?source=local", { replace: true });
+  }, [analysisId, sourceLocal, setLocation]);
   
   // State
   const [comments, setComments] = useState<Comment[]>([]);
@@ -339,11 +350,13 @@ export default function Intelligence() {
           <CardHeader>
             <CardTitle>No Analysis Selected</CardTitle>
             <CardDescription>
-              Use your last run from this device, or pick a saved run from History (when signed in).
+              {lastRunHasVideos && !lastRunHasComments
+                ? `Your last run has ${(lastRun?.videosData?.length ?? 0)} videos but no comments. Run a bulk analysis to fetch comments, then Comment Intelligence will show insights here.`
+                : "Run a bulk analysis from Home first. Your last run from this device will load here automatically next time."}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
-            {lastRun && Array.isArray(lastRun.commentsData) && lastRun.commentsData.length > 0 ? (
+            {lastRunHasComments ? (
               <Button asChild>
                 <Link href="/intelligence?source=local">Use last run (this device)</Link>
               </Button>
@@ -443,6 +456,15 @@ export default function Intelligence() {
       </header>
 
       <div className="container py-6">
+        {useLocalRun && comments.length === 0 && lastRunHasVideos && (
+          <Card className="mb-6 border-amber-500/30 bg-amber-500/5">
+            <CardContent className="py-4">
+              <p className="text-sm text-muted-foreground">
+                Your last run has <strong>{(lastRun?.videosData?.length ?? 0)} videos</strong> but no comments. Comment Intelligence needs comment data. Run a bulk analysis from Home to fetch comments, then return here — your run will load automatically.
+              </p>
+            </CardContent>
+          </Card>
+        )}
         <div className="grid lg:grid-cols-4 gap-6">
           {/* Sidebar - Category Stats */}
           <div className="lg:col-span-1 space-y-4">

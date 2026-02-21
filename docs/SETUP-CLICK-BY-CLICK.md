@@ -45,6 +45,10 @@ The app can use your **YouTube API key** (and other keys) from a file called **.
 
 You can add more keys in the same **.env** file, one per line. See the **.env.example** file in the project for names (e.g. `GEMINI_API_KEY=`, `REDDIT_CLIENT_ID=`, etc.). The app uses these so you don’t have to type them in the interface.
 
+### Optional – Website analytics (Umami)
+
+To enable **website analytics** (page views, visits), use [Umami](https://umami.is). In the project root **.env** add: `VITE_ANALYTICS_ENDPOINT=https://your-umami-server.com` and `VITE_ANALYTICS_WEBSITE_ID=your-website-id`. Restart the dev server. The app loads the script only when both are set. To **fork and self-host** Umami, see **[docs/UMAMI-INTEGRATION.md](UMAMI-INTEGRATION.md)**.
+
 ---
 
 ## How to see the app rendered (run it locally)

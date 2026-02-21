@@ -94,7 +94,7 @@ interface Comment {
 interface ProcessingStatus {
   url: string;
   type: "playlist" | "video" | "channel" | "unknown";
-  status: "pending" | "processing" | "completed" | "error";
+  status: "pending" | "processing" | "completed" | "stopped" | "error";
   playlistTitle?: string;
   channelTitle?: string;
   videoCount?: number;
@@ -230,7 +230,7 @@ export default function BulkAnalyze() {
     for (let i = 0; i < urls.length; i++) {
       if (abortRequestedRef.current) {
         setProcessingStatuses(prev => prev.map((s, idx) =>
-          idx === i ? { ...s, status: "error", error: "Stopped by user" } : s
+          idx === i ? { ...s, status: "stopped" } : s
         ));
         break;
       }
@@ -293,8 +293,13 @@ export default function BulkAnalyze() {
           } while (pageToken);
 
           if (abortRequestedRef.current) {
+            // Show partial results: push whatever videos we gathered before stopping
+            if (playlistVideos.length > 0) {
+              allFetchedVideos.push(...playlistVideos);
+              setVideos([...allFetchedVideos]);
+            }
             setProcessingStatuses(prev => prev.map((s, idx) => 
-              idx === i ? { ...s, status: "error", error: "Stopped by user" } : s
+              idx === i ? { ...s, status: "stopped" } : s
             ));
             break;
           }
@@ -328,7 +333,7 @@ export default function BulkAnalyze() {
 
           if (abortRequestedRef.current) {
             setProcessingStatuses(prev => prev.map((s, idx) => 
-              idx === i ? { ...s, status: "error", error: "Stopped by user" } : s
+              idx === i ? { ...s, status: "stopped" } : s
             ));
             break;
           }
@@ -482,7 +487,7 @@ export default function BulkAnalyze() {
 
           if (abortRequestedRef.current) {
             setProcessingStatuses(prev => prev.map((s, idx) => 
-              idx === i ? { ...s, status: "error", error: "Stopped by user" } : s
+              idx === i ? { ...s, status: "stopped" } : s
             ));
             break;
           }
@@ -501,7 +506,7 @@ export default function BulkAnalyze() {
     const wasStopped = abortRequestedRef.current;
     setIsProcessing(false);
     setActiveTab("videos");
-    if (wasStopped) toast.success("Run stopped. Progress saved — view under Saved & list.");
+    if (wasStopped) toast.success("Stopped. Data gathered so far is shown below — use Videos, Spreadsheet, or Report tabs.");
 
     // Always save to localStorage so Saved/Recent show this run (even without sign-in)
     if (allFetchedVideos.length > 0) {
@@ -1034,6 +1039,11 @@ export default function BulkAnalyze() {
                             <CheckCircle2 className="h-4 w-4 text-green-500" />
                           </div>
                         )}
+                        {status.status === "stopped" && (
+                          <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center" title="Stopped — partial results saved">
+                            <Square className="h-4 w-4 text-amber-600 fill-amber-600" />
+                          </div>
+                        )}
                         {status.status === "error" && (
                           <div className="w-8 h-8 rounded-full bg-destructive/20 flex items-center justify-center">
                             <XCircle className="h-4 w-4 text-destructive" />
@@ -1058,7 +1068,14 @@ export default function BulkAnalyze() {
                           {status.commentsCount !== undefined && (
                             <span>{status.commentsCount} comments</span>
                           )}
-                          {status.error && (
+                          {status.status === "stopped" && (
+                            <span className="text-amber-600 text-sm font-medium">
+                              {status.videosProcessed === 0
+                                ? "Stopped before data loaded — run again and stop after some data appears to see partial results"
+                                : "Stopped — partial results below"}
+                            </span>
+                          )}
+                          {status.status === "error" && status.error && (
                             <div className="flex flex-col gap-1">
                               <span className="text-destructive font-medium">Error:</span>
                               <span className="text-destructive text-xs break-all">{status.error}</span>
@@ -1259,7 +1276,7 @@ export default function BulkAnalyze() {
             </div>
 
             <p className="text-sm text-muted-foreground">
-              Showing {filteredComments.length} of {allComments.length} comments. For sentiment & copywriting insights, save this run to History, then open <Link href="/history" className="text-primary underline">Comment Intelligence</Link> from that run.
+              Showing {filteredComments.length} of {allComments.length} comments. For sentiment & copywriting insights, open <Link href="/intelligence?source=local" className="text-primary underline">Comment Intelligence</Link> (uses this run automatically).
             </p>
 
             <div className="max-w-4xl space-y-2">
