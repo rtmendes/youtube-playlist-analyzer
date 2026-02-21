@@ -22,6 +22,7 @@ import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import { cn } from "@/lib/utils";
+import { getLastRun } from "@/lib/lastRunStorage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -67,6 +68,7 @@ import {
   Brain,
   Palette,
   History,
+  List,
   Trash2,
   Star,
   Clock,
@@ -183,17 +185,6 @@ export function Sidebar({ isCollapsed, onToggle, onOpenSearch, onToggleYouTube, 
     undefined,
     { enabled: !!user }
   );
-
-  // Recent analysis runs (for Sidebar "Recent") — from server when signed in
-  const { data: recentAnalysesData } = trpc.analysis.list.useQuery(
-    undefined,
-    { enabled: !!user }
-  );
-  const recentAnalyses = Array.isArray(recentAnalysesData) ? recentAnalysesData : [];
-  const recentCount = 5;
-  const recentToShow = recentAnalyses.slice(0, recentCount);
-  // When not signed in, show last run from this device if any
-  const lastRunLocal = typeof window !== "undefined" ? (() => { try { const raw = localStorage.getItem("youtube_analyzer_last_run"); return raw ? JSON.parse(raw) : null; } catch { return null; } })() : null;
 
   // Folder mutations
   const createFolderMutation = trpc.folders.create.useMutation({
@@ -584,61 +575,49 @@ export function Sidebar({ isCollapsed, onToggle, onOpenSearch, onToggleYouTube, 
               </div>
             </div>
 
-            {/* Recent */}
+            {/* List view: saved runs, history */}
             <div className="mb-4">
               <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
-                <span>Recent</span>
-                <Clock className="h-3 w-3" />
+                <span>Saved & list</span>
+                <List className="h-3 w-3" />
               </div>
-              {recentToShow.length > 0 ? (
-                <div className="mt-1 space-y-0.5">
-                  {recentToShow.map((a: { id: number; name?: string }) => (
-                    <Link key={a.id} href={`/history/${a.id}`}>
+              {(() => {
+                const lastRun = typeof window !== "undefined" ? getLastRun() : null;
+                return (
+                  <>
+                    {lastRun && (
+                      <Link href="/history/local">
+                        <div
+                          className={cn(
+                            "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors text-xs truncate mt-1",
+                            "hover:bg-accent text-muted-foreground hover:text-foreground",
+                            location === "/history/local" && "bg-accent text-accent-foreground"
+                          )}
+                          title={lastRun.name}
+                        >
+                          <History className="h-3.5 w-3.5 flex-shrink-0" />
+                          <span className="truncate">{lastRun.name || "Last run"}</span>
+                        </div>
+                      </Link>
+                    )}
+                    <Link href="/history">
                       <div
                         className={cn(
-                          "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors text-xs truncate",
+                          "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors text-xs mt-0.5",
                           "hover:bg-accent text-muted-foreground hover:text-foreground",
-                          location === `/history/${a.id}` && "bg-accent text-accent-foreground"
+                          (location === "/history" || location.startsWith("/history/")) && location !== "/history/local" && "bg-accent text-accent-foreground"
                         )}
-                        title={a.name}
                       >
-                        <History className="h-3.5 w-3.5 flex-shrink-0" />
-                        <span className="truncate">{a.name}</span>
+                        <List className="h-3.5 w-3.5 flex-shrink-0" />
+                        <span>List view →</span>
                       </div>
                     </Link>
-                  ))}
-                  <Link href="/history">
-                    <div className="px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors">
-                      View all history →
-                    </div>
-                  </Link>
-                </div>
-              ) : lastRunLocal ? (
-                <div className="mt-1 space-y-0.5">
-                  <Link href="/history/local">
-                    <div
-                      className={cn(
-                        "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors text-xs truncate",
-                        "hover:bg-accent text-muted-foreground hover:text-foreground",
-                        location === "/history/local" && "bg-accent text-accent-foreground"
-                      )}
-                      title={lastRunLocal.name}
-                    >
-                      <History className="h-3.5 w-3.5 flex-shrink-0" />
-                      <span className="truncate">{lastRunLocal.name || "Last run"}</span>
-                    </div>
-                  </Link>
-                  <Link href="/history">
-                    <div className="px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors">
-                      Saved & recent →
-                    </div>
-                  </Link>
-                </div>
-              ) : (
-                <div className="px-2 py-2 text-xs text-muted-foreground/60 italic">
-                  No recent items. Run a bulk analysis from Home; your last run will appear here.
-                </div>
-              )}
+                  </>
+                );
+              })()}
+              <p className="px-2 pt-1 text-xs text-muted-foreground/60">
+                View saved runs. Use Folders & Projects below to organize, tag, and search.
+              </p>
             </div>
 
             {/* Folders */}

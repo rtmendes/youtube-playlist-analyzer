@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { getStoredYouTubeApiKey } from "@/lib/apiKeys";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -90,7 +91,14 @@ export default function CompetitorAnalysis() {
   const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
   const [apiProvider, setApiProvider] = useState<"sample" | "rainforest" | "scraperapi">("sample");
   const [apiKey, setApiKey] = useState("");
-  const [youtubeApiKey, setYoutubeApiKey] = useState("");
+  const [youtubeApiKey, setYoutubeApiKey] = useState(""); // only used when no server/stored key
+
+  // One place for YouTube key: server .env or Settings (stored)
+  const { data: apiKeyStatus } = trpc.system.getApiKeyStatus.useQuery();
+  const serverHasYouTubeKey = !!apiKeyStatus?.youtube;
+  const storedYouTubeKey = getStoredYouTubeApiKey().trim();
+  const hasYouTubeKey = serverHasYouTubeKey || storedYouTubeKey.length > 0;
+  const youtubeKeyToPass = serverHasYouTubeKey ? undefined : (storedYouTubeKey || undefined);
 
   // YouTube state
   const [showAddChannelDialog, setShowAddChannelDialog] = useState(false);
@@ -119,13 +127,13 @@ export default function CompetitorAnalysis() {
   const [alertFrequency, setAlertFrequency] = useState<"realtime" | "daily" | "weekly">("daily");
   const [alertCompetitorId, setAlertCompetitorId] = useState<number | null>(null);
 
-  // Load saved API keys
+  // Load saved API keys (Amazon; YouTube uses getStoredYouTubeApiKey / server)
   useEffect(() => {
     const savedKey = localStorage.getItem("amazon_api_key");
     const savedProvider = localStorage.getItem("amazon_api_provider");
-    const savedYoutubeKey = localStorage.getItem("youtube_api_key");
     if (savedKey) setApiKey(savedKey);
     if (savedProvider) setApiProvider(savedProvider as any);
+    const savedYoutubeKey = localStorage.getItem("youtube_api_key");
     if (savedYoutubeKey) setYoutubeApiKey(savedYoutubeKey);
   }, []);
 
@@ -299,14 +307,14 @@ export default function CompetitorAnalysis() {
       toast.error("Please enter a search query");
       return;
     }
-    if (!youtubeApiKey) {
-      toast.error("Please enter your YouTube API key first");
+    if (!hasYouTubeKey) {
+      toast.error("YouTube API key required. Add it in Settings or in the server .env (YOUTUBE_API_KEY).");
       return;
     }
     setIsSearchingChannels(true);
     searchYouTubeChannelsMutation.mutate({
       query: channelSearchQuery,
-      apiKey: youtubeApiKey,
+      apiKey: youtubeKeyToPass,
       maxResults: 10,
     });
   };
@@ -316,14 +324,14 @@ export default function CompetitorAnalysis() {
       toast.error("Please enter a channel URL or handle");
       return;
     }
-    if (!youtubeApiKey) {
-      toast.error("Please enter your YouTube API key first");
+    if (!hasYouTubeKey) {
+      toast.error("YouTube API key required. Add it in Settings or in the server .env (YOUTUBE_API_KEY).");
       return;
     }
     setIsResolvingChannel(true);
     resolveYouTubeChannelMutation.mutate({
       input: input,
-      apiKey: youtubeApiKey,
+      apiKey: youtubeKeyToPass,
     });
   };
 
@@ -709,18 +717,29 @@ export default function CompetitorAnalysis() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
-                      <div className="space-y-2">
-                        <Label>YouTube API Key</Label>
-                        <Input
-                          type="password"
-                          placeholder="Enter your YouTube API key"
-                          value={youtubeApiKey}
-                          onChange={(e) => {
-                            setYoutubeApiKey(e.target.value);
-                            localStorage.setItem("youtube_api_key", e.target.value);
-                          }}
-                        />
-                      </div>
+                      {hasYouTubeKey ? (
+                        <p className="text-sm text-muted-foreground">
+                          {serverHasYouTubeKey
+                            ? "Using server key (.env). No need to enter a key here."
+                            : "Using key from Settings. No need to enter a key here."}
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          <Label>YouTube API Key</Label>
+                          <Input
+                            type="password"
+                            placeholder="Add key in Settings to use everywhere"
+                            value={youtubeApiKey}
+                            onChange={(e) => {
+                              setYoutubeApiKey(e.target.value);
+                              localStorage.setItem("youtube_api_key", e.target.value);
+                            }}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Add your key in <Link href="/settings">Settings</Link> and save once; it will be used here and on Home.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -765,13 +784,13 @@ export default function CompetitorAnalysis() {
                                 className="h-7 w-7"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  if (!youtubeApiKey) {
-                                    toast.error("Please enter your YouTube API key first");
+                                  if (!hasYouTubeKey) {
+                                    toast.error("YouTube API key required. Add it in Settings or server .env.");
                                     return;
                                   }
                                   analyzeChannelMutation.mutate({
                                     channelDbId: channel.id,
-                                    apiKey: youtubeApiKey,
+                                    apiKey: youtubeKeyToPass,
                                   });
                                 }}
                                 disabled={analyzeChannelMutation.isPending}
@@ -1240,11 +1259,11 @@ export default function CompetitorAnalysis() {
                 </div>
               )}
 
-              {!youtubeApiKey && (
+              {!hasYouTubeKey && (
                 <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
                   <p className="text-sm text-yellow-600 dark:text-yellow-400">
                     <AlertTriangle className="h-4 w-4 inline mr-2" />
-                    Please enter your YouTube API key in the settings above to search for channels.
+                    Add your YouTube API key in <Link href="/settings">Settings</Link> (or server .env) to search for channels.
                   </p>
                 </div>
               )}

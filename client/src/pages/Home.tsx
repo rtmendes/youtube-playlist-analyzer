@@ -23,7 +23,6 @@ import { motion } from "framer-motion";
 export default function Home() {
   const [url, setUrl] = useState("");
   const [bulkUrls, setBulkUrls] = useState("");
-  const [apiKey, setApiKey] = useState("");
   const [inputMode, setInputMode] = useState<"single" | "bulk">("bulk");
   const [videoLimit, setVideoLimit] = useState<string>("all");
   const [location, setLocation] = useLocation();
@@ -32,7 +31,6 @@ export default function Home() {
   const { data: apiKeyStatus } = trpc.system.getApiKeyStatus.useQuery();
   const serverHasYouTubeKey = !!apiKeyStatus?.youtube;
   const storedKey = getStoredYouTubeApiKey().trim();
-  const hasYouTubeKey = serverHasYouTubeKey || storedKey.length > 0;
 
   // Check for URL parameter from YouTube browser
   useEffect(() => {
@@ -63,12 +61,11 @@ export default function Home() {
   const bulkUrlCount = parseBulkUrls().length;
 
   const handleAnalyze = () => {
-    const keyToUse = apiKey.trim() || storedKey;
-    if (!serverHasYouTubeKey && !keyToUse) {
-      alert("Please enter your YouTube API key here, or add it in Settings and click Save, or set YOUTUBE_API_KEY in the server .env file.");
+    if (!serverHasYouTubeKey && !storedKey) {
+      alert("YouTube API key required. Add it in Settings, or set YOUTUBE_API_KEY in the server .env file.");
       return;
     }
-    const keyToPass = serverHasYouTubeKey ? "" : keyToUse;
+    const keyToPass = serverHasYouTubeKey ? "" : storedKey;
 
     if (inputMode === "bulk") {
       const urls = parseBulkUrls();
@@ -343,39 +340,6 @@ https://youtube.com/channel/UCxxxxx`}
                       </div>
                     </TabsContent>
                   </Tabs>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-sm font-medium">YouTube API Key</label>
-                      <Link href="/settings">
-                        <span className="text-xs text-primary hover:underline cursor-pointer">Settings</span>
-                      </Link>
-                    </div>
-                    {hasYouTubeKey ? (
-                      <p className="text-sm text-muted-foreground py-2">
-                        {serverHasYouTubeKey
-                          ? "Using server key (set in .env). No need to enter a key here."
-                          : "Using key from Settings. No need to enter a key here."}
-                      </p>
-                    ) : (
-                      <>
-                        <Input
-                          type="password"
-                          placeholder="Paste your YouTube Data API v3 key, or add it in Settings"
-                          value={apiKey}
-                          onChange={(e) => setApiKey(e.target.value)}
-                          className="h-10 border-2 border-foreground"
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Get a key from{" "}
-                          <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-primary underline">
-                            Google Cloud Console
-                          </a>
-                          . Or add it in <Link href="/settings" className="text-primary underline">Settings</Link> and click Save to avoid entering it here. For all devices, set <strong>YOUTUBE_API_KEY</strong> in the server <strong>.env</strong> file (see setup guide).
-                        </p>
-                      </>
-                    )}
-                  </div>
 
                   {/* Video Limit for Channels */}
                   <div className="space-y-2">

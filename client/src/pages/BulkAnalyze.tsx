@@ -37,12 +37,15 @@ import {
   Save,
   History,
   Square,
+  FileText,
 } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getStoredYouTubeApiKey } from "@/lib/apiKeys";
 import { setLastRun } from "@/lib/lastRunStorage";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import { DataTable } from "@/components/DataTable";
+import { DynamicLayout } from "@/components/DynamicLayout";
 
 interface Video {
   id: string;
@@ -215,7 +218,7 @@ export default function BulkAnalyze() {
 
   const stopRun = useCallback(() => {
     abortRequestedRef.current = true;
-    toast.info("Stopping run after current item…");
+    toast.info("Stopping and saving progress…");
   }, []);
 
   const startProcessing = async () => {
@@ -298,9 +301,10 @@ export default function BulkAnalyze() {
           allFetchedVideos.push(...playlistVideos);
           setVideos([...allFetchedVideos]);
 
-          // Fetch top 100 comments for each video
+          // Fetch top 100 comments for each video (stop when user requests abort)
           let totalComments = 0;
           for (const video of playlistVideos) {
+            if (abortRequestedRef.current) break;
             try {
               const commentsResult = await batchCommentsMutation.mutateAsync({
                 videoId: video.id,
@@ -315,15 +319,19 @@ export default function BulkAnalyze() {
                 setAllComments([...allFetchedComments]);
               }
             } catch (err) {
-              // Continue with other videos if one fails
               console.error(`Failed to fetch comments for video ${video.id}:`, err);
             }
-            
             setProcessingStatuses(prev => prev.map((s, idx) => 
               idx === i ? { ...s, commentsCount: totalComments } : s
             ));
           }
 
+          if (abortRequestedRef.current) {
+            setProcessingStatuses(prev => prev.map((s, idx) => 
+              idx === i ? { ...s, status: "error", error: "Stopped by user" } : s
+            ));
+            break;
+          }
           setProcessingStatuses(prev => prev.map((s, idx) => 
             idx === i ? { ...s, status: "completed" } : s
           ));
@@ -416,6 +424,7 @@ export default function BulkAnalyze() {
           const channelVideos: Video[] = [];
           
           do {
+            if (abortRequestedRef.current) break;
             const result = await videosMutation.mutateAsync({
               playlistId: channelInfo.uploadsPlaylistId,
               apiKey,
@@ -446,9 +455,10 @@ export default function BulkAnalyze() {
           allFetchedVideos.push(...channelVideos);
           setVideos([...allFetchedVideos]);
 
-          // Fetch top 100 comments for each video
+          // Fetch top 100 comments for each video (stop when user requests abort)
           let totalComments = 0;
           for (const video of channelVideos) {
+            if (abortRequestedRef.current) break;
             try {
               const commentsResult = await batchCommentsMutation.mutateAsync({
                 videoId: video.id,
@@ -463,15 +473,19 @@ export default function BulkAnalyze() {
                 setAllComments([...allFetchedComments]);
               }
             } catch (err) {
-              // Continue with other videos if one fails
               console.error(`Failed to fetch comments for video ${video.id}:`, err);
             }
-            
             setProcessingStatuses(prev => prev.map((s, idx) => 
               idx === i ? { ...s, commentsCount: totalComments } : s
             ));
           }
 
+          if (abortRequestedRef.current) {
+            setProcessingStatuses(prev => prev.map((s, idx) => 
+              idx === i ? { ...s, status: "error", error: "Stopped by user" } : s
+            ));
+            break;
+          }
           setProcessingStatuses(prev => prev.map((s, idx) => 
             idx === i ? { ...s, status: "completed" } : s
           ));
@@ -484,8 +498,10 @@ export default function BulkAnalyze() {
       }
     }
 
+    const wasStopped = abortRequestedRef.current;
     setIsProcessing(false);
     setActiveTab("videos");
+    if (wasStopped) toast.success("Run stopped. Progress saved — view under Saved & list.");
 
     // Always save to localStorage so Saved/Recent show this run (even without sign-in)
     if (allFetchedVideos.length > 0) {
@@ -801,6 +817,32 @@ export default function BulkAnalyze() {
     return { totalViews, totalLikes, totalVideoComments };
   }, [videos]);
 
+  // Report markdown for analysis presentation (tables, summary, link to Comment Intelligence)
+  const reportMarkdown = useMemo(() => {
+    if (videos.length === 0 && allComments.length === 0) return "";
+    const totalViews = videos.reduce((s, v) => s + v.viewCount, 0);
+    const totalLikes = videos.reduce((s, v) => s + v.likeCount, 0);
+    const topVideos = [...videos]
+      .sort((a, b) => b.viewCount - a.viewCount)
+      .slice(0, 15);
+    let md = `## Analysis summary\n\n`;
+    md += `| Metric | Value |\n|--------|-------|\n`;
+    md += `| **Videos** | ${videos.length} |\n`;
+    md += `| **Comments fetched** | ${allComments.length} |\n`;
+    md += `| **Total views** | ${totalViews.toLocaleString()} |\n`;
+    md += `| **Total likes** | ${totalLikes.toLocaleString()} |\n\n`;
+    md += `### Top videos by views\n\n`;
+    md += `| # | Title | Channel | Views | Likes | Comments |\n`;
+    md += `|---|-------|---------|-------|-------|----------|\n`;
+    topVideos.forEach((v, i) => {
+      const title = v.title.replace(/\|/g, " ").slice(0, 50);
+      md += `| ${i + 1} | ${title}${title.length >= 50 ? "…" : ""} | ${v.channelTitle} | ${v.viewCount.toLocaleString()} | ${v.likeCount.toLocaleString()} | ${v.commentCount.toLocaleString()} |\n`;
+    });
+    md += `\n### Sentiment & product ideas\n\n`;
+    md += `For **sentiment analysis**, **product ideas**, and **copywriting insights** from comments, open [Comment Intelligence](/intelligence?source=local) (or save this run and open it from **Saved & list**).\n`;
+    return md;
+  }, [videos, allComments]);
+
   const completedCount = processingStatuses.filter(s => s.status === "completed").length;
   const errorCount = processingStatuses.filter(s => s.status === "error").length;
   const overallProgress = urls.length > 0 ? (completedCount + errorCount) / urls.length * 100 : 0;
@@ -951,6 +993,14 @@ export default function BulkAnalyze() {
               <TabsTrigger value="comments" className="gap-2">
                 <MessageSquare className="h-4 w-4" />
                 Comments ({allComments.length})
+              </TabsTrigger>
+              <TabsTrigger value="spreadsheet" className="gap-2">
+                <Table className="h-4 w-4" />
+                Spreadsheet
+              </TabsTrigger>
+              <TabsTrigger value="report" className="gap-2">
+                <FileText className="h-4 w-4" />
+                Report
               </TabsTrigger>
             </TabsList>
           </div>
@@ -1258,6 +1308,67 @@ export default function BulkAnalyze() {
               <p className="text-center text-sm text-muted-foreground py-4">
                 Showing first 200 comments. Export to CSV to see all {filteredComments.length} comments.
               </p>
+            )}
+          </TabsContent>
+
+          {/* Spreadsheet Tab: table view for easy copy */}
+          <TabsContent value="spreadsheet" className="space-y-6">
+            <p className="text-sm text-muted-foreground">
+              Column view — use &quot;Copy table&quot; to paste into Excel or Sheets.
+            </p>
+            <Tabs defaultValue="videos-table">
+              <TabsList>
+                <TabsTrigger value="videos-table">Videos ({filteredVideos.length})</TabsTrigger>
+                <TabsTrigger value="comments-table">Comments ({filteredComments.length})</TabsTrigger>
+              </TabsList>
+              <TabsContent value="videos-table" className="mt-4">
+                <DataTable<Video>
+                  keyField="id"
+                  data={filteredVideos}
+                  copyable
+                  columns={[
+                    { key: "id", header: "Video ID", width: "120px" },
+                    { key: "title", header: "Title", copyValue: (r) => r.title },
+                    { key: "channelTitle", header: "Channel" },
+                    { key: "viewCount", header: "Views", render: (r) => r.viewCount.toLocaleString() },
+                    { key: "likeCount", header: "Likes", render: (r) => r.likeCount.toLocaleString() },
+                    { key: "commentCount", header: "Comments", render: (r) => r.commentCount.toLocaleString() },
+                    { key: "durationFormatted", header: "Duration", width: "80px" },
+                    { key: "publishedAt", header: "Published", render: (r) => new Date(r.publishedAt).toLocaleDateString(), width: "100px" },
+                    { key: "playlistTitle", header: "Playlist", render: (r) => r.playlistTitle ?? "" },
+                  ]}
+                />
+              </TabsContent>
+              <TabsContent value="comments-table" className="mt-4">
+                <DataTable<Comment>
+                  keyField="id"
+                  data={filteredComments}
+                  copyable
+                  columns={[
+                    { key: "id", header: "Comment ID", width: "100px" },
+                    { key: "videoId", header: "Video ID", width: "120px" },
+                    { key: "videoTitle", header: "Video Title", render: (r) => r.videoTitle ?? "", copyValue: (r) => r.videoTitle ?? "" },
+                    { key: "authorDisplayName", header: "Author" },
+                    { key: "textOriginal", header: "Comment", copyValue: (r) => r.textOriginal },
+                    { key: "likeCount", header: "Likes", render: (r) => r.likeCount.toLocaleString(), width: "70px" },
+                    { key: "replyCount", header: "Replies", render: (r) => r.replyCount.toLocaleString(), width: "70px" },
+                    { key: "publishedAt", header: "Date", render: (r) => new Date(r.publishedAt).toLocaleDateString(), width: "100px" },
+                  ]}
+                />
+              </TabsContent>
+            </Tabs>
+          </TabsContent>
+
+          {/* Report Tab: markdown summary for analysis presentation */}
+          <TabsContent value="report" className="space-y-4">
+            {reportMarkdown ? (
+              <DynamicLayout content={reportMarkdown} />
+            ) : (
+              <Card>
+                <CardContent className="p-6 text-center text-muted-foreground">
+                  No data yet. Run an analysis to see the report.
+                </CardContent>
+              </Card>
             )}
           </TabsContent>
         </Tabs>
