@@ -74,3 +74,7 @@ See [.env.example](./.env.example) for all variables. Key ones:
 - `pnpm db:generate` – Generate migrations only
 - `pnpm db:studio` – Open Drizzle Studio
 - `pnpm test` – Run tests
+
+## CI
+
+A GitHub Actions workflow (`.github/workflows/ci.yml`) runs `pnpm install` and `pnpm check` on push/PR to `main`. If push fails with "workflow scope", see [docs/ENABLE-CI.md](./docs/ENABLE-CI.md).
