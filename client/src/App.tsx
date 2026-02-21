@@ -31,11 +31,33 @@ import CompetitorCalendar from "./pages/CompetitorCalendar";
 import ContentGapAnalysis from "./pages/ContentGapAnalysis";
 import Playlists from "./pages/Playlists";
 import Trash from "./pages/Trash";
+import PODDashboard from "./pages/PODDashboard";
+import DataSync from "./pages/DataSync";
+import PODOpportunities from "./pages/PODOpportunities";
+import Marketplace from "./pages/Marketplace";
+import GrokAnalysis from "./pages/GrokAnalysis";
+import LLMAssistant from "./pages/LLMAssistant";
+import MockupGenerator from "./pages/MockupGenerator";
+import SystemArchitecture from "./pages/SystemArchitecture";
+import YouTubeChannelPOD from "./pages/YouTubeChannelPOD";
+import YouTubeDataPOD from "./pages/YouTubeDataPOD";
+import CommentAnalysisPOD from "./pages/CommentAnalysisPOD";
 
 function Router() {
   return (
     <Switch>
       <Route path={"/"} component={Home} />
+      <Route path={"/pod-dashboard"} component={PODDashboard} />
+      <Route path={"/data-sync"} component={DataSync} />
+      <Route path={"/pod-opportunities"} component={PODOpportunities} />
+      <Route path={"/marketplace"} component={Marketplace} />
+      <Route path={"/grok-analysis"} component={GrokAnalysis} />
+      <Route path={"/llm-assistant"} component={LLMAssistant} />
+      <Route path={"/mockup-generator"} component={MockupGenerator} />
+      <Route path={"/system-architecture"} component={SystemArchitecture} />
+      <Route path={"/youtube-channel"} component={YouTubeChannelPOD} />
+      <Route path={"/youtube-data"} component={YouTubeDataPOD} />
+      <Route path={"/comment-analysis"} component={CommentAnalysisPOD} />
       <Route path={"/analyze"} component={Analyze} />
       <Route path={"/video"} component={Video} />
       <Route path={"/bulk-analyze"} component={BulkAnalyze} />

@@ -100,6 +100,12 @@ import {
   Youtube,
   PanelRightOpen,
   PanelRightClose,
+  LayoutDashboard,
+  ShoppingBag,
+  Bot,
+  Paintbrush,
+  Infinity,
+  Cpu,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
@@ -278,6 +284,19 @@ export function Sidebar({ isCollapsed, onToggle, onOpenSearch, onToggleYouTube, 
     { icon: History, label: "History", href: "/history", section: "tools" },
     { icon: Zap, label: "Content Generator", href: "/content-generator", section: "tools" },
     { icon: Trash2, label: "Trash", href: "/trash", section: "other" },
+    // POD (YouTube POD Analytics) features
+    { icon: LayoutDashboard, label: "POD Dashboard", href: "/pod-dashboard", section: "pod" },
+    { icon: Youtube, label: "YouTube Channel", href: "/youtube-channel", section: "pod" },
+    { icon: Youtube, label: "YouTube Data", href: "/youtube-data", section: "pod" },
+    { icon: RefreshCw, label: "Data Sync", href: "/data-sync", section: "pod" },
+    { icon: MessageSquare, label: "Comment Analysis", href: "/comment-analysis", section: "pod" },
+    { icon: Lightbulb, label: "POD Opportunities", href: "/pod-opportunities", section: "pod" },
+    { icon: ShoppingBag, label: "Marketplace", href: "/marketplace", section: "pod" },
+    { icon: Sparkles, label: "Grok Analysis", href: "/grok-analysis", section: "pod" },
+    { icon: Bot, label: "LLM Assistant", href: "/llm-assistant", section: "pod" },
+    { icon: Paintbrush, label: "Mockup Generator", href: "/mockup-generator", section: "pod" },
+    { icon: Infinity, label: "Infinite Canvas", href: "/canvas", section: "pod" },
+    { icon: Cpu, label: "System Architecture", href: "/system-architecture", section: "pod" },
   ];
 
   // Sortable folder item component
@@ -699,6 +718,31 @@ export function Sidebar({ isCollapsed, onToggle, onOpenSearch, onToggleYouTube, 
               </div>
               {navItems
                 .filter((item) => item.section === "tools")
+                .map((item) => (
+                  <Link key={item.href} href={item.href}>
+                    <div
+                      className={cn(
+                        "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors",
+                        "text-sm hover:bg-accent",
+                        location === item.href
+                          ? "bg-accent text-accent-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.label}</span>
+                    </div>
+                  </Link>
+                ))}
+            </div>
+
+            {/* POD (YouTube POD Analytics) */}
+            <div className="mb-4">
+              <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                POD
+              </div>
+              {navItems
+                .filter((item) => item.section === "pod")
                 .map((item) => (
                   <Link key={item.href} href={item.href}>
                     <div

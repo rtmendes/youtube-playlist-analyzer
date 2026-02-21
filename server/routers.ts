@@ -4130,9 +4130,9 @@ Provide insights that can be directly used in marketing copy.`
           notifyOnComplete: input.notifyOnComplete,
           nextRunAt,
           status: "active",
-        }).$returningId();
+        }).returning({ id: contentSchedules.id });
 
-        return { success: true, scheduleId: schedule.id, nextRunAt };
+        return { success: true, scheduleId: schedule!.id, nextRunAt };
       }),
 
     // Get user's schedules
@@ -4240,7 +4240,7 @@ Provide insights that can be directly used in marketing copy.`
           shareToken,
           status: input.shareType === "public" ? "accepted" : "pending",
           expiresAt,
-        }).$returningId();
+        }).returning({ id: templateShares.id });
 
         // If making public, update the template
         if (input.shareType === "public") {
@@ -4388,7 +4388,7 @@ Provide insights that can be directly used in marketing copy.`
           category: original.category,
           tags: original.tags,
           isPublic: false,
-        }).$returningId();
+        }).returning({ id: savedTemplates.id });
 
         // Update use count on original
         await db.update(savedTemplates)
@@ -4483,9 +4483,9 @@ Provide insights that can be directly used in marketing copy.`
           targetValue: input.targetValue.toString(),
           baselineValue: input.baselineValue?.toString(),
           deadline: input.deadline ? new Date(input.deadline) : null,
-        }).$returningId();
+        }).returning({ id: scheduleGoals.id });
 
-        return { success: true, goalId: goal.id };
+        return { success: true, goalId: goal!.id };
       }),
 
     // Get goals for a schedule
@@ -4663,9 +4663,9 @@ Format each suggestion as a brief, actionable item.`;
           content: input.content,
           parentId: input.parentId,
           mentionedUserIds: input.mentionedUserIds,
-        }).$returningId();
+        }).returning({ id: templateComments.id });
 
-        return { success: true, commentId: comment.id };
+        return { success: true, commentId: comment!.id };
       }),
 
     // Get comments for a template
@@ -4836,9 +4836,9 @@ Format each suggestion as a brief, actionable item.`;
         const [competitor] = await db.insert(competitors).values({
           userId: ctx.user.id,
           ...input,
-        }).$returningId();
+        }).returning({ id: competitors.id });
 
-        return { success: true, competitorId: competitor.id };
+        return { success: true, competitorId: competitor!.id };
       }),
 
     // Get all competitors
@@ -4997,9 +4997,9 @@ Format each suggestion as a brief, actionable item.`;
           positioning: input.positioning,
           comparisonToOurs: input.comparisonToOurs,
           comparisonNotes: input.comparisonNotes,
-        }).$returningId();
+        }).returning({ id: competitorProducts.id });
 
-        return { success: true, productId: product.id };
+        return { success: true, productId: product!.id };
       }),
 
     // Get products for a competitor
@@ -5123,9 +5123,9 @@ Format each suggestion as a brief, actionable item.`;
           sentiment: input.sentiment,
           qualityScore: input.qualityScore,
           notes: input.notes,
-        }).$returningId();
+        }).returning({ id: competitorContent.id });
 
-        return { success: true, contentId: content.id };
+        return { success: true, contentId: content!.id };
       }),
 
     // Get content for a competitor
@@ -5231,9 +5231,9 @@ Format as a structured analysis.`;
           description: input.description,
           competitorIds: input.competitorIds,
           dimensions: input.dimensions?.map(d => ({ ...d, scores: {} })),
-        }).$returningId();
+        }).returning({ id: competitorComparisons.id });
 
-        return { success: true, comparisonId: comparison.id };
+        return { success: true, comparisonId: comparison!.id };
       }),
 
     // Get all comparisons
@@ -5608,9 +5608,9 @@ Format as JSON with arrays for each category.`;
           subscriberCount: input.subscriberCount,
           videoCount: input.videoCount,
           viewCount: input.viewCount,
-        }).$returningId();
+        }).returning({ id: competitorYouTubeChannels.id });
 
-        return { success: true, channelId: channel.id };
+        return { success: true, channelId: channel!.id };
       }),
 
     // Get YouTube channels for a competitor
@@ -5780,11 +5780,11 @@ Format as JSON with arrays for each category.`;
           winnerReason: `Highest engagement rate at ${winner.engagementRate.toFixed(2)}%`,
           opportunities,
           threats,
-        }).$returningId();
+        }).returning({ id: youtubeChannelComparisons.id });
 
         return {
           success: true,
-          comparisonId: comparison.id,
+          comparisonId: comparison!.id,
           metricsComparison,
           winner,
           opportunities,
@@ -5916,9 +5916,9 @@ Be specific and actionable.`;
           keywords: input.keywords,
           frequency: input.frequency,
           isEnabled: true,
-        }).$returningId();
+        }).returning({ id: competitorAlerts.id });
 
-        return { success: true, alertId: alert.id };
+        return { success: true, alertId: alert!.id };
       }),
 
     // Get alerts
@@ -6254,9 +6254,9 @@ Be specific and actionable.`;
           topics: input.topics,
           sentiment: input.sentiment,
           notes: input.notes,
-        }).$returningId();
+        }).returning({ id: competitorContentCalendar.id });
 
-        return { success: true, entryId: entry.id };
+        return { success: true, entryId: entry!.id };
       }),
 
     // Get calendar entries
@@ -6476,11 +6476,11 @@ Be specific and actionable.`;
           analyzedFrom: entries[entries.length - 1].publishedAt,
           analyzedTo: entries[0].publishedAt,
           contentCount: entries.length,
-        }).$returningId();
+        }).returning({ id: postingPatterns.id });
 
         return {
           success: true,
-          patternId: pattern.id,
+          patternId: pattern!.id,
           avgPostsPerWeek,
           avgPostsPerMonth,
           bestDay: dayNames[bestDay],
@@ -6853,9 +6853,9 @@ Be specific and actionable.`;
           customPrompt: input.customPrompt,
           status: "active",
           nextRunAt,
-        }).$returningId();
+        }).returning({ id: reportSchedules.id });
 
-        return { success: true, scheduleId: schedule.id, nextRunAt };
+        return { success: true, scheduleId: schedule!.id, nextRunAt };
       }),
 
     // Get report schedules
@@ -6958,7 +6958,7 @@ Be specific and actionable.`;
           scheduleId: input.scheduleId,
           isScheduled: !!input.scheduleId,
           status: "generating",
-        }).$returningId();
+        }).returning({ id: competitorReports.id });
 
         // Gather metrics snapshot
         const metricsSnapshot = competitorList.map(c => ({
