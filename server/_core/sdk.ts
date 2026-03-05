@@ -210,12 +210,9 @@ class SDKServer {
         algorithms: ["HS256"],
       });
       const { openId, appId, name } = payload as Record<string, unknown>;
+      const nameValue = typeof name === "string" ? name : "";
 
-      if (
-        !isNonEmptyString(openId) ||
-        !isNonEmptyString(appId) ||
-        !isNonEmptyString(name)
-      ) {
+      if (!isNonEmptyString(openId) || !isNonEmptyString(appId)) {
         console.warn("[Auth] Session payload missing required fields");
         return null;
       }
@@ -223,7 +220,7 @@ class SDKServer {
       return {
         openId,
         appId,
-        name,
+        name: nameValue,
       };
     } catch (error) {
       console.warn("[Auth] Session verification failed", String(error));
@@ -256,6 +253,33 @@ class SDKServer {
   }
 
   async authenticateRequest(req: Request): Promise<User> {
+    if (!ENV.oAuthServerUrl) {
+      const openId = ENV.ownerOpenId || "local-owner";
+      const signedInAt = new Date();
+      let user = await db.getUserByOpenId(openId);
+
+      if (!user) {
+        await db.upsertUser({
+          openId,
+          name: "Owner",
+          loginMethod: "local",
+          lastSignedIn: signedInAt,
+        });
+        user = await db.getUserByOpenId(openId);
+      }
+
+      if (!user) {
+        throw ForbiddenError("User not found");
+      }
+
+      await db.upsertUser({
+        openId: user.openId,
+        lastSignedIn: signedInAt,
+      });
+
+      return user;
+    }
+
     // Regular authentication flow
     const cookies = this.parseCookies(req.headers.cookie);
     const sessionCookie = cookies.get(COOKIE_NAME);
