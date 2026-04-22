@@ -27,7 +27,9 @@ Transform YouTube comments into marketing insights. Extract stories, pain points
    ```
    Edit `.env` and set:
    - `DATABASE_URL` – Your Supabase Postgres connection string (Settings → Database → Connection string URI)
-   - Auth vars: `JWT_SECRET`, `OAUTH_SERVER_URL`, `OWNER_OPEN_ID`, `VITE_APP_ID`
+   - Auth vars (optional): `JWT_SECRET`, `OAUTH_SERVER_URL`, `OWNER_OPEN_ID`, `VITE_APP_ID`
+     - If `OAUTH_SERVER_URL` is **not** set, the app runs in **single-user auto-auth mode** (no login screen).
+     - `OWNER_OPEN_ID` is optional and defaults to `local-owner` for the auto-auth user.
 
 3. **Apply schema to database:**
    ```bash
@@ -63,6 +65,7 @@ Optional client-side Supabase (auth, realtime, storage):
 See [.env.example](./.env.example) for all variables. Key ones:
 
 - `DATABASE_URL` – **Required.** Postgres connection string (Supabase or any Postgres).
+- `JWT_SECRET`, `OAUTH_SERVER_URL`, `OWNER_OPEN_ID`, `VITE_APP_ID` – Optional auth settings. Leave `OAUTH_SERVER_URL` empty for single-user auto-auth.
 - `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` – Optional server-side Supabase.
 - `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` – Optional client-side Supabase.
 

@@ -26,6 +26,110 @@ function getYouTubeApiKey(inputKey?: string): string {
   return key;
 }
 
+async function requireFolder(db: Awaited<ReturnType<typeof getDb>>, folderId: number, userId: number) {
+  if (!db) throw new Error("Database not available");
+  const [folder] = await db
+    .select()
+    .from(folders)
+    .where(and(eq(folders.id, folderId), eq(folders.userId, userId)))
+    .limit(1);
+  if (!folder) throw new Error("Folder not found");
+  return folder;
+}
+
+async function requireTag(db: Awaited<ReturnType<typeof getDb>>, tagId: number, userId: number) {
+  if (!db) throw new Error("Database not available");
+  const [tag] = await db
+    .select()
+    .from(tags)
+    .where(and(eq(tags.id, tagId), eq(tags.userId, userId)))
+    .limit(1);
+  if (!tag) throw new Error("Tag not found");
+  return tag;
+}
+
+async function requireProject(db: Awaited<ReturnType<typeof getDb>>, projectId: number, userId: number) {
+  if (!db) throw new Error("Database not available");
+  const [project] = await db
+    .select()
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
+    .limit(1);
+  if (!project) throw new Error("Project not found");
+  return project;
+}
+
+async function requireSavedPlaylist(db: Awaited<ReturnType<typeof getDb>>, playlistId: number, userId: number) {
+  if (!db) throw new Error("Database not available");
+  const [playlist] = await db
+    .select()
+    .from(savedPlaylists)
+    .where(and(eq(savedPlaylists.id, playlistId), eq(savedPlaylists.userId, userId)))
+    .limit(1);
+  if (!playlist) throw new Error("Playlist not found");
+  return playlist;
+}
+
+async function requirePlaylistRun(db: Awaited<ReturnType<typeof getDb>>, runId: number, userId: number) {
+  if (!db) throw new Error("Database not available");
+  const [run] = await db
+    .select({ runId: playlistRuns.id, playlistUserId: savedPlaylists.userId })
+    .from(playlistRuns)
+    .leftJoin(savedPlaylists, eq(playlistRuns.savedPlaylistId, savedPlaylists.id))
+    .where(eq(playlistRuns.id, runId))
+    .limit(1);
+  if (!run || run.playlistUserId !== userId) throw new Error("Playlist run not found");
+  return run;
+}
+
+async function requirePlaylistVideo(db: Awaited<ReturnType<typeof getDb>>, playlistVideoId: number, userId: number) {
+  if (!db) throw new Error("Database not available");
+  const [record] = await db
+    .select({ videoId: playlistVideos.id, playlistUserId: savedPlaylists.userId })
+    .from(playlistVideos)
+    .leftJoin(savedPlaylists, eq(playlistVideos.savedPlaylistId, savedPlaylists.id))
+    .where(eq(playlistVideos.id, playlistVideoId))
+    .limit(1);
+  if (!record || record.playlistUserId !== userId) throw new Error("Playlist video not found");
+  return record;
+}
+
+async function requireProjectAsset(db: Awaited<ReturnType<typeof getDb>>, assetId: number, userId: number) {
+  if (!db) throw new Error("Database not available");
+  const [asset] = await db
+    .select({ assetId: generatedAssets.id, projectUserId: projects.userId })
+    .from(generatedAssets)
+    .leftJoin(projects, eq(generatedAssets.projectId, projects.id))
+    .where(eq(generatedAssets.id, assetId))
+    .limit(1);
+  if (!asset || asset.projectUserId !== userId) throw new Error("Asset not found");
+  return asset;
+}
+
+async function requireCommentInsight(db: Awaited<ReturnType<typeof getDb>>, insightId: number, userId: number) {
+  if (!db) throw new Error("Database not available");
+  const [insight] = await db
+    .select({ insightId: commentInsights.id, projectUserId: projects.userId })
+    .from(commentInsights)
+    .leftJoin(projects, eq(commentInsights.projectId, projects.id))
+    .where(eq(commentInsights.id, insightId))
+    .limit(1);
+  if (!insight || insight.projectUserId !== userId) throw new Error("Insight not found");
+  return insight;
+}
+
+async function requireMultiInsight(db: Awaited<ReturnType<typeof getDb>>, insightId: number, userId: number) {
+  if (!db) throw new Error("Database not available");
+  const [insight] = await db
+    .select({ insightId: multiSourceInsights.id, projectUserId: projects.userId })
+    .from(multiSourceInsights)
+    .leftJoin(projects, eq(multiSourceInsights.projectId, projects.id))
+    .where(eq(multiSourceInsights.id, insightId))
+    .limit(1);
+  if (!insight || insight.projectUserId !== userId) throw new Error("Insight not found");
+  return insight;
+}
+
 export const appRouter = router({
   system: systemRouter,
   
@@ -588,7 +692,11 @@ export const appRouter = router({
         const db = await getDb();
         if (!db) throw new Error("Database not available");
         const { id, ...updates } = input;
-        await db.update(folders).set(updates).where(eq(folders.id, id));
+        await requireFolder(db, id, ctx.user.id);
+        await db
+          .update(folders)
+          .set(updates)
+          .where(and(eq(folders.id, id), eq(folders.userId, ctx.user.id)));
         return { success: true };
       }),
 
@@ -597,7 +705,10 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
-        await db.delete(folders).where(eq(folders.id, input.id));
+        await requireFolder(db, input.id, ctx.user.id);
+        await db
+          .delete(folders)
+          .where(and(eq(folders.id, input.id), eq(folders.userId, ctx.user.id)));
         return { success: true };
       }),
   }),
@@ -624,7 +735,10 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
-        await db.delete(tags).where(eq(tags.id, input.id));
+        await requireTag(db, input.id, ctx.user.id);
+        await db
+          .delete(tags)
+          .where(and(eq(tags.id, input.id), eq(tags.userId, ctx.user.id)));
         return { success: true };
       }),
   }),
@@ -640,7 +754,11 @@ export const appRouter = router({
         let query = db.select().from(projects).where(eq(projects.userId, ctx.user.id));
         
         if (input?.folderId) {
-          query = db.select().from(projects).where(eq(projects.folderId, input.folderId));
+          await requireFolder(db, input.folderId, ctx.user.id);
+          query = db
+            .select()
+            .from(projects)
+            .where(and(eq(projects.userId, ctx.user.id), eq(projects.folderId, input.folderId)));
         }
         
         return await query.orderBy(desc(projects.updatedAt));
@@ -651,9 +769,8 @@ export const appRouter = router({
       .query(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) return null;
-        const result = await db.select().from(projects).where(eq(projects.id, input.id)).limit(1);
-        if (!result[0] || result[0].userId !== ctx.user.id) throw new Error("Project not found");
-        return result[0];
+        const project = await requireProject(db, input.id, ctx.user.id);
+        return project;
       }),
 
     create: protectedProcedure
@@ -688,7 +805,11 @@ export const appRouter = router({
         const db = await getDb();
         if (!db) throw new Error("Database not available");
         const { id, ...updates } = input;
-        await db.update(projects).set(updates).where(eq(projects.id, id));
+        await requireProject(db, id, ctx.user.id);
+        await db
+          .update(projects)
+          .set(updates)
+          .where(and(eq(projects.id, id), eq(projects.userId, ctx.user.id)));
         return { success: true };
       }),
 
@@ -697,7 +818,10 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
-        await db.delete(projects).where(eq(projects.id, input.id));
+        await requireProject(db, input.id, ctx.user.id);
+        await db
+          .delete(projects)
+          .where(and(eq(projects.id, input.id), eq(projects.userId, ctx.user.id)));
         return { success: true };
       }),
 
@@ -706,6 +830,8 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
+        await requireProject(db, input.projectId, ctx.user.id);
+        await requireTag(db, input.tagId, ctx.user.id);
         await db.insert(projectTags).values(input);
         return { success: true };
       }),
@@ -715,7 +841,16 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
-        await db.delete(projectTags).where(eq(projectTags.projectId, input.projectId));
+        await requireProject(db, input.projectId, ctx.user.id);
+        await requireTag(db, input.tagId, ctx.user.id);
+        await db
+          .delete(projectTags)
+          .where(
+            and(
+              eq(projectTags.projectId, input.projectId),
+              eq(projectTags.tagId, input.tagId)
+            )
+          );
         return { success: true };
       }),
 
@@ -724,10 +859,22 @@ export const appRouter = router({
       .query(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) return [];
+        await requireProject(db, input.projectId, ctx.user.id);
         const pts = await db.select().from(projectTags).where(eq(projectTags.projectId, input.projectId));
         const tagIds = pts.map(pt => pt.tagId);
         if (tagIds.length === 0) return [];
-        return await db.select().from(tags).where(eq(tags.userId, ctx.user.id));
+        return await db
+          .select()
+          .from(tags)
+          .where(
+            and(
+              eq(tags.userId, ctx.user.id),
+              sql`${tags.id} IN (${sql.join(
+                tagIds.map(id => sql`${id}`),
+                sql`, `
+              )})`
+            )
+          );
       }),
   }),
 
@@ -754,6 +901,7 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
+        await requireProject(db, input.projectId, ctx.user.id);
         
         for (const comment of input.comments) {
           await db.insert(commentInsights).values({
@@ -770,6 +918,7 @@ export const appRouter = router({
       .query(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) return [];
+        await requireProject(db, input.projectId, ctx.user.id);
         return await db.select().from(commentInsights).where(eq(commentInsights.projectId, input.projectId)).orderBy(desc(commentInsights.marketingPotential));
       }),
 
@@ -781,6 +930,7 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
+        await requireCommentInsight(db, input.id, ctx.user.id);
         await db.update(commentInsights).set({ category: input.category }).where(eq(commentInsights.id, input.id));
         return { success: true };
       }),
@@ -790,6 +940,7 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
+        await requireCommentInsight(db, input.id, ctx.user.id);
         await db.update(commentInsights).set({ isSelected: input.isSelected ? 1 : 0 }).where(eq(commentInsights.id, input.id));
         return { success: true };
       }),
@@ -810,6 +961,7 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
+        await requireProject(db, input.projectId, ctx.user.id);
         const [row] = await db.insert(generatedAssets).values(input).returning({ id: generatedAssets.id });
         return { id: Number(row?.id ?? 0), success: true };
       }),
@@ -819,6 +971,7 @@ export const appRouter = router({
       .query(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) return [];
+        await requireProject(db, input.projectId, ctx.user.id);
         return await db.select().from(generatedAssets).where(eq(generatedAssets.projectId, input.projectId)).orderBy(desc(generatedAssets.createdAt));
       }),
 
@@ -828,6 +981,7 @@ export const appRouter = router({
         const db = await getDb();
         if (!db) throw new Error("Database not available");
         const { id, isFavorite, ...updates } = input;
+        await requireProjectAsset(db, id, ctx.user.id);
         await db.update(generatedAssets).set({ ...updates, isFavorite: isFavorite ? 1 : 0 }).where(eq(generatedAssets.id, id));
         return { success: true };
       }),
@@ -837,6 +991,7 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
+        await requireProjectAsset(db, input.id, ctx.user.id);
         await db.delete(generatedAssets).where(eq(generatedAssets.id, input.id));
         return { success: true };
       }),
@@ -1312,6 +1467,7 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
+        await requireProject(db, input.projectId, ctx.user.id);
 
         const result = await db.insert(multiSourceInsights).values({
           projectId: input.projectId,
@@ -1335,6 +1491,7 @@ export const appRouter = router({
       .query(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) return [];
+        await requireProject(db, input.projectId, ctx.user.id);
         return await db.select().from(multiSourceInsights).where(eq(multiSourceInsights.projectId, input.projectId)).orderBy(desc(multiSourceInsights.createdAt));
       }),
 
@@ -1346,6 +1503,7 @@ export const appRouter = router({
       .query(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) return [];
+        await requireProject(db, input.projectId, ctx.user.id);
         return await db.select().from(multiSourceInsights).where(
           and(
             eq(multiSourceInsights.projectId, input.projectId),
@@ -1359,6 +1517,7 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
+        await requireMultiInsight(db, input.id, ctx.user.id);
         await db.update(multiSourceInsights).set({ isSelected: input.isSelected ? 1 : 0 }).where(eq(multiSourceInsights.id, input.id));
         return { success: true };
       }),
@@ -1368,6 +1527,7 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
+        await requireMultiInsight(db, input.id, ctx.user.id);
         await db.delete(multiSourceInsights).where(eq(multiSourceInsights.id, input.id));
         return { success: true };
       }),
@@ -1377,6 +1537,7 @@ export const appRouter = router({
       .query(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) return { youtube: 0, amazon: 0, reddit: 0, total: 0 };
+        await requireProject(db, input.projectId, ctx.user.id);
         
         const insights = await db.select().from(multiSourceInsights).where(eq(multiSourceInsights.projectId, input.projectId));
         
@@ -1503,12 +1664,13 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
+        await requireSavedPlaylist(db, input.id, ctx.user.id);
 
         await db.update(savedPlaylists).set({
           lastRunAt: new Date(),
           lastVideoCount: input.videoCount,
           lastCommentCount: input.commentCount,
-        }).where(eq(savedPlaylists.id, input.id));
+        }).where(and(eq(savedPlaylists.id, input.id), eq(savedPlaylists.userId, ctx.user.id)));
 
         return { success: true };
       }),
@@ -1519,13 +1681,16 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
+        await requireSavedPlaylist(db, input.id, ctx.user.id);
 
         // Delete associated runs first
         await db.delete(playlistRuns).where(eq(playlistRuns.savedPlaylistId, input.id));
         // Delete associated videos
         await db.delete(playlistVideos).where(eq(playlistVideos.savedPlaylistId, input.id));
         // Delete the playlist
-        await db.delete(savedPlaylists).where(eq(savedPlaylists.id, input.id));
+        await db
+          .delete(savedPlaylists)
+          .where(and(eq(savedPlaylists.id, input.id), eq(savedPlaylists.userId, ctx.user.id)));
 
         return { success: true };
       }),
@@ -1539,10 +1704,11 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
+        await requireSavedPlaylist(db, input.id, ctx.user.id);
 
         await db.update(savedPlaylists).set({
           status: input.status,
-        }).where(eq(savedPlaylists.id, input.id));
+        }).where(and(eq(savedPlaylists.id, input.id), eq(savedPlaylists.userId, ctx.user.id)));
 
         return { success: true };
       }),
@@ -1558,6 +1724,7 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
+        await requireSavedPlaylist(db, input.id, ctx.user.id);
 
         // Calculate next refresh time
         let nextRefreshAt: Date | null = null;
@@ -1591,7 +1758,7 @@ export const appRouter = router({
           refreshHour: input.refreshHour ?? 9,
           refreshDayOfWeek: input.refreshDayOfWeek ?? 1,
           nextRefreshAt,
-        }).where(eq(savedPlaylists.id, input.id));
+        }).where(and(eq(savedPlaylists.id, input.id), eq(savedPlaylists.userId, ctx.user.id)));
 
         return { success: true, nextRefreshAt };
       }),
@@ -1639,12 +1806,7 @@ export const appRouter = router({
         const db = await getDb();
         if (!db) throw new Error("Database not available");
 
-        // Get current playlist
-        const results = await db.select().from(savedPlaylists)
-          .where(eq(savedPlaylists.id, input.id));
-        
-        if (!results[0]) throw new Error("Playlist not found");
-        const playlist = results[0];
+        const playlist = await requireSavedPlaylist(db, input.id, ctx.user.id);
 
         if (playlist.refreshSchedule === "none") {
           return { success: true, nextRefreshAt: null };
@@ -1673,7 +1835,7 @@ export const appRouter = router({
 
         await db.update(savedPlaylists).set({
           nextRefreshAt,
-        }).where(eq(savedPlaylists.id, input.id));
+        }).where(and(eq(savedPlaylists.id, input.id), eq(savedPlaylists.userId, ctx.user.id)));
 
         return { success: true, nextRefreshAt };
       }),
@@ -1689,6 +1851,7 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
+        await requireSavedPlaylist(db, input.savedPlaylistId, ctx.user.id);
 
         const [row] = await db.insert(playlistRuns).values({
           savedPlaylistId: input.savedPlaylistId,
@@ -1713,6 +1876,7 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
+        await requirePlaylistRun(db, input.id, ctx.user.id);
 
         await db.update(playlistRuns).set({
           videosAnalyzed: input.videosAnalyzed,
@@ -1733,6 +1897,7 @@ export const appRouter = router({
       .query(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) return [];
+        await requireSavedPlaylist(db, input.savedPlaylistId, ctx.user.id);
 
         return await db.select().from(playlistRuns)
           .where(eq(playlistRuns.savedPlaylistId, input.savedPlaylistId))
@@ -1745,6 +1910,7 @@ export const appRouter = router({
       .query(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) return null;
+        await requireSavedPlaylist(db, input.savedPlaylistId, ctx.user.id);
 
         const results = await db.select().from(playlistRuns)
           .where(eq(playlistRuns.savedPlaylistId, input.savedPlaylistId))
@@ -1774,6 +1940,7 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
+        await requireSavedPlaylist(db, input.savedPlaylistId, ctx.user.id);
 
         let newCount = 0;
         for (const video of input.videos) {
@@ -1818,6 +1985,7 @@ export const appRouter = router({
       .query(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) return [];
+        await requireSavedPlaylist(db, input.savedPlaylistId, ctx.user.id);
 
         return await db.select().from(playlistVideos)
           .where(eq(playlistVideos.savedPlaylistId, input.savedPlaylistId))
@@ -1832,6 +2000,7 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
+        await requirePlaylistVideo(db, input.id, ctx.user.id);
 
         await db.update(playlistVideos).set({
           lastCommentFetchAt: new Date(),
