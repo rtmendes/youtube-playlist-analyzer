@@ -182,9 +182,9 @@ export default function Videos() {
       header: "",
       accessor: "thumbnailUrl",
       width: 80,
-      render: (value, row) =>
-        value ? (
-          <ThumbnailCell src={value} alt={row.title} size="sm" />
+      render: (row) =>
+        row.thumbnailUrl ? (
+          <ThumbnailCell src={row.thumbnailUrl} alt={row.title} size="sm" />
         ) : (
           <div className="w-16 h-9 bg-muted rounded flex items-center justify-center">
             <Video className="h-4 w-4 text-muted-foreground" />
@@ -197,13 +197,13 @@ export default function Videos() {
       accessor: "title",
       sortable: true,
       minWidth: 250,
-      render: (value, row) => (
+      render: (row) => (
         <div className="flex flex-col gap-0.5">
           <LinkCell
             href={`https://youtube.com/watch?v=${row.videoId}`}
             external
           >
-            <span className="font-medium line-clamp-1">{value}</span>
+            <span className="font-medium line-clamp-1">{row.title}</span>
           </LinkCell>
           <span className="text-xs text-muted-foreground">{row.videoId}</span>
         </div>
@@ -215,13 +215,13 @@ export default function Videos() {
       accessor: "channelTitle",
       sortable: true,
       minWidth: 150,
-      render: (value, row) => (
+      render: (row) => (
         <Link
           href={`/channel/${row.channelId || row.channelTitle}`}
           className="text-primary hover:underline flex items-center gap-1"
           onClick={(e) => e.stopPropagation()}
         >
-          {value}
+          {row.channelTitle}
         </Link>
       ),
     },
@@ -232,7 +232,7 @@ export default function Videos() {
       sortable: true,
       width: 100,
       align: "right",
-      render: (value) => <NumberCell value={value} />,
+      render: (row) => <NumberCell value={row.viewCount} />,
     },
     {
       id: "likes",
@@ -241,7 +241,7 @@ export default function Videos() {
       sortable: true,
       width: 100,
       align: "right",
-      render: (value) => <NumberCell value={value} />,
+      render: (row) => <NumberCell value={row.likeCount} />,
     },
     {
       id: "comments",
@@ -250,7 +250,7 @@ export default function Videos() {
       sortable: true,
       width: 100,
       align: "right",
-      render: (value) => <NumberCell value={value} />,
+      render: (row) => <NumberCell value={row.commentCount} />,
     },
     {
       id: "duration",
@@ -259,8 +259,8 @@ export default function Videos() {
       sortable: true,
       width: 90,
       align: "center",
-      render: (value) => (
-        <span className="font-mono text-sm">{formatDuration(value)}</span>
+      render: (row) => (
+        <span className="font-mono text-sm">{formatDuration(row.duration)}</span>
       ),
     },
     {
@@ -269,15 +269,15 @@ export default function Videos() {
       accessor: "publishedAt",
       sortable: true,
       width: 120,
-      render: (value) =>
-        value ? <DateCell value={value} format="relative" /> : <span>-</span>,
+      render: (row) =>
+        row.publishedAt ? <DateCell value={row.publishedAt} format="relative" /> : <span>-</span>,
     },
     {
       id: "actions",
       header: "",
       accessor: "id",
       width: 50,
-      render: (_, row) => (
+      render: (row) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
             <Button variant="ghost" size="icon" className="h-8 w-8">

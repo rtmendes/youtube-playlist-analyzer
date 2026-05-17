@@ -38,6 +38,7 @@ import {
   History,
   Square,
   FileText,
+  Brain,
 } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getStoredYouTubeApiKey } from "@/lib/apiKeys";
