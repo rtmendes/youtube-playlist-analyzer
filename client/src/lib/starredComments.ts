@@ -18,7 +18,7 @@ export function toggleStarredCommentId(id: string): void {
   else set.add(id);
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(KEY, JSON.stringify([...set]));
+    localStorage.setItem(KEY, JSON.stringify(Array.from(set)));
   } catch {
     // ignore
   }
@@ -27,7 +27,7 @@ export function toggleStarredCommentId(id: string): void {
 export function setStarredCommentIds(ids: Set<string>): void {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(KEY, JSON.stringify([...ids]));
+    localStorage.setItem(KEY, JSON.stringify(Array.from(ids)));
   } catch {
     // ignore
   }

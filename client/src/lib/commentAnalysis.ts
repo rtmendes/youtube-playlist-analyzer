@@ -37,7 +37,6 @@ export interface CommentForAnalysis {
   videoTitle?: string;
   authorDisplayName?: string;
   publishedAt?: string;
-  [key: string]: unknown;
 }
 
 export interface AnalyzedCommentResult {

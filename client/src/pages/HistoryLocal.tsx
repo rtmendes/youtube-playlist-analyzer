@@ -114,7 +114,10 @@ export default function HistoryLocal() {
     [filteredComments, removedCommentIds]
   );
 
-  const analyzedComments = useMemo(() => analyzeComments(visibleComments), [visibleComments]);
+  const analyzedComments = useMemo(
+    () => analyzeComments(visibleComments.map((c) => ({ ...c, textOriginal: c.textOriginal ?? "" }))),
+    [visibleComments]
+  );
 
   const toggleSelectComment = (id: string) => {
     setSelectedCommentIds((prev) => {

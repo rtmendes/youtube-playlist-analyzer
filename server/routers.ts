@@ -149,7 +149,7 @@ export const appRouter = router({
       return { settings };
     }),
     set: protectedProcedure
-      .input(z.object({ settings: z.record(z.unknown()) }))
+      .input(z.object({ settings: z.record(z.string(), z.unknown()) }))
       .mutation(async ({ ctx, input }) => {
         if (!ctx.user) throw new Error("Not authenticated");
         await setUserSettings(ctx.user.id, input.settings);
