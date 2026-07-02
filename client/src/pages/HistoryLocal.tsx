@@ -1,11 +1,15 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { getLastRun, clearLastRun } from "@/lib/lastRunStorage";
-import { ArrowLeft, Download, Trash2, Calendar, Play, MessageSquare, Eye, ThumbsUp, Search } from "lucide-react";
+import { analyzeComments, CATEGORY_LABELS } from "@/lib/commentAnalysis";
+import { getStarredCommentIds, toggleStarredCommentId } from "@/lib/starredComments";
+import { ArrowLeft, Download, Trash2, Calendar, Play, MessageSquare, Eye, ThumbsUp, Search, FileSpreadsheet, Star, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -23,9 +27,16 @@ export default function HistoryLocal() {
   const [, setLocation] = useLocation();
   const [videoSearch, setVideoSearch] = useState("");
   const [commentSearch, setCommentSearch] = useState("");
-  const [videoSort, setVideoSort] = useState("views");
+  const [videoSort, setVideoSort] = useState("comments-desc");
   const [commentSort, setCommentSort] = useState("most-liked");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [selectedCommentIds, setSelectedCommentIds] = useState<Set<string>>(new Set());
+  const [starredCommentIds, setStarredCommentIdsState] = useState<Set<string>>(new Set());
+  const [removedCommentIds, setRemovedCommentIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setStarredCommentIdsState(getStarredCommentIds());
+  }, []);
 
   const lastRun = getLastRun();
   const videos = (lastRun?.videosData ?? []) as Array<{
@@ -62,11 +73,18 @@ export default function HistoryLocal() {
     }
     return [...list].sort((a, b) => {
       switch (videoSort) {
+        case "views-desc": return (b.viewCount ?? 0) - (a.viewCount ?? 0);
+        case "views-asc": return (a.viewCount ?? 0) - (b.viewCount ?? 0);
+        case "likes-desc": return (b.likeCount ?? 0) - (a.likeCount ?? 0);
+        case "likes-asc": return (a.likeCount ?? 0) - (b.likeCount ?? 0);
+        case "comments-desc": return (b.commentCount ?? 0) - (a.commentCount ?? 0);
+        case "comments-asc": return (a.commentCount ?? 0) - (b.commentCount ?? 0);
+        case "newest": return new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime();
+        case "oldest": return new Date(a.publishedAt || 0).getTime() - new Date(b.publishedAt || 0).getTime();
         case "views": return (b.viewCount ?? 0) - (a.viewCount ?? 0);
         case "likes": return (b.likeCount ?? 0) - (a.likeCount ?? 0);
         case "comments": return (b.commentCount ?? 0) - (a.commentCount ?? 0);
-        case "newest": return new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime();
-        default: return 0;
+        default: return (b.commentCount ?? 0) - (a.commentCount ?? 0);
       }
     });
   }, [videos, videoSearch, videoSort]);
@@ -90,6 +108,69 @@ export default function HistoryLocal() {
       }
     });
   }, [comments, commentSearch, commentSort]);
+
+  const visibleComments = useMemo(
+    () => filteredComments.filter((c) => !removedCommentIds.has(c.id)),
+    [filteredComments, removedCommentIds]
+  );
+
+  const analyzedComments = useMemo(
+    () => analyzeComments(visibleComments.map((c) => ({ ...c, textOriginal: c.textOriginal ?? "" }))),
+    [visibleComments]
+  );
+
+  const toggleSelectComment = (id: string) => {
+    setSelectedCommentIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const selectAllComments = () => setSelectedCommentIds(new Set(analyzedComments.map((c) => c.id)));
+  const clearCommentSelection = () => setSelectedCommentIds(new Set());
+  const selectedComments = useMemo(
+    () => analyzedComments.filter((c) => selectedCommentIds.has(c.id)),
+    [analyzedComments, selectedCommentIds]
+  );
+
+  const copySelectedToClipboard = () => {
+    if (selectedComments.length === 0) {
+      toast.error("Select at least one comment to copy");
+      return;
+    }
+    const text = selectedComments
+      .map((c) => `${c.authorDisplayName || "Anonymous"}: "${(c.textOriginal || "").replace(/"/g, '""')}"`)
+      .join("\n\n");
+    navigator.clipboard.writeText(text).then(() => toast.success(`Copied ${selectedComments.length} quote(s) to clipboard`));
+  };
+
+  const toggleStar = (id: string) => {
+    toggleStarredCommentId(id);
+    const next = getStarredCommentIds();
+    setStarredCommentIdsState(next);
+    toast.success(next.has(id) ? "Starred for later" : "Removed from starred");
+  };
+  const starSelected = () => {
+    selectedComments.forEach((c) => toggleStarredCommentId(c.id));
+    setStarredCommentIdsState(getStarredCommentIds());
+    toast.success(`Starred ${selectedComments.length} comment(s)`);
+  };
+  const unstarSelected = () => {
+    selectedComments.forEach((c) => toggleStarredCommentId(c.id));
+    setStarredCommentIdsState(getStarredCommentIds());
+    toast.success(`Unstarred ${selectedComments.length} comment(s)`);
+  };
+
+  const removeSelectedFromList = () => {
+    setRemovedCommentIds((prev) => {
+      const next = new Set(prev);
+      selectedComments.forEach((c) => next.add(c.id));
+      return next;
+    });
+    setSelectedCommentIds(new Set());
+    toast.success(`Removed ${selectedComments.length} comment(s) from list`);
+  };
 
   const formatNumber = (n: number) => (n >= 1_000_000 ? (n / 1_000_000).toFixed(1) + "M" : n >= 1_000 ? (n / 1_000).toFixed(1) + "K" : String(n));
 
@@ -116,8 +197,13 @@ export default function HistoryLocal() {
   };
 
   const exportCommentsCSV = () => {
-    const headers = ["Comment ID", "Video ID", "Video Title", "Author", "Text", "Likes", "Replies", "Published"];
-    const rows = filteredComments.map((c) => [
+    const toExport = selectedCommentIds.size > 0 ? selectedComments : analyzedComments;
+    if (toExport.length === 0) {
+      toast.error("No comments to export");
+      return;
+    }
+    const headers = ["Comment ID", "Video ID", "Video Title", "Author", "Text", "Likes", "Replies", "Published", "Category", "Sentiment", "Marketing"];
+    const rows = toExport.map((c) => [
       c.id,
       c.videoId ?? "",
       `"${(c.videoTitle || "").replace(/"/g, '""')}"`,
@@ -126,14 +212,100 @@ export default function HistoryLocal() {
       c.likeCount ?? 0,
       c.replyCount ?? 0,
       c.publishedAt ?? "",
+      (c as { category?: string }).category ?? "",
+      (c as { sentimentScore?: number }).sentimentScore ?? "",
+      (c as { marketingPotential?: number }).marketingPotential ?? "",
     ]);
-    const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const csv = [headers.join(","), ...rows.map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))].join("\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    a.download = `last-run-comments.csv`;
+    a.download = selectedCommentIds.size > 0 ? "selected-comments.csv" : "last-run-comments.csv";
     a.click();
     URL.revokeObjectURL(a.href);
-    toast.success("Comments CSV downloaded");
+    toast.success(selectedCommentIds.size > 0 ? `Exported ${selectedComments.length} selected comments` : "Comments CSV downloaded");
+  };
+
+  const exportToGoogleSheets = () => {
+    const headers = [
+      "Video ID", "Video Title", "Channel", "Views", "Likes", "Video Comments Count", "Duration", "Video Published",
+      "Comment ID", "Comment Author", "Comment Text", "Comment Likes", "Comment Replies", "Comment Date", "Category", "Sentiment", "Marketing"
+    ];
+    const rows: string[][] = [];
+    const commentsToExport = selectedCommentIds.size > 0 ? selectedComments : analyzedComments;
+    if (selectedCommentIds.size > 0) {
+      commentsToExport.forEach((comment) => {
+        const video = filteredVideos.find((v) => v.id === comment.videoId);
+        const ac = comment as typeof comment & { category?: string; sentimentScore?: number; marketingPotential?: number };
+        rows.push([
+          video?.id ?? "",
+          `"${(video?.title || "").replace(/"/g, '""')}"`,
+          `"${(video?.channelTitle || "").replace(/"/g, '""')}"`,
+          String(video?.viewCount ?? 0),
+          String(video?.likeCount ?? 0),
+          String(video?.commentCount ?? 0),
+          video?.durationFormatted ?? "",
+          video?.publishedAt ?? "",
+          comment.id ?? "",
+          `"${(comment.authorDisplayName || "").replace(/"/g, '""')}"`,
+          `"${(comment.textOriginal || "").replace(/"/g, '""').replace(/\n/g, " ").substring(0, 500)}"`,
+          String(comment.likeCount ?? 0),
+          String(comment.replyCount ?? 0),
+          comment.publishedAt ?? "",
+          ac.category ?? "",
+          String(ac.sentimentScore ?? ""),
+          String(ac.marketingPotential ?? ""),
+        ]);
+      });
+    } else {
+      filteredVideos.forEach((video) => {
+        const videoComments = commentsToExport.filter((c) => c.videoId === video.id);
+        if (videoComments.length === 0) {
+          rows.push([
+            video.id,
+            `"${(video.title || "").replace(/"/g, '""')}"`,
+            `"${(video.channelTitle || "").replace(/"/g, '""')}"`,
+            String(video.viewCount ?? 0),
+            String(video.likeCount ?? 0),
+            String(video.commentCount ?? 0),
+            video.durationFormatted ?? "",
+            video.publishedAt ?? "",
+            "", "", "", "", "", "", "", "", ""
+          ]);
+        } else {
+          videoComments.forEach((comment) => {
+            const ac = comment as typeof comment & { category?: string; sentimentScore?: number; marketingPotential?: number };
+            rows.push([
+              video.id,
+              `"${(video.title || "").replace(/"/g, '""')}"`,
+              `"${(video.channelTitle || "").replace(/"/g, '""')}"`,
+              String(video.viewCount ?? 0),
+              String(video.likeCount ?? 0),
+              String(video.commentCount ?? 0),
+              video.durationFormatted ?? "",
+              video.publishedAt ?? "",
+              comment.id ?? "",
+              `"${(comment.authorDisplayName || "").replace(/"/g, '""')}"`,
+              `"${(comment.textOriginal || "").replace(/"/g, '""').replace(/\n/g, " ").substring(0, 500)}"`,
+              String(comment.likeCount ?? 0),
+              String(comment.replyCount ?? 0),
+              comment.publishedAt ?? "",
+              ac.category ?? "",
+              String(ac.sentimentScore ?? ""),
+              String(ac.marketingPotential ?? ""),
+            ]);
+          });
+        }
+      });
+    }
+    const csvContent = [headers.join(","), ...rows.map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))].join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csvContent], { type: "text/csv" }));
+    a.download = "youtube-analysis-for-sheets.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast.success(selectedCommentIds.size > 0
+      ? `Exported ${selectedComments.length} selected to CSV. Import in Google Sheets: File → Import → Upload.`
+      : "CSV downloaded. To view in Google Sheets: open sheets.google.com → File → Import → Upload the CSV file.");
   };
 
   const handleClear = () => {
@@ -170,7 +342,7 @@ export default function HistoryLocal() {
               <h1 className="text-xl font-bold truncate max-w-md">{lastRun.name}</h1>
               <p className="text-sm text-muted-foreground flex items-center gap-2">
                 <Calendar className="h-3 w-3" />
-                {new Date(lastRun.completedAt).toLocaleDateString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+                {new Date(lastRun.completedAt).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
                 <span className="text-muted-foreground/80">· This device only</span>
               </p>
             </div>
@@ -181,6 +353,9 @@ export default function HistoryLocal() {
             </Button>
             <Button variant="outline" size="sm" onClick={exportCommentsCSV} disabled={comments.length === 0}>
               <Download className="h-4 w-4 mr-2" /> Comments CSV
+            </Button>
+            <Button variant="secondary" size="sm" onClick={exportToGoogleSheets} disabled={videos.length === 0}>
+              <FileSpreadsheet className="h-4 w-4 mr-2" /> Google Sheets
             </Button>
             <Button variant="destructive" size="sm" onClick={() => setShowDeleteConfirm(true)}>
               <Trash2 className="h-4 w-4 mr-2" /> Clear
@@ -214,7 +389,7 @@ export default function HistoryLocal() {
         <Tabs defaultValue="videos">
           <TabsList className="mb-4">
             <TabsTrigger value="videos" className="gap-2"><Play className="h-4 w-4" /> Videos ({filteredVideos.length})</TabsTrigger>
-            <TabsTrigger value="comments" className="gap-2"><MessageSquare className="h-4 w-4" /> Comments ({filteredComments.length})</TabsTrigger>
+            <TabsTrigger value="comments" className="gap-2"><MessageSquare className="h-4 w-4" /> Comments ({analyzedComments.length})</TabsTrigger>
           </TabsList>
           <TabsContent value="videos" className="space-y-4">
             <div className="flex flex-wrap gap-2">
@@ -225,10 +400,14 @@ export default function HistoryLocal() {
               <Select value={videoSort} onValueChange={setVideoSort}>
                 <SelectTrigger className="w-[160px]"><SelectValue placeholder="Sort" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="views">Most views</SelectItem>
-                  <SelectItem value="likes">Most likes</SelectItem>
-                  <SelectItem value="comments">Most comments</SelectItem>
+                  <SelectItem value="comments-desc">Most comments</SelectItem>
+                  <SelectItem value="likes-desc">Most likes</SelectItem>
+                  <SelectItem value="views-desc">Most views</SelectItem>
                   <SelectItem value="newest">Newest</SelectItem>
+                  <SelectItem value="oldest">Oldest</SelectItem>
+                  <SelectItem value="views-asc">Fewest views</SelectItem>
+                  <SelectItem value="likes-asc">Fewest likes</SelectItem>
+                  <SelectItem value="comments-asc">Fewest comments</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -271,23 +450,77 @@ export default function HistoryLocal() {
                   <SelectItem value="most-liked">Most liked</SelectItem>
                   <SelectItem value="most-replies">Most replies</SelectItem>
                   <SelectItem value="newest">Newest</SelectItem>
+                  <SelectItem value="oldest">Oldest</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+            {selectedCommentIds.size > 0 && (
+              <div className="flex flex-wrap items-center gap-2 p-2 rounded-lg bg-muted/50 border">
+                <span className="text-sm font-medium">{selectedCommentIds.size} selected</span>
+                <Button variant="outline" size="sm" onClick={selectAllComments}>Select all</Button>
+                <Button variant="outline" size="sm" onClick={clearCommentSelection}>Clear</Button>
+                <Button variant="outline" size="sm" onClick={copySelectedToClipboard} className="gap-1"><Copy className="h-3 w-3" /> Copy</Button>
+                <Button variant="outline" size="sm" onClick={starSelected} className="gap-1"><Star className="h-3 w-3" /> Star</Button>
+                <Button variant="outline" size="sm" onClick={unstarSelected} className="gap-1">Unstar</Button>
+                <Button variant="outline" size="sm" onClick={removeSelectedFromList} className="gap-1 text-destructive"><Trash2 className="h-3 w-3" /> Remove from list</Button>
+                <Button variant="secondary" size="sm" onClick={exportCommentsCSV}>Export selected CSV</Button>
+                <Button variant="secondary" size="sm" onClick={exportToGoogleSheets}>Export selected to Sheets</Button>
+              </div>
+            )}
+            {selectedCommentIds.size === 0 && (
+              <div className="flex flex-wrap gap-2">
+                <Button variant="ghost" size="sm" onClick={selectAllComments}>Select all</Button>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">Analysis (POD, sentiment, category) runs automatically. Star comments for later; export selection to CSV or Google Sheets.</p>
             <div className="space-y-2 max-h-[60vh] overflow-auto">
-              {filteredComments.slice(0, 300).map((c) => (
-                <Card key={c.id} className="p-3">
-                  <p className="text-sm font-medium">{c.authorDisplayName}</p>
-                  <p className="text-sm text-muted-foreground break-words">{c.textOriginal}</p>
-                  <div className="flex gap-4 mt-1 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1"><ThumbsUp className="h-3 w-3" /> {c.likeCount ?? 0}</span>
-                    <span>{c.replyCount ?? 0} replies</span>
-                    <span>{c.publishedAt ? new Date(c.publishedAt).toLocaleDateString() : ""}</span>
-                  </div>
-                </Card>
-              ))}
+              {analyzedComments.slice(0, 300).map((c) => {
+                const isStarred = starredCommentIds.has(c.id);
+                const isSelected = selectedCommentIds.has(c.id);
+                const ac = c as typeof c & { category?: string; label?: string; sentimentScore?: number; marketingPotential?: number };
+                return (
+                  <Card key={c.id} className={`p-3 ${isSelected ? "ring-2 ring-primary" : ""}`}>
+                    <div className="flex gap-2 items-start">
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleSelectComment(c.id)}
+                        className="mt-1"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <span className="text-sm font-medium">{c.authorDisplayName}</span>
+                          {ac.category && ac.category !== "other" && (
+                            <Badge variant="secondary" className="text-xs">{ac.label ?? ac.category}</Badge>
+                          )}
+                          {ac.sentimentScore != null && (
+                            <span className="text-xs text-muted-foreground">Sentiment {ac.sentimentScore > 0 ? "+" : ""}{ac.sentimentScore}</span>
+                          )}
+                          {ac.marketingPotential != null && (
+                            <span className="text-xs text-muted-foreground">Potential {ac.marketingPotential}</span>
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground break-words">{c.textOriginal}</p>
+                        <div className="flex flex-wrap items-center gap-3 mt-2">
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground"><ThumbsUp className="h-3 w-3" /> {c.likeCount ?? 0}</span>
+                          <span className="text-xs text-muted-foreground">{c.replyCount ?? 0} replies</span>
+                          <span className="text-xs text-muted-foreground">{c.publishedAt ? new Date(c.publishedAt).toLocaleDateString() : ""}</span>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => toggleStar(c.id)} title={isStarred ? "Unstar" : "Star for later"}>
+                            <Star className={`h-3.5 w-3.5 ${isStarred ? "fill-amber-500 text-amber-500" : ""}`} />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setSelectedCommentIds((p) => new Set(p).add(c.id)); navigator.clipboard.writeText(`"${(c.textOriginal || "").replace(/"/g, '""')}"`); toast.success("Copied to clipboard"); }} title="Copy quote">
+                            <Copy className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => { setRemovedCommentIds((p) => new Set(p).add(c.id)); toast.success("Removed from list"); }} title="Remove from list">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
             </div>
-            {filteredComments.length > 300 && <p className="text-sm text-muted-foreground">Showing first 300. Export CSV for all.</p>}
+            {analyzedComments.length > 300 && <p className="text-sm text-muted-foreground">Showing first 300. Export CSV for all.</p>}
           </TabsContent>
         </Tabs>
       </div>

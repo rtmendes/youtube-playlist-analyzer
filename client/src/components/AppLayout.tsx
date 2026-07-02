@@ -3,6 +3,9 @@ import { useLocation } from "wouter";
 import { Sidebar } from "./Sidebar";
 import { GlobalSearch, useGlobalSearch } from "./GlobalSearch";
 import { YouTubeBrowser } from "./YouTubeBrowser";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { trpc } from "@/lib/trpc";
+import { API_KEY_STORAGE } from "@/lib/apiKeys";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -25,11 +28,40 @@ export function useYouTubeBrowser() {
   return useContext(YouTubeBrowserContext);
 }
 
+const SYNCED_SETTING_KEYS = [
+  API_KEY_STORAGE.YOUTUBE_API_KEY,
+  API_KEY_STORAGE.AMAZON_API_KEY,
+  API_KEY_STORAGE.AMAZON_API_PROVIDER,
+  API_KEY_STORAGE.GEMINI_API_KEY,
+  API_KEY_STORAGE.REDDIT_CLIENT_ID,
+  API_KEY_STORAGE.REDDIT_CLIENT_SECRET,
+  API_KEY_STORAGE.TIKTOK_ACCESS_TOKEN,
+  API_KEY_STORAGE.COMPOSIO_API_KEY,
+  API_KEY_STORAGE.SCRAPECREATORS_API_KEY,
+] as const;
+
 export function AppLayout({ children }: AppLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [youtubeBrowserOpen, setYoutubeBrowserOpen] = useState(false);
   const { isOpen: searchOpen, setIsOpen: setSearchOpen } = useGlobalSearch();
   const [, setLocation] = useLocation();
+  const { isAuthenticated } = useAuth();
+  const { data: settingsData } = trpc.settings.get.useQuery(undefined, {
+    enabled: isAuthenticated,
+    staleTime: 60_000,
+  });
+
+  // Restore API keys from server when signed in (e.g. new browser)
+  useEffect(() => {
+    if (!isAuthenticated || !settingsData?.settings) return;
+    const s = settingsData.settings as Record<string, unknown>;
+    SYNCED_SETTING_KEYS.forEach((key) => {
+      const v = s[key];
+      if (typeof v === "string" && v && typeof window !== "undefined") {
+        if (!localStorage.getItem(key)) localStorage.setItem(key, v);
+      }
+    });
+  }, [isAuthenticated, settingsData]);
 
   // Load sidebar state from localStorage
   useEffect(() => {
