@@ -9,7 +9,7 @@ import {
   formatDuration, 
   formatCount,
 } from "./youtube";
-import { getDb } from "./db";
+import { getDb, getUserSettings, setUserSettings } from "./db";
 import { playlists, analysisSessions, projects, folders, tags, projectTags, commentInsights, generatedAssets, amazonProducts, amazonReviews, redditPosts, redditComments, researchSessions, multiSourceInsights, savedPlaylists, playlistRuns, playlistVideos, videos, comments, tiktokCreators, tiktokVideos, tiktokComments, savedComments, commentCollections, nlpAnalysisResults, contentTemplates, aiPromptsKnowledgeBase, croBestPractices, copywritingFrameworks, savedTemplates, contentVersions, exportHistory, contentSchedules, templateShares, abTestResults, scheduleGoals, templateComments, commentLikes, competitors, competitorProducts, competitorContent, competitorComparisons, users, competitorAlerts, alertHistory, competitorYouTubeChannels, youtubeChannelComparisons, competitorContentCalendar, competitorReports, reportSchedules, postingPatterns } from "../drizzle/schema";
 import { allPrompts, getPromptsForType, getPromptById, copywritingFrameworks as frameworksData, croBestPractices as croPracticesData, ContentPrompt } from "./content-prompts";
 import { invokeLLM } from "./_core/llm";
@@ -36,6 +36,21 @@ export const appRouter = router({
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
+  }),
+
+  settings: router({
+    get: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) return { settings: {} };
+      const settings = await getUserSettings(ctx.user.id);
+      return { settings };
+    }),
+    set: protectedProcedure
+      .input(z.object({ settings: z.record(z.unknown()) }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user) throw new Error("Not authenticated");
+        await setUserSettings(ctx.user.id, input.settings);
+        return { success: true };
+      }),
   }),
 
   dashboard: router({

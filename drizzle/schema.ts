@@ -339,6 +339,18 @@ export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
 /**
+ * Per-user settings (API keys, preferences) synced across browsers when signed in.
+ */
+export const userSettings = pgTable("user_settings", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  settings: jsonb("settings").$type<Record<string, unknown>>().default({}),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull().$onUpdate(() => new Date()),
+});
+export type UserSettings = typeof userSettings.$inferSelect;
+export type InsertUserSettings = typeof userSettings.$inferInsert;
+
+/**
  * YouTube Playlists
  */
 export const playlists = pgTable("playlists", {

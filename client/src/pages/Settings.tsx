@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { API_KEY_STORAGE } from "@/lib/apiKeys";
+import { useAuth } from "@/_core/hooks/useAuth";
 
 export default function Settings() {
   const [youtubeApiKey, setYoutubeApiKey] = useState("");
@@ -33,19 +34,37 @@ export default function Settings() {
   const [scrapecreatorsApiKey, setScrapecreatorsApiKey] = useState("");
   const [saved, setSaved] = useState(false);
 
+  const { isAuthenticated } = useAuth();
   const { data: apiKeyStatus } = trpc.system.getApiKeyStatus.useQuery();
+  const { data: serverSettings } = trpc.settings.get.useQuery(undefined, { enabled: isAuthenticated });
+  const setSettingsMutation = trpc.settings.set.useMutation({
+    onSuccess: () => toast.success("Settings saved and synced to your account for use on other browsers."),
+  });
 
+  // Load from localStorage first, then merge server values when signed in
   useEffect(() => {
-    setYoutubeApiKey(localStorage.getItem(API_KEY_STORAGE.YOUTUBE_API_KEY) ?? "");
-    setAmazonApiKey(localStorage.getItem(API_KEY_STORAGE.AMAZON_API_KEY) ?? "");
-    setAmazonProvider(localStorage.getItem(API_KEY_STORAGE.AMAZON_API_PROVIDER) ?? "sample");
-    setGeminiApiKey(localStorage.getItem(API_KEY_STORAGE.GEMINI_API_KEY) ?? "");
-    setRedditClientId(localStorage.getItem(API_KEY_STORAGE.REDDIT_CLIENT_ID) ?? "");
-    setRedditClientSecret(localStorage.getItem(API_KEY_STORAGE.REDDIT_CLIENT_SECRET) ?? "");
-    setTiktokToken(localStorage.getItem(API_KEY_STORAGE.TIKTOK_ACCESS_TOKEN) ?? "");
-    setComposioApiKey(localStorage.getItem(API_KEY_STORAGE.COMPOSIO_API_KEY) ?? "");
-    setScrapecreatorsApiKey(localStorage.getItem(API_KEY_STORAGE.SCRAPECREATORS_API_KEY) ?? "");
-  }, []);
+    const fromLocal = {
+      [API_KEY_STORAGE.YOUTUBE_API_KEY]: localStorage.getItem(API_KEY_STORAGE.YOUTUBE_API_KEY) ?? "",
+      [API_KEY_STORAGE.AMAZON_API_KEY]: localStorage.getItem(API_KEY_STORAGE.AMAZON_API_KEY) ?? "",
+      [API_KEY_STORAGE.AMAZON_API_PROVIDER]: localStorage.getItem(API_KEY_STORAGE.AMAZON_API_PROVIDER) ?? "sample",
+      [API_KEY_STORAGE.GEMINI_API_KEY]: localStorage.getItem(API_KEY_STORAGE.GEMINI_API_KEY) ?? "",
+      [API_KEY_STORAGE.REDDIT_CLIENT_ID]: localStorage.getItem(API_KEY_STORAGE.REDDIT_CLIENT_ID) ?? "",
+      [API_KEY_STORAGE.REDDIT_CLIENT_SECRET]: localStorage.getItem(API_KEY_STORAGE.REDDIT_CLIENT_SECRET) ?? "",
+      [API_KEY_STORAGE.TIKTOK_ACCESS_TOKEN]: localStorage.getItem(API_KEY_STORAGE.TIKTOK_ACCESS_TOKEN) ?? "",
+      [API_KEY_STORAGE.COMPOSIO_API_KEY]: localStorage.getItem(API_KEY_STORAGE.COMPOSIO_API_KEY) ?? "",
+      [API_KEY_STORAGE.SCRAPECREATORS_API_KEY]: localStorage.getItem(API_KEY_STORAGE.SCRAPECREATORS_API_KEY) ?? "",
+    };
+    const fromServer = (serverSettings?.settings ?? {}) as Record<string, string>;
+    setYoutubeApiKey((fromServer[API_KEY_STORAGE.YOUTUBE_API_KEY] ?? fromLocal[API_KEY_STORAGE.YOUTUBE_API_KEY]) || "");
+    setAmazonApiKey((fromServer[API_KEY_STORAGE.AMAZON_API_KEY] ?? fromLocal[API_KEY_STORAGE.AMAZON_API_KEY]) || "");
+    setAmazonProvider(fromServer[API_KEY_STORAGE.AMAZON_API_PROVIDER] ?? fromLocal[API_KEY_STORAGE.AMAZON_API_PROVIDER] ?? "sample");
+    setGeminiApiKey((fromServer[API_KEY_STORAGE.GEMINI_API_KEY] ?? fromLocal[API_KEY_STORAGE.GEMINI_API_KEY]) || "");
+    setRedditClientId((fromServer[API_KEY_STORAGE.REDDIT_CLIENT_ID] ?? fromLocal[API_KEY_STORAGE.REDDIT_CLIENT_ID]) || "");
+    setRedditClientSecret((fromServer[API_KEY_STORAGE.REDDIT_CLIENT_SECRET] ?? fromLocal[API_KEY_STORAGE.REDDIT_CLIENT_SECRET]) || "");
+    setTiktokToken((fromServer[API_KEY_STORAGE.TIKTOK_ACCESS_TOKEN] ?? fromLocal[API_KEY_STORAGE.TIKTOK_ACCESS_TOKEN]) || "");
+    setComposioApiKey((fromServer[API_KEY_STORAGE.COMPOSIO_API_KEY] ?? fromLocal[API_KEY_STORAGE.COMPOSIO_API_KEY]) || "");
+    setScrapecreatorsApiKey((fromServer[API_KEY_STORAGE.SCRAPECREATORS_API_KEY] ?? fromLocal[API_KEY_STORAGE.SCRAPECREATORS_API_KEY]) || "");
+  }, [serverSettings]);
 
   const saveAll = () => {
     if (youtubeApiKey) localStorage.setItem(API_KEY_STORAGE.YOUTUBE_API_KEY, youtubeApiKey);
@@ -58,7 +77,22 @@ export default function Settings() {
     if (composioApiKey) localStorage.setItem(API_KEY_STORAGE.COMPOSIO_API_KEY, composioApiKey);
     if (scrapecreatorsApiKey) localStorage.setItem(API_KEY_STORAGE.SCRAPECREATORS_API_KEY, scrapecreatorsApiKey);
     setSaved(true);
-    toast.success("Settings saved for this browser. For persistence across computers, set keys in the server .env file.");
+    const toSync: Record<string, string> = {
+      [API_KEY_STORAGE.YOUTUBE_API_KEY]: youtubeApiKey,
+      [API_KEY_STORAGE.AMAZON_API_KEY]: amazonApiKey,
+      [API_KEY_STORAGE.AMAZON_API_PROVIDER]: amazonProvider,
+      [API_KEY_STORAGE.GEMINI_API_KEY]: geminiApiKey,
+      [API_KEY_STORAGE.REDDIT_CLIENT_ID]: redditClientId,
+      [API_KEY_STORAGE.REDDIT_CLIENT_SECRET]: redditClientSecret,
+      [API_KEY_STORAGE.TIKTOK_ACCESS_TOKEN]: tiktokToken,
+      [API_KEY_STORAGE.COMPOSIO_API_KEY]: composioApiKey,
+      [API_KEY_STORAGE.SCRAPECREATORS_API_KEY]: scrapecreatorsApiKey,
+    };
+    if (isAuthenticated) {
+      setSettingsMutation.mutate({ settings: toSync });
+    } else {
+      toast.success("Settings saved for this browser.");
+    }
     setTimeout(() => setSaved(false), 3000);
   };
 
@@ -71,7 +105,7 @@ export default function Settings() {
             Settings
           </h1>
           <p className="text-muted-foreground">
-            For persistence across computers and browsers, set API keys in the server <strong>.env</strong> file (see .env.example). Keys saved here work in this browser only. See{" "}
+            When signed in, keys are synced to your account so they restore on other browsers. Use a persistent subdomain (e.g. with Cloudflare) so the same URL keeps your data—see <strong>docs/PERSISTENT-SUBDOMAIN-AND-KEYS.md</strong> in the repo. For server-wide keys, set them in the server <strong>.env</strong> file. See{" "}
             <a href="https://github.com/rtmendes/youtube-playlist-analyzer/blob/main/docs/API-KEYS.md" target="_blank" rel="noopener noreferrer" className="text-primary underline inline-flex items-center gap-1">
               docs/API-KEYS.md <ExternalLink className="h-3 w-3" />
             </a>

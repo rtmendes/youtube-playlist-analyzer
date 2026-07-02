@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertUser, users, userSettings } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -93,4 +93,28 @@ export async function getUserByOpenId(openId: string) {
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
 
   return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getUserSettings(userId: number): Promise<Record<string, unknown>> {
+  const db = await getDb();
+  if (!db) return {};
+  const rows = await db.select().from(userSettings).where(eq(userSettings.userId, userId)).limit(1);
+  const row = rows[0];
+  if (!row || !row.settings) return {};
+  return (row.settings as Record<string, unknown>) || {};
+}
+
+export async function setUserSettings(userId: number, settings: Record<string, unknown>): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot set user settings: database not available");
+    return;
+  }
+  await db
+    .insert(userSettings)
+    .values({ userId, settings, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: userSettings.userId,
+      set: { settings, updatedAt: new Date() },
+    });
 }
