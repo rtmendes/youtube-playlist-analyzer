@@ -1,14 +1,32 @@
-import mysql from 'mysql2/promise';
-import dotenv from 'dotenv';
+import postgres from "postgres";
+import dotenv from "dotenv";
+
 dotenv.config();
 
-const connection = await mysql.createConnection(process.env.DATABASE_URL);
+const url = process.env.DATABASE_URL;
+if (!url) {
+  console.error("DATABASE_URL is not set");
+  process.exit(1);
+}
+if (!url.startsWith("postgresql://") && !url.startsWith("postgres://")) {
+  console.error("DATABASE_URL must be a PostgreSQL connection string (postgresql://...)");
+  process.exit(1);
+}
 
-const tables = ['savedComments', 'commentCollections', 'savedPlaylists', 'folders', 'analysisSessions', 'users'];
+const sql = postgres(url, { max: 1 });
+
+const tables = [
+  "savedComments",
+  "commentCollections",
+  "savedPlaylists",
+  "folders",
+  "analysisSessions",
+  "users",
+];
 
 for (const table of tables) {
-  const [rows] = await connection.execute(`SELECT COUNT(*) as count FROM ${table}`);
+  const rows = await sql.unsafe(`SELECT COUNT(*)::int AS count FROM "${table}"`);
   console.log(`${table}: ${rows[0].count} rows`);
 }
 
-await connection.end();
+await sql.end();

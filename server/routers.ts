@@ -19,6 +19,7 @@ import { parseRedditUrl, fetchSubredditPosts, searchReddit, fetchPostComments, a
 import { parseTikTokUrl, generateSampleVideo, generateSampleCreator, generateSampleComments as generateSampleTikTokComments, analyzeTikTokSentiment, extractTrendingHashtags, TikTokVideoInfo } from "./tiktok";
 import { fetchTikTokVideo, fetchTikTokComments } from "./scrape-creators";
 import { ENV } from "./_core/env";
+import { podRouter } from "./routers/pod";
 
 function getYouTubeApiKey(inputKey?: string): string {
   const key = ENV.youtubeApiKey || inputKey;
@@ -7548,6 +7549,8 @@ Keep it concise and actionable.`;
         return { markdown, title: report.title };
       }),
   }),
+
+  pod: podRouter,
 });
 
 export type AppRouter = typeof appRouter;

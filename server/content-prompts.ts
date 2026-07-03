@@ -1306,6 +1306,63 @@ export const croBestPractices = [
   },
 ];
 
+// ============================================
+// POD DESIGN PROMPTS
+// ============================================
+
+export const podDesignPrompts: ContentPrompt[] = [
+  {
+    id: "pod-design-brief",
+    contentType: "design_prompt",
+    category: "pod_mockup",
+    name: "POD Design Brief from Buyer Intent",
+    description:
+      "Turns a buyer-intent comment or phrase into a structured print-on-demand design brief with model-ready image prompt",
+    promptTemplate: `You are an elite print-on-demand design director specializing in viral quote merch and text-on-product graphics.
+
+**BUYER-INTENT SIGNAL:** {{signal}}
+**NICHE:** {{niche}}
+**AUDIENCE:** {{audience}}
+**PRODUCT TYPE:** {{product_type}}
+**VISUAL STYLE:** {{style}}
+**TARGET AI MODEL:** {{ai_model}}
+
+Analyze the signal and output ONLY valid JSON (no markdown fences) with this exact shape:
+{
+  "concept": "one-sentence creative concept",
+  "text_on_product": "exact verbatim text to print, spell-checked, short enough for {{product_type}}",
+  "product_type": "{{product_type}}",
+  "visual_style": "{{style}}",
+  "composition": "layout guidance for the design on the product",
+  "color_palette": ["#hex1", "#hex2", "#hex3"],
+  "image_prompt": "detailed model-ready prompt for image generation including typography instructions",
+  "params": "model params e.g. --ar 4:5 --style raw",
+  "negative_prompt": "what to avoid (blurry text, watermarks, etc.)",
+  "trademark_flag": false
+}
+
+Rules:
+- text_on_product must be derived from the signal; keep it punchy and printable
+- image_prompt must specify bold readable typography if text appears on product
+- set trademark_flag true if signal references brands, celebrities, sports teams, or copyrighted IP
+- optimize for {{ai_model}} syntax where relevant`,
+    variables: [
+      { name: "signal", description: "Buyer-intent comment or phrase", required: true },
+      { name: "niche", description: "Content niche", required: false, defaultValue: "general" },
+      { name: "audience", description: "Target audience", required: false, defaultValue: "general" },
+      { name: "product_type", description: "Product type (t-shirt, hoodie, mug, etc.)", required: true },
+      { name: "style", description: "Visual style", required: false, defaultValue: "modern" },
+      { name: "ai_model", description: "Target image model", required: false, defaultValue: "ideogram" },
+    ],
+    bestPractices: [
+      "Keep on-product text short and legible at thumbnail size",
+      "Flag trademark risk instead of copying protected names",
+      "Match humor/sarcasm tone from the original comment",
+    ],
+    framework: "POD",
+  },
+];
+
 // Export all prompts
 export const allPrompts = {
   advertorial: advertorialPrompts,
@@ -1316,6 +1373,7 @@ export const allPrompts = {
   sales_page: salesPagePrompts,
   email_sequence: emailSequencePrompts,
   product_idea: productIdeasPrompts,
+  design_prompt: podDesignPrompts,
 };
 
 export const getPromptsForType = (contentType: string): ContentPrompt[] => {

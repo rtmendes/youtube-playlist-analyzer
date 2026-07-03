@@ -4,9 +4,8 @@
   "installCommand": "pnpm install --no-frozen-lockfile",
   "outputDirectory": "dist/public",
   "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+    { "source": "/api/(.*)", "destination": "/api" },
+    { "source": "/trpc/(.*)", "destination": "/api" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

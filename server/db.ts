@@ -10,7 +10,11 @@ let _db: ReturnType<typeof drizzle> | null = null;
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      const client = postgres(process.env.DATABASE_URL, { max: 10 });
+      const isServerless = process.env.VERCEL === "1";
+      const client = postgres(process.env.DATABASE_URL, {
+        max: isServerless ? 1 : 10,
+        prepare: false,
+      });
       _db = drizzle(client);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
