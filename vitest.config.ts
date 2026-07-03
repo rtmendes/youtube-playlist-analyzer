@@ -1,5 +1,8 @@
 import { defineConfig } from "vitest/config";
 import path from "path";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const templateRoot = path.resolve(import.meta.dirname);
 
@@ -15,5 +18,6 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["server/**/*.test.ts", "server/**/*.spec.ts"],
+
   },
 });

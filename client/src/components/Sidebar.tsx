@@ -108,6 +108,7 @@ import {
   Paintbrush,
   Infinity,
   Cpu,
+  Database,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
@@ -286,6 +287,7 @@ export function Sidebar({ isCollapsed, onToggle, onOpenSearch, onToggleYouTube, 
     { icon: Palette, label: "Canvas", href: "/canvas", section: "tools" },
     { icon: History, label: "History", href: "/history", section: "tools" },
     { icon: Zap, label: "Content Generator", href: "/content-generator", section: "tools" },
+    { icon: Database, label: "Data Manager", href: "/data-manager", section: "library" },
     { icon: Settings, label: "Settings", href: "/settings", section: "other" },
     { icon: Trash2, label: "Trash", href: "/trash", section: "other" },
     // POD (YouTube POD Analytics) features

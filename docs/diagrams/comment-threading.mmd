@@ -1,0 +1,54 @@
+---
+title: Comment Threading and Ranking Model
+---
+flowchart TD
+    subgraph Fetch["Data Fetching"]
+        API[YouTube Comments API]
+        THREADS[Comment Threads]
+        REPLIES[Nested Replies]
+    end
+
+    subgraph Store["Database Storage"]
+        TOP[Top-Level Comments - parentId NULL]
+        REPLY[Reply Comments - parentId set]
+        META[Metadata - likes, date, author]
+    end
+
+    subgraph Rank["Ranking Algorithm"]
+        LIKES[Sort by Like Count - desc]
+        DATE[Sort Replies by Date - asc]
+        SENT[Filter by Sentiment]
+        CAT[Filter by Category]
+    end
+
+    subgraph AI["AI Analysis"]
+        CATEGORIZE[Categorize - 10 types]
+        SCORE[Sentiment Score - neg1 to pos1]
+        MARKET[Marketing Potential - 0 to 100]
+        EXTRACT[Extract Insights]
+    end
+
+    subgraph Display["UI Rendering"]
+        TREE[Threaded Tree View]
+        TABLE[Tabular Data View]
+        DETAIL[Detail Dialog]
+    end
+
+    API --> THREADS
+    THREADS --> TOP
+    THREADS --> REPLIES
+    REPLIES --> REPLY
+    TOP --> META
+    REPLY --> META
+    META --> LIKES
+    META --> DATE
+    LIKES --> SENT
+    DATE --> SENT
+    SENT --> CAT
+    TOP --> CATEGORIZE
+    CATEGORIZE --> SCORE
+    SCORE --> MARKET
+    MARKET --> EXTRACT
+    CAT --> TREE
+    CAT --> TABLE
+    EXTRACT --> DETAIL

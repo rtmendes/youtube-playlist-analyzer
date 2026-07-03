@@ -105,4 +105,8 @@ temp/
 *.db
 *.sqlite
 *.sqlite3
+<<<<<<< Updated upstream
 .vercel
+=======
+.project-config.json
+>>>>>>> Stashed changes

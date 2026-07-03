@@ -19,8 +19,21 @@ if (typeof analyticsEndpoint === "string" && analyticsEndpoint.length > 0 && typ
 
 const queryClient = new QueryClient();
 
-// No automatic redirect to login: you can use the app without signing in.
-// Pages that need auth show their own "Sign in to view" or "Sign in to save" UI.
+// No automatic redirect to login: app works without signing in.
+// Error logging only - no login redirect.
+queryClient.getQueryCache().subscribe(event => {
+  if (event.type === "updated" && event.action.type === "error") {
+    const error = event.query.state.error;
+    console.error("[API Query Error]", error);
+  }
+});
+
+queryClient.getMutationCache().subscribe(event => {
+  if (event.type === "updated" && event.action.type === "error") {
+    const error = event.mutation.state.error;
+    console.error("[API Mutation Error]", error);
+  }
+});
 
 const trpcClient = trpc.createClient({
   links: [

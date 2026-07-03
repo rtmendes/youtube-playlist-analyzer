@@ -46,6 +46,7 @@ import YouTubeChannelPOD from "./pages/YouTubeChannelPOD";
 import YouTubeDataPOD from "./pages/YouTubeDataPOD";
 import CommentAnalysisPOD from "./pages/CommentAnalysisPOD";
 import Settings from "./pages/Settings";
+import DataManager from "./pages/DataManager";
 
 function Router() {
   return (
@@ -88,6 +89,7 @@ function Router() {
       <Route path={"/content-generator"} component={ContentGenerator} />
       <Route path={"/competitor-calendar"} component={CompetitorCalendar} />
       <Route path={"/content-gap-analysis"} component={ContentGapAnalysis} />
+      <Route path={"/data-manager"} component={DataManager} />
       <Route path={"/playlists"} component={Playlists} />
       <Route path={"/trash"} component={Trash} />
       <Route path={"/404"} component={NotFound} />

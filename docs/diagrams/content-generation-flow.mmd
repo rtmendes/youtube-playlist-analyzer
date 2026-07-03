@@ -1,0 +1,46 @@
+---
+title: Content Generation Pipeline
+---
+flowchart LR
+    subgraph Sources["Data Sources"]
+        YT[YouTube Comments]
+        AMZ[Amazon Reviews]
+        RD[Reddit Posts]
+        TK[TikTok Comments]
+    end
+
+    subgraph Processing["AI Processing"]
+        AGG[Aggregate Source Material]
+        TPL[Select Prompt Template]
+        BUILD[Build System Prompt]
+        LLM[Invoke LLM - Gemini 2.5 Flash]
+    end
+
+    subgraph Output["Generated Content"]
+        ADV[Advertorial]
+        VSL[VSL Script]
+        UGC[UGC Scenario]
+        COURSE[Course Outline]
+        AD[Ad Copy]
+        SALES[Sales Page]
+        EMAIL[Email Sequence]
+        PROD[Product Ideas]
+        CUSTOM[Custom]
+    end
+
+    YT --> AGG
+    AMZ --> AGG
+    RD --> AGG
+    TK --> AGG
+    AGG --> TPL
+    TPL --> BUILD
+    BUILD --> LLM
+    LLM --> ADV
+    LLM --> VSL
+    LLM --> UGC
+    LLM --> COURSE
+    LLM --> AD
+    LLM --> SALES
+    LLM --> EMAIL
+    LLM --> PROD
+    LLM --> CUSTOM

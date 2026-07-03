@@ -802,3 +802,58 @@
 - [x] Add "Inspired by Gap Analysis" banner in Content Generator when navigated from gaps
 - [x] Connect high-priority and medium-priority opportunities to Content Generator
 - [x] Connect topic opportunities to Content Generator with competitor context
+
+
+## Remove Manus OAuth Requirement
+- [x] Convert all protectedProcedure to bypass auth via middleware modification
+- [x] Remove login redirect logic from main.tsx
+- [x] Modify useAuth hook to always return authenticated state
+- [x] Remove OAuth guards from frontend pages
+- [x] Create a default anonymous user context for database operations
+- [x] Remove login/logout buttons from UI
+
+## Airtable-Like Grid View
+- [x] Create DataManager page with tabbed views for all data types
+- [x] Implement sortable, filterable, resizable columns
+- [x] Add bulk select and bulk actions
+- [x] Add search across all data
+- [x] Add export to CSV/JSON
+
+## GridBase 2-Way Sync Integration
+- [ ] Explore GridBase API endpoints and schema
+- [ ] Create GridBase API client module on server
+- [ ] Set up GRIDBASE_API_KEY as environment variable
+- [ ] Implement push sync (app → GridBase) for all data types
+- [ ] Implement pull sync (GridBase → app) for updated records
+- [ ] Add sync status indicators in UI
+- [ ] Add manual sync trigger button
+- [ ] Handle conflict resolution for 2-way sync
+
+
+## Database-Style Data Management View
+- [x] Create DataManager page with tabbed views for all data types
+- [x] Implement sortable, filterable, resizable columns (Airtable-like)
+- [x] Show nested comments with threading visualization (detail dialog)
+- [x] Display AI analysis results inline with source data
+- [x] Add bulk select and bulk actions (delete, export)
+- [x] Add search across all data types
+- [x] Add export to CSV/JSON
+- [x] Add navigation item in sidebar
+
+## Documentation Suite
+- [x] Create comprehensive README.md with setup instructions
+- [x] Create SOP (Standard Operating Procedure) document
+- [x] Create PRD (Product Requirements Document)
+- [x] Create Technical Specification with data flow diagrams
+- [x] Generate 5 data flow diagrams (system architecture, content generation, competitor tracking, comment threading, data manager)
+- [ ] Sync all documentation to GitHub repo (via checkpoint)
+
+
+## Wire POD Layer to Real Backend Services
+- [ ] Wire Mockup Generator "Generate Design" button to real imageGeneration.ts
+- [ ] Wire POD Opportunities to real LLM analysis from actual comment data
+- [ ] Wire Grok Analysis to real LLM invocation
+- [ ] Wire Comment Analysis POD to real comment fetching pipeline
+- [ ] Wire LLM Assistant to real invokeLLM
+- [ ] Remove all hardcoded demo arrays and replace with real database queries
+- [ ] Update image references from removed local files to CDN URLs

@@ -1,0 +1,46 @@
+---
+title: Competitor Tracking Pipeline
+---
+flowchart TD
+    subgraph Input["Channel Discovery"]
+        SEARCH[Search by Name/URL]
+        RESOLVE[Resolve Channel ID]
+        PREVIEW[Preview Channel Info]
+        LINK[Link to Competitor]
+    end
+
+    subgraph Import["Auto-Import"]
+        FETCH[Fetch Channel Videos]
+        MAP[Map to Calendar Entries]
+        STORE[Store in Calendar DB]
+    end
+
+    subgraph Analysis["Intelligence"]
+        PATTERN[Posting Pattern Analysis]
+        GAPS[Content Gap Detection]
+        REPORT[Report Generation]
+        SCHEDULE[Scheduled Reports]
+    end
+
+    subgraph Output["Deliverables"]
+        CAL[Calendar View]
+        INSIGHTS[Strategic Insights]
+        PDF[Report Documents]
+        RECS[AI Recommendations]
+    end
+
+    SEARCH --> RESOLVE
+    RESOLVE --> PREVIEW
+    PREVIEW --> LINK
+    LINK --> FETCH
+    FETCH --> MAP
+    MAP --> STORE
+    STORE --> PATTERN
+    STORE --> GAPS
+    PATTERN --> REPORT
+    GAPS --> REPORT
+    REPORT --> SCHEDULE
+    STORE --> CAL
+    PATTERN --> INSIGHTS
+    REPORT --> PDF
+    GAPS --> RECS

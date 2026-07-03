@@ -1,0 +1,51 @@
+---
+title: Data Manager - Unified View Architecture
+---
+flowchart TD
+    subgraph Tables["Database Tables"]
+        VID[analysisSessions]
+        COM[savedComments]
+        GEN[contentTemplates]
+        AMZ[amazonProducts]
+        RED[redditPosts]
+        INS[commentInsights]
+    end
+
+    subgraph Manager["Data Manager Page"]
+        TABS[Tab Selection]
+        SEARCH[Global Search Filter]
+        SORT[Column Sorting]
+        SELECT[Row Selection]
+        PAGE[Pagination - 25 per page]
+    end
+
+    subgraph Actions["User Actions"]
+        VIEW[View Detail Dialog]
+        EXPORT_CSV[Export CSV]
+        EXPORT_JSON[Export JSON]
+        DELETE[Bulk Delete]
+        REFRESH[Refresh Data]
+    end
+
+    subgraph Future["Future Integration"]
+        GRID[GridBase 2-Way Sync]
+        SUPA[Supabase Persistence]
+    end
+
+    VID --> TABS
+    COM --> TABS
+    GEN --> TABS
+    AMZ --> TABS
+    RED --> TABS
+    INS --> TABS
+    TABS --> SEARCH
+    SEARCH --> SORT
+    SORT --> SELECT
+    SELECT --> PAGE
+    PAGE --> VIEW
+    PAGE --> EXPORT_CSV
+    PAGE --> EXPORT_JSON
+    SELECT --> DELETE
+    TABS --> REFRESH
+    EXPORT_CSV --> GRID
+    EXPORT_JSON --> SUPA

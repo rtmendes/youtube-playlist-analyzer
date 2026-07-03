@@ -1,0 +1,41 @@
+---
+title: System Architecture
+---
+graph TB
+    subgraph Frontend["Frontend - React 19 + Tailwind 4"]
+        UI[Pages and Components]
+        TRPC_C[tRPC Client]
+        TQ[TanStack Query]
+    end
+    
+    subgraph Backend["Backend - Express + tRPC"]
+        TRPC_S[tRPC Server]
+        YT[YouTube API Client]
+        LLM[LLM Integration]
+        PROMPTS[Content Prompts]
+    end
+    
+    subgraph Storage["Data Layer"]
+        DB[(MySQL/TiDB)]
+        S3[(S3 Storage)]
+    end
+    
+    subgraph External["External APIs"]
+        YTAPI[YouTube Data API v3]
+        FORGE[Manus Forge API]
+        AMZN[Amazon API]
+        REDDIT[Reddit API]
+    end
+    
+    UI --> TRPC_C
+    TRPC_C --> TQ
+    TQ --> TRPC_S
+    TRPC_S --> YT
+    TRPC_S --> LLM
+    LLM --> PROMPTS
+    YT --> YTAPI
+    LLM --> FORGE
+    TRPC_S --> DB
+    TRPC_S --> S3
+    TRPC_S --> AMZN
+    TRPC_S --> REDDIT
