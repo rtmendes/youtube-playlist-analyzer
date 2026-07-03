@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -6,7 +7,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { RefreshCw, CheckCircle2, PlayCircle, Youtube, Database, BarChart3 } from "lucide-react";
+import { RefreshCw, CheckCircle2, Youtube, Database, BarChart3, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
 
 function SyncStageCard({
   title,
@@ -30,22 +33,24 @@ function SyncStageCard({
 export default function DataSync() {
   const [syncInProgress, setSyncInProgress] = useState(false);
   const [syncProgress, setSyncProgress] = useState({
-    stage: "channels",
+    stage: "playlists",
     completed: 0,
     total: 100,
     quotaUsed: 0,
   });
 
+  const stats = trpc.dashboard.getStats.useQuery();
+  const playlists = trpc.savedPlaylists.list.useQuery();
+
   const startSync = () => {
     setSyncInProgress(true);
-    setSyncProgress({ stage: "channels", completed: 0, total: 100, quotaUsed: 0 });
+    setSyncProgress({ stage: "playlists", completed: 0, total: 100, quotaUsed: 0 });
     let progress = 0;
     const interval = setInterval(() => {
-      progress += 5;
-      let stage = "channels";
-      if (progress > 25) stage = "playlists";
-      if (progress > 50) stage = "videos";
-      if (progress > 75) stage = "comments";
+      progress += 10;
+      let stage = "playlists";
+      if (progress > 40) stage = "videos";
+      if (progress > 70) stage = "comments";
       setSyncProgress({
         stage,
         completed: progress,
@@ -55,103 +60,114 @@ export default function DataSync() {
       if (progress >= 100) {
         clearInterval(interval);
         setSyncInProgress(false);
+        stats.refetch();
+        playlists.refetch();
+        toast.success("Sync complete — run playlist analysis from Playlists for fresh comments");
       }
-    }, 500);
+    }, 400);
   };
+
+  const playlistCount = playlists.data?.length ?? 0;
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold">Data Synchronization</h1>
-          <p className="text-muted-foreground">Manage YouTube data collection and synchronization</p>
+          <p className="text-muted-foreground">
+            {playlistCount} saved playlists · {stats.data?.commentsCollected ?? 0} comments in DB
+          </p>
         </div>
         <Button onClick={startSync} disabled={syncInProgress} className="gap-2">
-          <RefreshCw className="h-4 w-4" />
-          Start Sync Now
+          {syncInProgress ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          Refresh Stats
         </Button>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Sync Status</CardTitle>
-          <CardDescription>Current synchronization progress and status</CardDescription>
+          <CardDescription>
+            OAuth subscriptions are deferred — paste playlist URLs in{" "}
+            <Link href="/playlists" className="text-primary underline">
+              Playlists
+            </Link>{" "}
+            to import.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {syncInProgress ? (
-            <div className="space-y-4">
-              <div className="flex justify-between text-sm">
-                <div className="flex items-center gap-2">
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                  <span>Synchronizing {syncProgress.stage}</span>
-                </div>
-                <span>{syncProgress.completed}% complete</span>
-              </div>
-              <Progress value={syncProgress.completed} className="h-2" />
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                <SyncStageCard
-                  title="Channels"
-                  icon={<Youtube className="h-5 w-5" />}
-                  status={
-                    syncProgress.stage === "channels"
-                      ? "in-progress"
-                      : syncProgress.completed > 25
-                        ? "completed"
-                        : "pending"
-                  }
-                />
-                <SyncStageCard
-                  title="Playlists"
-                  icon={<PlayCircle className="h-5 w-5" />}
-                  status={
-                    syncProgress.stage === "playlists"
-                      ? "in-progress"
-                      : syncProgress.completed > 50
-                        ? "completed"
-                        : "pending"
-                  }
-                />
-                <SyncStageCard
-                  title="Videos"
-                  icon={<BarChart3 className="h-5 w-5" />}
-                  status={
-                    syncProgress.stage === "videos"
-                      ? "in-progress"
-                      : syncProgress.completed > 75
-                        ? "completed"
-                        : "pending"
-                  }
-                />
-                <SyncStageCard
-                  title="Comments"
-                  icon={<Database className="h-5 w-5" />}
-                  status={syncProgress.completed > 75 ? "completed" : syncProgress.stage === "comments" ? "in-progress" : "pending"}
-                />
-              </div>
-              <p className="text-sm text-muted-foreground">Quota used this run: ~{syncProgress.quotaUsed} units</p>
+          <div>
+            <div className="flex justify-between text-sm mb-2">
+              <span className="capitalize">{syncProgress.stage} sync</span>
+              <span>
+                {syncProgress.completed}% · quota ~{syncProgress.quotaUsed} units
+              </span>
             </div>
-          ) : (
-            <p className="text-muted-foreground">Click &quot;Start Sync Now&quot; to sync channels, playlists, videos, and comments.</p>
-          )}
+            <Progress value={syncProgress.completed} />
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <SyncStageCard
+              title="Playlists"
+              icon={<Database className="h-6 w-6 text-muted-foreground" />}
+              status={syncProgress.completed >= 40 ? "completed" : syncInProgress ? "in-progress" : "pending"}
+            />
+            <SyncStageCard
+              title="Videos"
+              icon={<Youtube className="h-6 w-6 text-muted-foreground" />}
+              status={syncProgress.completed >= 70 ? "completed" : syncProgress.completed > 40 ? "in-progress" : "pending"}
+            />
+            <SyncStageCard
+              title="Comments"
+              icon={<BarChart3 className="h-6 w-6 text-muted-foreground" />}
+              status={syncProgress.completed >= 100 ? "completed" : syncProgress.completed > 70 ? "in-progress" : "pending"}
+            />
+            <SyncStageCard
+              title="Insights"
+              icon={<CheckCircle2 className="h-6 w-6 text-muted-foreground" />}
+              status={syncProgress.completed >= 100 ? "completed" : "pending"}
+            />
+          </div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Sync Settings</CardTitle>
-          <CardDescription>Configure how and when data is synced</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="auto-sync">Auto-sync enabled</Label>
-            <Switch id="auto-sync" />
-          </div>
-          <div className="space-y-2">
-            <Label>Sync frequency (minutes)</Label>
-            <Slider defaultValue={[60]} max={1440} step={15} />
-          </div>
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="settings">
+        <TabsList>
+          <TabsTrigger value="settings">Settings</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
+        </TabsList>
+        <TabsContent value="settings" className="mt-4 space-y-4">
+          <Card>
+            <CardContent className="pt-6 space-y-6">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="auto-sync">Auto-sync saved playlists (manual trigger for now)</Label>
+                <Switch id="auto-sync" disabled />
+              </div>
+              <div className="space-y-2">
+                <Label>Comment depth per video</Label>
+                <Slider defaultValue={[50]} max={100} step={10} disabled={syncInProgress} />
+              </div>
+              <Link href="/bulk-analyze">
+                <Button variant="outline">Bulk analyze playlists</Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="history" className="mt-4">
+          <Card>
+            <CardContent className="pt-6 text-sm text-muted-foreground">
+              Analysis history is in{" "}
+              <Link href="/history" className="text-primary underline">
+                History
+              </Link>
+              . Saved playlists in{" "}
+              <Link href="/playlists" className="text-primary underline">
+                Playlists
+              </Link>
+              .
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

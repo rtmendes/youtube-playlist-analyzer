@@ -1,70 +1,79 @@
-// Preconfigured storage helpers for Manus WebDev templates
-// Uses the Biz-provided storage proxy (Authorization: Bearer <token>)
-
-import { ENV } from './_core/env';
-
-type StorageConfig = { baseUrl: string; apiKey: string };
-
-function getStorageConfig(): StorageConfig {
-  const baseUrl = ENV.forgeApiUrl;
-  const apiKey = ENV.forgeApiKey;
-
-  if (!baseUrl || !apiKey) {
-    throw new Error(
-      "Storage proxy credentials missing: set BUILT_IN_FORGE_API_URL and BUILT_IN_FORGE_API_KEY"
-    );
-  }
-
-  return { baseUrl: baseUrl.replace(/\/+$/, ""), apiKey };
-}
-
-function buildUploadUrl(baseUrl: string, relKey: string): URL {
-  const url = new URL("v1/storage/upload", ensureTrailingSlash(baseUrl));
-  url.searchParams.set("path", normalizeKey(relKey));
-  return url;
-}
-
-async function buildDownloadUrl(
-  baseUrl: string,
-  relKey: string,
-  apiKey: string
-): Promise<string> {
-  const downloadApiUrl = new URL(
-    "v1/storage/downloadUrl",
-    ensureTrailingSlash(baseUrl)
-  );
-  downloadApiUrl.searchParams.set("path", normalizeKey(relKey));
-  const response = await fetch(downloadApiUrl, {
-    method: "GET",
-    headers: buildAuthHeaders(apiKey),
-  });
-  return (await response.json()).url;
-}
-
-function ensureTrailingSlash(value: string): string {
-  return value.endsWith("/") ? value : `${value}/`;
-}
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { ENV } from "./_core/env";
 
 function normalizeKey(relKey: string): string {
   return relKey.replace(/^\/+/, "");
 }
 
-function toFormData(
-  data: Buffer | Uint8Array | string,
-  contentType: string,
-  fileName: string
-): FormData {
-  const blob =
-    typeof data === "string"
-      ? new Blob([data], { type: contentType })
-      : new Blob([data as any], { type: contentType });
-  const form = new FormData();
-  form.append("file", blob, fileName || "file");
-  return form;
+let supabaseClient: SupabaseClient | null = null;
+
+function getSupabase(): SupabaseClient | null {
+  if (!ENV.supabaseUrl || !ENV.supabaseServiceRoleKey) return null;
+  if (!supabaseClient) {
+    supabaseClient = createClient(ENV.supabaseUrl, ENV.supabaseServiceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+  }
+  return supabaseClient;
 }
 
-function buildAuthHeaders(apiKey: string): HeadersInit {
-  return { Authorization: `Bearer ${apiKey}` };
+function getS3Client(): S3Client | null {
+  const region = process.env.S3_REGION;
+  const accessKeyId = process.env.S3_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY;
+  if (!region || !accessKeyId || !secretAccessKey) return null;
+  return new S3Client({
+    region,
+    credentials: { accessKeyId, secretAccessKey },
+  });
+}
+
+async function uploadViaSupabase(
+  key: string,
+  data: Buffer | Uint8Array | string,
+  contentType: string
+): Promise<string> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    throw new Error(
+      "Supabase storage not configured: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY"
+    );
+  }
+  const body = typeof data === "string" ? Buffer.from(data) : Buffer.from(data);
+  const { error } = await supabase.storage
+    .from(ENV.storageBucket)
+    .upload(key, body, { contentType, upsert: true });
+  if (error) {
+    throw new Error(`Supabase storage upload failed: ${error.message}`);
+  }
+  const { data: publicUrl } = supabase.storage.from(ENV.storageBucket).getPublicUrl(key);
+  return publicUrl.publicUrl;
+}
+
+async function uploadViaS3(
+  key: string,
+  data: Buffer | Uint8Array | string,
+  contentType: string
+): Promise<string> {
+  const bucket = process.env.S3_BUCKET;
+  const client = getS3Client();
+  if (!bucket || !client) {
+    throw new Error(
+      "S3 storage not configured: set S3_BUCKET, S3_REGION, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY"
+    );
+  }
+  const body = typeof data === "string" ? Buffer.from(data) : Buffer.from(data);
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+    })
+  );
+  const region = process.env.S3_REGION!;
+  return `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
 }
 
 export async function storagePut(
@@ -72,31 +81,24 @@ export async function storagePut(
   data: Buffer | Uint8Array | string,
   contentType = "application/octet-stream"
 ): Promise<{ key: string; url: string }> {
-  const { baseUrl, apiKey } = getStorageConfig();
   const key = normalizeKey(relKey);
-  const uploadUrl = buildUploadUrl(baseUrl, key);
-  const formData = toFormData(data, contentType, key.split("/").pop() ?? key);
-  const response = await fetch(uploadUrl, {
-    method: "POST",
-    headers: buildAuthHeaders(apiKey),
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const message = await response.text().catch(() => response.statusText);
-    throw new Error(
-      `Storage upload failed (${response.status} ${response.statusText}): ${message}`
-    );
-  }
-  const url = (await response.json()).url;
+  const url = getSupabase()
+    ? await uploadViaSupabase(key, data, contentType)
+    : await uploadViaS3(key, data, contentType);
   return { key, url };
 }
 
-export async function storageGet(relKey: string): Promise<{ key: string; url: string; }> {
-  const { baseUrl, apiKey } = getStorageConfig();
+export async function storageGet(relKey: string): Promise<{ key: string; url: string }> {
   const key = normalizeKey(relKey);
-  return {
-    key,
-    url: await buildDownloadUrl(baseUrl, key, apiKey),
-  };
+  const supabase = getSupabase();
+  if (supabase) {
+    const { data } = supabase.storage.from(ENV.storageBucket).getPublicUrl(key);
+    return { key, url: data.publicUrl };
+  }
+  const bucket = process.env.S3_BUCKET;
+  const region = process.env.S3_REGION;
+  if (!bucket || !region) {
+    throw new Error("Storage not configured");
+  }
+  return { key, url: `https://${bucket}.s3.${region}.amazonaws.com/${key}` };
 }

@@ -1,1 +1,0 @@
-ALTER TABLE `exportHistory` MODIFY COLUMN `destination` enum('google_docs','notion','clipboard','markdown_file','pdf','word','file','batch_file','batch_google_docs','batch_notion') NOT NULL;
