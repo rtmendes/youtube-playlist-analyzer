@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { trpc } from "@/lib/trpc";
+import { DemandEvidenceCard } from "@/components/DemandEvidenceCard";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
 import {
@@ -465,6 +466,7 @@ export default function AmazonIntelligence() {
                 </div>
               </CardContent>
             </Card>
+            <DemandEvidenceCard query={[product.brand, product.title].filter(Boolean).join(" ").split(/\s+/).slice(0, 6).join(" ")} />
           </motion.div>
         )}
 

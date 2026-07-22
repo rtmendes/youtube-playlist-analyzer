@@ -2,6 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { z } from "zod";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
+import { fetchDemandEvidence, fetchDemandOverview, fetchCommentMinerHealth } from "./comment-miner";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { 
   parseYouTubeInput, 
@@ -7547,6 +7548,20 @@ Keep it concise and actionable.`;
 
         return { markdown, title: report.title };
       }),
+  }),
+
+  // Comment Miner (Audience Intelligence) bridge — attaches audience-demand
+  // evidence from mined comments to monetization/product recommendations.
+  commentMiner: router({
+    evidence: publicProcedure
+      .input(z.object({ query: z.string().min(2), limit: z.number().min(1).max(25).optional() }))
+      .query(({ input }) => fetchDemandEvidence(input.query, input.limit ?? 8)),
+
+    overview: publicProcedure
+      .input(z.object({ folderId: z.string().optional() }).optional())
+      .query(({ input }) => fetchDemandOverview(input?.folderId)),
+
+    health: publicProcedure.query(() => fetchCommentMinerHealth()),
   }),
 });
 
